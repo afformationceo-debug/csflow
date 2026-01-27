@@ -496,7 +496,7 @@ function ChannelBadge({ channel }: { channel: string }) {
   };
   return (
     <span
-      className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wide ${config.className}`}
+      className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide ${config.className}`}
     >
       {config.label}
     </span>
@@ -545,7 +545,7 @@ function SLAIndicator({
       </span>
       <div className="h-1 w-16 rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${slaBarColors[sla.urgency]}`}
+          className={`h-full rounded-full transition-all duration-500 progress-shine ${slaBarColors[sla.urgency]}`}
           style={{ width: `${Math.min(sla.percent, 100)}%` }}
         />
       </div>
@@ -713,9 +713,9 @@ function EscalationCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8, transition: { duration: 0.2 } }}
-      transition={{ delay: index * 0.04, duration: 0.35, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+      transition={{ delay: index * 0.04, duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
     >
-      <Card className="border-0 shadow-sm hover-lift overflow-hidden group">
+      <Card className="border-0 shadow-sm card-3d rounded-2xl overflow-hidden group">
         <div className="flex">
           {/* Priority indicator bar */}
           <div
@@ -910,7 +910,7 @@ function StatCard({
   trendLabel?: string;
 }) {
   return (
-    <Card className="border-0 shadow-sm hover-lift">
+    <Card className="border-0 shadow-sm card-3d rounded-2xl">
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="space-y-2">
@@ -1113,15 +1113,15 @@ export default function EscalationsPage() {
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10">
-              <Shield className="h-5 w-5 text-red-500" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-rose-500 shadow-lg shadow-red-500/20">
+              <Shield className="h-5 w-5 text-white" />
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
                 에스컬레이션
               </h1>
               <p className="text-sm text-muted-foreground">
-                AI가 처리하지 못한 문의를 담당자가 직접 처리합니다
+                AI가 처리하지 못한 문의를 빠르게 해결하세요
               </p>
             </div>
           </div>
@@ -1183,7 +1183,7 @@ export default function EscalationsPage() {
       </div>
 
       {/* Filter Bar */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm rounded-2xl">
         <CardContent className="p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
             {/* Search */}
@@ -1319,7 +1319,7 @@ export default function EscalationsPage() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3 }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardContent className="py-16 text-center">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10">
                 <CheckCircle className="h-8 w-8 text-emerald-500" />

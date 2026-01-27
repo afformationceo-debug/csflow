@@ -507,19 +507,19 @@ export default function KnowledgeBasePage() {
     switch (sourceType) {
       case "manual":
         return (
-          <Badge variant="outline" className="border-0 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-medium">
+          <Badge variant="outline" className="border-0 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-medium rounded-full">
             수동 입력
           </Badge>
         );
       case "escalation":
         return (
-          <Badge variant="outline" className="border-0 bg-purple-500/10 text-purple-600 dark:text-purple-400 text-[11px] font-medium">
+          <Badge variant="outline" className="border-0 bg-purple-500/10 text-purple-600 dark:text-purple-400 text-[11px] font-medium rounded-full">
             에스컬레이션
           </Badge>
         );
       case "import":
         return (
-          <Badge variant="outline" className="border-0 bg-teal-500/10 text-teal-600 dark:text-teal-400 text-[11px] font-medium">
+          <Badge variant="outline" className="border-0 bg-teal-500/10 text-teal-600 dark:text-teal-400 text-[11px] font-medium rounded-full">
             일괄 업로드
           </Badge>
         );
@@ -534,13 +534,13 @@ export default function KnowledgeBasePage() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
-              <Brain className="h-5 w-5 text-primary" />
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg shadow-amber-500/20">
+              <Brain className="h-5 w-5 text-white" />
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">지식베이스</h1>
               <p className="text-sm text-muted-foreground">
-                AI 자동응대를 위한 지식 문서를 관리합니다
+                AI가 더 정확한 답변을 할 수 있도록 지식을 관리하세요
               </p>
             </div>
           </div>
@@ -713,7 +713,7 @@ export default function KnowledgeBasePage() {
         className="grid gap-4 md:grid-cols-4"
       >
         <motion.div variants={statsCardVariants}>
-          <Card className="border-0 shadow-sm hover-lift overflow-hidden">
+          <Card className="border-0 shadow-sm card-3d overflow-hidden rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -743,7 +743,7 @@ export default function KnowledgeBasePage() {
         </motion.div>
 
         <motion.div variants={statsCardVariants}>
-          <Card className="border-0 shadow-sm hover-lift overflow-hidden">
+          <Card className="border-0 shadow-sm card-3d overflow-hidden rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -771,7 +771,7 @@ export default function KnowledgeBasePage() {
         </motion.div>
 
         <motion.div variants={statsCardVariants}>
-          <Card className="border-0 shadow-sm hover-lift overflow-hidden">
+          <Card className="border-0 shadow-sm card-3d overflow-hidden rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -793,10 +793,10 @@ export default function KnowledgeBasePage() {
               <div className="mt-3">
                 <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                   <motion.div
-                    className="h-full bg-emerald-500 rounded-full"
+                    className="h-full bg-emerald-500 rounded-full progress-shine"
                     initial={{ width: 0 }}
                     animate={{ width: `${stats.embeddingCoverage}%` }}
-                    transition={{ duration: 1, ease: "easeOut", delay: 0.5 }}
+                    transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.5 }}
                   />
                 </div>
               </div>
@@ -805,7 +805,7 @@ export default function KnowledgeBasePage() {
         </motion.div>
 
         <motion.div variants={statsCardVariants}>
-          <Card className="border-0 shadow-sm hover-lift overflow-hidden">
+          <Card className="border-0 shadow-sm card-3d overflow-hidden rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -830,7 +830,7 @@ export default function KnowledgeBasePage() {
       </motion.div>
 
       {/* Search and Filter Bar */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm rounded-2xl">
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-3">
             {/* Search Input */}
@@ -927,7 +927,7 @@ export default function KnowledgeBasePage() {
               {selectedCategory && (
                 <Badge
                   variant="secondary"
-                  className={`gap-1 rounded-lg border-0 text-[11px] cursor-pointer ${getCategoryColor(selectedCategory).bg} ${getCategoryColor(selectedCategory).text}`}
+                  className={`gap-1 rounded-full border-0 text-[11px] cursor-pointer ${getCategoryColor(selectedCategory).bg} ${getCategoryColor(selectedCategory).text}`}
                   onClick={() => setSelectedCategory(undefined)}
                 >
                   {selectedCategory}
@@ -937,7 +937,7 @@ export default function KnowledgeBasePage() {
               {searchQuery && (
                 <Badge
                   variant="secondary"
-                  className="gap-1 rounded-lg border-0 text-[11px] cursor-pointer"
+                  className="gap-1 rounded-full border-0 text-[11px] cursor-pointer"
                   onClick={() => setSearchQuery("")}
                 >
                   &ldquo;{searchQuery}&rdquo;
@@ -965,7 +965,7 @@ export default function KnowledgeBasePage() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
         >
-          <Card className="border-0 shadow-sm bg-red-500/5">
+          <Card className="border-0 shadow-sm bg-red-500/5 rounded-2xl">
             <CardContent className="py-5 px-6">
               <div className="flex items-center gap-3">
                 <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-red-500/10">
@@ -997,7 +997,7 @@ export default function KnowledgeBasePage() {
       {documentsLoading && (
         <div className={viewMode === "grid" ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Card key={i} className="border-0 shadow-sm">
+            <Card key={i} className="border-0 shadow-sm rounded-2xl">
               <CardContent className="p-5">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
@@ -1040,7 +1040,7 @@ export default function KnowledgeBasePage() {
                   layout
                 >
                   <Card
-                    className={`border-0 shadow-sm hover-lift group cursor-default transition-all ${
+                    className={`border-0 shadow-sm card-3d group cursor-default transition-all rounded-2xl ${
                       !doc.is_active ? "opacity-50" : ""
                     }`}
                   >
@@ -1107,7 +1107,7 @@ export default function KnowledgeBasePage() {
                         {doc.category && (
                           <Badge
                             variant="secondary"
-                            className={`border-0 rounded-lg text-[11px] font-medium px-2 py-0.5 ${getCategoryColor(doc.category).bg} ${getCategoryColor(doc.category).text}`}
+                            className={`border-0 rounded-full text-[11px] font-medium px-2 py-0.5 ${getCategoryColor(doc.category).bg} ${getCategoryColor(doc.category).text}`}
                           >
                             {doc.category}
                           </Badge>
@@ -1116,7 +1116,7 @@ export default function KnowledgeBasePage() {
                         {!doc.is_active && (
                           <Badge
                             variant="secondary"
-                            className="border-0 rounded-lg text-[11px] font-medium px-2 py-0.5 bg-gray-500/10 text-gray-500"
+                            className="border-0 rounded-full text-[11px] font-medium px-2 py-0.5 bg-gray-500/10 text-gray-500"
                           >
                             비활성
                           </Badge>
@@ -1129,7 +1129,7 @@ export default function KnowledgeBasePage() {
                           {doc.tags.slice(0, 3).map((tag) => (
                             <span
                               key={tag}
-                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/50 rounded-md px-1.5 py-0.5"
+                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/50 rounded-full px-1.5 py-0.5"
                             >
                               <Tag className="h-2.5 w-2.5" />
                               {tag}
@@ -1205,7 +1205,7 @@ export default function KnowledgeBasePage() {
                   layout
                 >
                   <Card
-                    className={`border-0 shadow-sm hover-lift transition-all ${
+                    className={`border-0 shadow-sm card-3d transition-all rounded-2xl ${
                       !doc.is_active ? "opacity-50" : ""
                     }`}
                   >
@@ -1229,7 +1229,7 @@ export default function KnowledgeBasePage() {
                           {doc.category ? (
                             <Badge
                               variant="secondary"
-                              className={`border-0 rounded-lg text-[11px] font-medium ${getCategoryColor(doc.category).bg} ${getCategoryColor(doc.category).text}`}
+                              className={`border-0 rounded-full text-[11px] font-medium ${getCategoryColor(doc.category).bg} ${getCategoryColor(doc.category).text}`}
                             >
                               {doc.category}
                             </Badge>
@@ -1256,7 +1256,7 @@ export default function KnowledgeBasePage() {
                         {/* Embedding Status */}
                         <div className="col-span-1 flex justify-center">
                           <div
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${embeddingConfig.bg}`}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-full ${embeddingConfig.bg}`}
                           >
                             <span className={`w-1.5 h-1.5 rounded-full ${embeddingConfig.dotClass}`} />
                             <span className={`text-[11px] font-medium ${embeddingConfig.color}`}>
@@ -1323,7 +1323,7 @@ export default function KnowledgeBasePage() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardContent className="py-16 text-center">
               <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mx-auto mb-5">
                 <FileText className="h-8 w-8 text-primary" />

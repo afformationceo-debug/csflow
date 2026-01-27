@@ -68,7 +68,7 @@ const itemVariants: Variants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
+    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   },
 };
 
@@ -87,7 +87,7 @@ function Toast({
           initial={{ opacity: 0, y: 40, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 40, scale: 0.95 }}
-          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
           className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-500 px-5 py-3.5 text-white shadow-lg shadow-green-500/25"
         >
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
@@ -150,7 +150,7 @@ function TagInput({
             >
               <Badge
                 variant="secondary"
-                className={`flex items-center gap-1.5 rounded-lg border-0 px-3 py-1.5 text-xs font-medium transition-colors ${colorMap[color]}`}
+                className={`flex items-center gap-1.5 rounded-full border-0 px-3 py-1.5 text-xs font-medium transition-colors ${colorMap[color]}`}
               >
                 {tag}
                 <button
@@ -271,7 +271,7 @@ function TabButton({
       {badge && (
         <Badge
           variant="secondary"
-          className={`text-[10px] tabular-nums px-1.5 py-0 ${
+          className={`text-[10px] tabular-nums px-1.5 py-0 rounded-full ${
             active
               ? "bg-white/20 text-white border-0"
               : "bg-muted text-muted-foreground border-0"
@@ -394,7 +394,7 @@ export default function SettingsPage() {
           >
             {/* Platform Info */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/[0.03] to-purple-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -481,7 +481,7 @@ export default function SettingsPage() {
 
             {/* Notification Settings */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-orange-500/[0.03] to-pink-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -558,7 +558,7 @@ export default function SettingsPage() {
           >
             {/* AI Model Configuration */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-violet-500/[0.03] to-blue-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -627,7 +627,7 @@ export default function SettingsPage() {
                         onChange={(e) =>
                           setConfidenceThreshold(Number(e.target.value))
                         }
-                        className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary"
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary progress-shine"
                       />
                       <div className="flex justify-between text-[11px] text-muted-foreground mt-2 tabular-nums">
                         <span>0%</span>
@@ -661,7 +661,7 @@ export default function SettingsPage() {
 
             {/* System Prompt */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/[0.03] to-cyan-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -690,7 +690,7 @@ export default function SettingsPage() {
             {/* Keywords & Topics */}
             <motion.div variants={itemVariants}>
               <div className="grid gap-6 md:grid-cols-2">
-                <Card className="border-0 shadow-sm overflow-hidden">
+                <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                   <div className="absolute inset-0 bg-gradient-to-br from-orange-500/[0.03] to-amber-500/[0.03] pointer-events-none" />
                   <CardHeader className="pb-2 relative">
                     <SectionHeader
@@ -711,7 +711,7 @@ export default function SettingsPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-0 shadow-sm overflow-hidden">
+                <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                   <div className="absolute inset-0 bg-gradient-to-br from-red-500/[0.03] to-rose-500/[0.03] pointer-events-none" />
                   <CardHeader className="pb-2 relative">
                     <SectionHeader
@@ -759,7 +759,7 @@ export default function SettingsPage() {
           >
             {/* DeepL Connection */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/[0.03] to-indigo-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -784,12 +784,12 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     {deeplConnected ? (
-                      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 rounded-lg px-3 py-1.5 gap-1.5">
+                      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 rounded-full px-3 py-1.5 gap-1.5">
                         <span className="h-2 w-2 rounded-full bg-emerald-500 live-dot" />
                         연결됨
                       </Badge>
                     ) : (
-                      <Badge variant="destructive" className="rounded-lg">미연결</Badge>
+                      <Badge variant="destructive" className="rounded-full">미연결</Badge>
                     )}
                   </div>
 
@@ -811,7 +811,7 @@ export default function SettingsPage() {
 
             {/* Translation Direction */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/[0.03] to-teal-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -846,7 +846,7 @@ export default function SettingsPage() {
 
             {/* Supported Languages */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.03] to-green-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -913,7 +913,7 @@ export default function SettingsPage() {
           >
             {/* Slack Connection */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#4A154B]/[0.03] to-[#E01E5A]/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -938,12 +938,12 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     {slackConnected ? (
-                      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 rounded-lg px-3 py-1.5 gap-1.5">
+                      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 rounded-full px-3 py-1.5 gap-1.5">
                         <span className="h-2 w-2 rounded-full bg-emerald-500 live-dot" />
                         연결됨
                       </Badge>
                     ) : (
-                      <Badge variant="destructive" className="rounded-lg">미연결</Badge>
+                      <Badge variant="destructive" className="rounded-full">미연결</Badge>
                     )}
                   </div>
 
@@ -968,7 +968,7 @@ export default function SettingsPage() {
 
             {/* Alert Settings */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-red-500/[0.03] to-orange-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -1025,7 +1025,7 @@ export default function SettingsPage() {
                         initial={{ opacity: 0, height: 0, marginTop: 0 }}
                         animate={{ opacity: 1, height: "auto", marginTop: 8 }}
                         exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
                         className="overflow-hidden"
                       >
                         <div className="ml-[60px] rounded-xl bg-amber-500/5 p-4 space-y-3">
@@ -1081,7 +1081,7 @@ export default function SettingsPage() {
           >
             {/* Navigation Card */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.04] to-violet-500/[0.04] pointer-events-none" />
                 <CardContent className="relative p-6">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -1109,7 +1109,7 @@ export default function SettingsPage() {
 
             {/* Connected Channels Summary */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.03] to-cyan-500/[0.03] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <div className="flex items-center justify-between">
@@ -1120,7 +1120,7 @@ export default function SettingsPage() {
                       title="연결된 채널 현황"
                       description="현재 연결된 메신저 채널 요약입니다"
                     />
-                    <Badge variant="secondary" className="border-0 rounded-lg px-3 py-1.5 bg-primary/10 text-primary font-bold tabular-nums">
+                    <Badge variant="secondary" className="border-0 rounded-full px-3 py-1.5 bg-primary/10 text-primary font-bold tabular-nums">
                       {connectedChannelsSummary.reduce(
                         (acc, ch) => acc + ch.count,
                         0
@@ -1141,9 +1141,9 @@ export default function SettingsPage() {
                           transition={{
                             delay: index * 0.05,
                             duration: 0.3,
-                            ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
+                            ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
                           }}
-                          className="hover-lift flex items-center gap-3.5 rounded-2xl bg-muted/30 p-4 transition-colors hover:bg-muted/50"
+                          className="card-3d flex items-center gap-3.5 rounded-2xl bg-muted/30 p-4 transition-colors hover:bg-muted/50"
                         >
                           <div
                             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${channel.color}`}
@@ -1157,7 +1157,7 @@ export default function SettingsPage() {
                               </p>
                               {channel.active ? (
                                 <Badge
-                                  className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 rounded-md text-[10px] px-1.5 py-0 shrink-0 gap-1"
+                                  className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 rounded-full text-[10px] px-1.5 py-0 shrink-0 gap-1"
                                 >
                                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 live-dot" />
                                   활성
@@ -1165,7 +1165,7 @@ export default function SettingsPage() {
                               ) : (
                                 <Badge
                                   variant="secondary"
-                                  className="border-0 rounded-md text-[10px] px-1.5 py-0 shrink-0"
+                                  className="border-0 rounded-full text-[10px] px-1.5 py-0 shrink-0"
                                 >
                                   비활성
                                 </Badge>
@@ -1185,7 +1185,7 @@ export default function SettingsPage() {
 
             {/* Quick Actions */}
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-amber-500/[0.02] to-orange-500/[0.02] pointer-events-none" />
                 <CardHeader className="pb-2 relative">
                   <SectionHeader
@@ -1232,16 +1232,16 @@ export default function SettingsPage() {
       <motion.div
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
       >
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20">
-            <Settings className="h-6 w-6 text-primary" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-500 to-zinc-500">
+            <Settings className="h-6 w-6 text-white" />
           </div>
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight">설정</h1>
             <p className="text-sm text-muted-foreground">
-              플랫폼 전반의 설정을 관리합니다
+              시스템 설정을 맞춤 구성하세요
             </p>
           </div>
         </div>
@@ -1253,11 +1253,11 @@ export default function SettingsPage() {
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, delay: 0.1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+          transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
           className="lg:w-[240px] shrink-0"
         >
           <div className="lg:sticky lg:top-6">
-            <Card className="border-0 shadow-sm overflow-hidden">
+            <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
               <div className="absolute inset-0 bg-gradient-to-b from-muted/30 to-transparent pointer-events-none" />
               <CardContent className="relative p-2.5">
                 <nav className="space-y-1 stagger-children">
@@ -1282,7 +1282,7 @@ export default function SettingsPage() {
               transition={{ delay: 0.5, duration: 0.4 }}
               className="mt-4"
             >
-              <Card className="border-0 shadow-sm overflow-hidden">
+              <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.04] to-violet-500/[0.04] pointer-events-none" />
                 <CardContent className="relative p-4">
                   <div className="flex items-center gap-3 mb-2">
@@ -1306,7 +1306,7 @@ export default function SettingsPage() {
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, delay: 0.15, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+          transition={{ duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
           className="flex-1 min-w-0"
         >
           <AnimatePresence mode="wait">

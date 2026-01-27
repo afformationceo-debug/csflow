@@ -398,7 +398,7 @@ const containerVariants = {
   },
 };
 
-const easeCurve: [number, number, number, number] = [0.16, 1, 0.3, 1];
+const easeCurve: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const itemVariants = {
   hidden: { opacity: 0, y: 16 },
@@ -424,11 +424,16 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       {/* ── Page Header ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">분석 및 리포트</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            CS 자동화 성과와 인사이트를 확인하세요
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl p-2.5 bg-gradient-to-br from-violet-500 to-purple-500 shadow-lg shadow-violet-500/20">
+            <BarChart3 className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">분석 및 리포트</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              AI 성과와 고객 응대 현황을 한눈에 파악하세요
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 mr-2">
@@ -470,7 +475,7 @@ export default function AnalyticsPage() {
 
           return (
             <motion.div key={kpi.id} variants={itemVariants}>
-              <Card className="border-0 shadow-sm hover-lift overflow-hidden relative">
+              <Card className="border-0 shadow-sm card-3d rounded-2xl overflow-hidden relative">
                 {/* Subtle gradient background */}
                 <div
                   className={`absolute inset-0 opacity-[0.03] ${
@@ -536,7 +541,7 @@ export default function AnalyticsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.4, ease: easeCurve }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -545,7 +550,7 @@ export default function AnalyticsPage() {
                   </div>
                   <CardTitle className="text-sm font-semibold">채널별 문의 분포</CardTitle>
                 </div>
-                <Badge variant="secondary" className="text-[11px] font-normal">
+                <Badge variant="secondary" className="text-[11px] font-normal rounded-full">
                   총 {channelDistribution.reduce((s, c) => s + c.count, 0).toLocaleString()}건
                 </Badge>
               </div>
@@ -579,7 +584,7 @@ export default function AnalyticsPage() {
                     </div>
                     <div className="h-2 bg-muted/50 rounded-full overflow-hidden">
                       <div
-                        className="h-full rounded-full bar-grow transition-all"
+                        className="h-full rounded-full bar-grow progress-shine transition-all"
                         style={{
                           width: `${channel.percentage}%`,
                           backgroundColor: channel.color,
@@ -600,7 +605,7 @@ export default function AnalyticsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.4, ease: easeCurve }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -694,7 +699,7 @@ export default function AnalyticsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4, duration: 0.4, ease: easeCurve }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2.5">
                 <div className="rounded-xl p-2 bg-indigo-500/10">
@@ -754,7 +759,7 @@ export default function AnalyticsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45, duration: 0.4, ease: easeCurve }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -763,7 +768,7 @@ export default function AnalyticsPage() {
                   </div>
                   <CardTitle className="text-sm font-semibold">에스컬레이션 사유</CardTitle>
                 </div>
-                <Badge variant="secondary" className="text-[11px] font-normal">
+                <Badge variant="secondary" className="text-[11px] font-normal rounded-full">
                   총 {escalationReasons.reduce((s, r) => s + r.count, 0)}건
                 </Badge>
               </div>
@@ -788,7 +793,7 @@ export default function AnalyticsPage() {
                         </span>
                         <Badge
                           variant="secondary"
-                          className={`text-[9px] px-1.5 py-0 h-4 ${getSeverityColor(item.severity)}`}
+                          className={`text-[9px] px-1.5 py-0 h-4 rounded-full ${getSeverityColor(item.severity)}`}
                         >
                           {item.severity === "critical"
                             ? "긴급"
@@ -799,7 +804,7 @@ export default function AnalyticsPage() {
                       </div>
                       <div className="h-1 bg-muted/50 rounded-full overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-orange-400/60 bar-grow"
+                          className="h-full rounded-full bg-orange-400/60 bar-grow progress-shine"
                           style={{
                             width: `${item.percentage}%`,
                             animationDelay: `${index * 100}ms`,
@@ -826,7 +831,7 @@ export default function AnalyticsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.4, ease: easeCurve }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -856,7 +861,7 @@ export default function AnalyticsPage() {
                         </span>
                         <div className="flex-1 h-5 bg-muted/30 rounded overflow-hidden relative">
                           <div
-                            className={`h-full rounded ${barColor} bar-grow flex items-center`}
+                            className={`h-full rounded ${barColor} bar-grow progress-shine flex items-center`}
                             style={{
                               width: `${barWidth}%`,
                               animationDelay: `${i * 80}ms`,
@@ -920,7 +925,7 @@ export default function AnalyticsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.55, duration: 0.4, ease: easeCurve }}
       >
-        <Card className="border-0 shadow-sm">
+        <Card className="border-0 shadow-sm rounded-2xl">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -929,7 +934,7 @@ export default function AnalyticsPage() {
                 </div>
                 <CardTitle className="text-sm font-semibold">거래처별 성과 비교</CardTitle>
               </div>
-              <Badge variant="secondary" className="text-[11px] font-normal">
+              <Badge variant="secondary" className="text-[11px] font-normal rounded-full">
                 {tenantPerformance.length}개 거래처
               </Badge>
             </div>
@@ -1042,7 +1047,7 @@ export default function AnalyticsPage() {
                       </td>
                       <td className="py-3 pl-4 text-right">
                         <div
-                          className={`inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums px-1.5 py-0.5 rounded ${
+                          className={`inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums px-1.5 py-0.5 rounded-full ${
                             tenant.trend === "up"
                               ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
                               : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
@@ -1075,7 +1080,7 @@ export default function AnalyticsPage() {
         animate="visible"
       >
         <motion.div variants={itemVariants}>
-          <Card className="border-0 shadow-sm overflow-hidden relative">
+          <Card className="border-0 shadow-sm rounded-2xl overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.03] to-emerald-600/[0.01]" />
             <CardContent className="p-4 relative">
               <div className="flex items-start gap-3">
@@ -1098,7 +1103,7 @@ export default function AnalyticsPage() {
         </motion.div>
 
         <motion.div variants={itemVariants}>
-          <Card className="border-0 shadow-sm overflow-hidden relative">
+          <Card className="border-0 shadow-sm rounded-2xl overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-amber-500/[0.03] to-amber-600/[0.01]" />
             <CardContent className="p-4 relative">
               <div className="flex items-start gap-3">
@@ -1121,7 +1126,7 @@ export default function AnalyticsPage() {
         </motion.div>
 
         <motion.div variants={itemVariants}>
-          <Card className="border-0 shadow-sm overflow-hidden relative">
+          <Card className="border-0 shadow-sm rounded-2xl overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-500/[0.03] to-blue-600/[0.01]" />
             <CardContent className="p-4 relative">
               <div className="flex items-start gap-3">

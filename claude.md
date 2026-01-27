@@ -965,6 +965,7 @@ AI 자동응대 → 신뢰도 < 임계값 → 에스컬레이션 생성
 - [x] 환자 포털 개발 (별도 앱 `/portal`) ✅
 - [x] E2E 테스트 (Playwright) - 21개 테스트 ✅
 - [x] 프로덕션 최적화 (보안 헤더, 이미지 최적화) ✅
+- [x] 전체 UI/UX 업그레이드 (9개 대시보드 페이지 + globals.css) ✅
 
 **산출물**:
 - OpenAI Fine-tuning 파이프라인 (에스컬레이션 → 학습 데이터) ✅
@@ -975,6 +976,7 @@ AI 자동응대 → 신뢰도 < 임계값 → 에스컬레이션 생성
 - Playwright E2E 테스트 (21개 - 전 페이지 렌더링 + 인박스 기능) ✅
 - 환자 포털 (별도 Next.js 앱, 예약/상담/문서 조회) ✅
 - next.config.ts 프로덕션 보안 헤더 및 이미지 최적화 ✅
+- 전체 UI/UX 업그레이드 (card-3d, progress-shine, 그라디언트 헤더, 친근한 UX 문구) ✅
 
 ---
 
@@ -1762,6 +1764,28 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 - [x] 담당자 관리 페이지 (`/team`) - 팀원 목록, 역할 RBAC, 초대 다이얼로그 ✅
 - [x] 설정 메인 페이지 (`/settings`) - 5탭 구성 (일반/AI/번역/알림/채널) ✅
 - [x] Playwright E2E 렌더링 검증 완료 ✅
+
+#### 7.14 전체 UI/UX 업그레이드 ✅
+- [x] `globals.css` 업그레이드 - `card-3d`, `hero-gradient`, `ai-glow-pulse`, `progress-shine`, `float-slow`, `float-medium`, `animate-in-scale` CSS 클래스 추가 ✅
+- [x] **대시보드** (`/dashboard`) - 시간대별 인사, hero gradient, AI Insight 카드, card-3d 효과 ✅
+- [x] **통합 인박스** (`/inbox`) - 3패널 입장 애니메이션, AI 어시스턴트 라벨, amber 내부노트, AnimatePresence 필터링 ✅
+- [x] **채널 관리** (`/channels`) - `\uXXXX` → UTF-8 변환, card-3d, 그라디언트 헤더 (blue→cyan) ✅
+- [x] **거래처 관리** (`/tenants`) - card-3d, backdrop-blur-sm, 그라디언트 헤더 (emerald→teal) ✅
+- [x] **지식베이스** (`/knowledge`) - card-3d, progress-shine, 그라디언트 헤더 (amber→orange) ✅
+- [x] **담당자 관리** (`/team`) - card-3d, rounded-2xl, 그라디언트 헤더 (blue→indigo) ✅
+- [x] **에스컬레이션** (`/escalations`) - card-3d, progress-shine SLA바, 그라디언트 헤더 (red→rose) ✅
+- [x] **분석/리포트** (`/analytics`) - card-3d, progress-shine 차트바, 그라디언트 헤더 (violet→purple) ✅
+- [x] **설정** (`/settings`) - card-3d, progress-shine 슬라이더, 그라디언트 헤더 (slate→zinc) ✅
+- [x] 전체 빌드 검증 통과 (Next.js 16.1.4 Turbopack, 0 errors) ✅
+
+**UI/UX 업그레이드 공통 적용 사항:**
+- 모든 easing 커브: `[0.22, 1, 0.36, 1]` (표준화)
+- `hover-lift` → `card-3d` (3D perspective 호버 효과)
+- Cards: `rounded-2xl`, Badges: `rounded-full`
+- 페이지별 고유 그라디언트 헤더 아이콘 + `text-white`
+- `progress-shine` 애니메이션 바
+- 한국어 UTF-8 문자 (절대 `\uXXXX` 사용 금지)
+- 친근하고 따뜻한 설명 텍스트 ("~하세요" 어미)
 
 ---
 

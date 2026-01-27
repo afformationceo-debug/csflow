@@ -18,6 +18,12 @@ import {
   Globe,
   Sparkles,
   RefreshCw,
+  Heart,
+  Coffee,
+  Sunrise,
+  Sun,
+  Moon,
+  Star,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -63,6 +69,38 @@ interface HospitalAccuracy {
   trend: "up" | "down";
   totalQueries: number;
   autoResolved: number;
+}
+
+// ---------------------------------------------------------------------------
+// Greeting Helper
+// ---------------------------------------------------------------------------
+function getGreeting(): { text: string; emoji: React.ElementType; subText: string } {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) {
+    return {
+      text: "좋은 아침이에요!",
+      emoji: Sunrise,
+      subText: "오늘도 힘내봐요. AI가 밤새 고객 응대를 잘 해두었어요.",
+    };
+  } else if (hour >= 12 && hour < 17) {
+    return {
+      text: "좋은 오후예요!",
+      emoji: Sun,
+      subText: "오후도 AI와 함께 순조로운 응대 되시길 바라요.",
+    };
+  } else if (hour >= 17 && hour < 21) {
+    return {
+      text: "수고 많으셨어요!",
+      emoji: Coffee,
+      subText: "퇴근 전 주요 현황을 확인해보세요.",
+    };
+  } else {
+    return {
+      text: "안녕하세요!",
+      emoji: Moon,
+      subText: "야간에도 AI가 24시간 고객을 응대하고 있어요.",
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +375,8 @@ function MiniRing({ percentage, color, size = 44 }: { percentage: number; color:
 export default function DashboardPage() {
   const [isLive] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  const greeting = useMemo(() => getGreeting(), []);
+  const GreetingIcon = greeting.emoji;
 
   useEffect(() => {
     if (!isLive) return;
@@ -356,251 +396,343 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="space-y-6 max-w-[1400px] mx-auto">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">대시보드</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            실시간 CS 현황을 한눈에 확인하세요
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className={`h-2 w-2 rounded-full ${isLive ? "bg-emerald-500 live-dot" : "bg-gray-400"}`} />
-            {isLive ? "실시간" : "일시정지"}
-            <span className="text-muted-foreground/60">
-              {lastUpdate.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          </div>
-          <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={handleRefresh}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            새로고침
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6 max-w-[1400px] mx-auto animate-in-up">
+      {/* Welcome Hero Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="relative overflow-hidden rounded-2xl hero-gradient p-6 text-white">
+          {/* Decorative background elements */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4 float-slow" />
+          <div className="absolute bottom-0 left-1/3 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 float-medium" />
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 stagger-children">
-        {stats.map((stat) => (
-          <Card
-            key={stat.title}
-            className={`relative overflow-hidden hover-lift border-0 bg-gradient-to-br ${stat.gradient} dark:bg-gradient-to-br`}
-          >
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                  <div className="text-3xl font-bold tracking-tight">
-                    <AnimatedNumber
-                      value={stat.numericValue}
-                      suffix={stat.value.includes("%") ? "%" : stat.value.includes("분") ? "분" : ""}
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 text-xs">
-                    {stat.trend === "up" ? (
-                      <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
-                    ) : (
-                      <TrendingDown className="h-3.5 w-3.5 text-red-500" />
-                    )}
-                    <span className={stat.trend === "up" ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
-                      {stat.change}
-                    </span>
-                    <span className="text-muted-foreground">{stat.description}</span>
-                  </div>
+          <div className="relative z-10 flex items-start justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm">
+                  <GreetingIcon className="h-5 w-5" />
                 </div>
-                <div className={`flex items-center justify-center h-11 w-11 rounded-xl ${stat.iconBg}`}>
-                  <stat.icon className="h-5 w-5" />
+                <div>
+                  <h1 className="text-xl font-bold">{greeting.text}</h1>
+                  <p className="text-sm text-white/75">{greeting.subText}</p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/10">
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Bot className="h-4 w-4 text-white/60" />
+                  <span className="text-white/80">AI 처리율</span>
+                  <span className="font-bold">82.3%</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Heart className="h-4 w-4 text-white/60" />
+                  <span className="text-white/80">만족도</span>
+                  <span className="font-bold">4.7/5.0</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Star className="h-4 w-4 text-white/60" />
+                  <span className="text-white/80">해결률</span>
+                  <span className="font-bold">94.2%</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-xs text-white/60 bg-white/10 rounded-lg px-3 py-1.5 backdrop-blur-sm">
+                <span className={`h-2 w-2 rounded-full ${isLive ? "bg-emerald-400 live-dot" : "bg-gray-400"}`} />
+                {isLive ? "실시간" : "일시정지"}
+                <span>
+                  {lastUpdate.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 text-white/80 hover:text-white hover:bg-white/10"
+                onClick={handleRefresh}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                새로고침
+              </Button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Stats Grid */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat, index) => (
+          <motion.div
+            key={stat.title}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + index * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <Card
+              className={`relative overflow-hidden card-3d border-0 bg-gradient-to-br ${stat.gradient} dark:bg-gradient-to-br`}
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
+                    <div className="text-3xl font-bold tracking-tight">
+                      <AnimatedNumber
+                        value={stat.numericValue}
+                        suffix={stat.value.includes("%") ? "%" : stat.value.includes("분") ? "분" : ""}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 text-xs">
+                      {stat.trend === "up" ? (
+                        <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
+                      ) : (
+                        <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+                      )}
+                      <span className={stat.trend === "up" ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
+                        {stat.change}
+                      </span>
+                      <span className="text-muted-foreground">{stat.description}</span>
+                    </div>
+                  </div>
+                  <div className={`flex items-center justify-center h-11 w-11 rounded-xl ${stat.iconBg}`}>
+                    <stat.icon className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
+
+      {/* AI Insight Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-violet-500/5 via-purple-500/5 to-indigo-500/5 overflow-hidden">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 ai-glow-pulse shrink-0">
+                <Sparkles className="h-4.5 w-4.5 text-violet-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-violet-700 dark:text-violet-300">AI 인사이트</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  오늘 LINE 채널의 일본어 문의가 전일 대비 23% 증가했어요. 힐링안과 라식 관련 FAQ를 업데이트하면 AI 처리율을 더 높일 수 있어요.
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" className="text-xs text-violet-600 hover:text-violet-700 shrink-0">
+                자세히 보기
+                <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Main Content Grid */}
       <div className="grid gap-6 lg:grid-cols-5">
         {/* Recent Conversations - Takes 3 columns */}
-        <Card className="lg:col-span-3 border-0 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-base font-semibold">실시간 대화</CardTitle>
-              <Badge variant="secondary" className="text-[10px] font-medium h-5">
-                <Activity className="h-3 w-3 mr-1" />
-                LIVE
-              </Badge>
-            </div>
-            <Link
-              href="/inbox"
-              className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
-            >
-              전체보기 <ArrowRight className="h-3 w-3" />
-            </Link>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-border/50">
-              <AnimatePresence>
-                {recentConversations.map((conv, index) => (
-                  <motion.div
-                    key={conv.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05, duration: 0.3 }}
-                  >
-                    <Link
-                      href="/inbox"
-                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-muted/50 transition-colors group"
+        <motion.div
+          className="lg:col-span-3"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base font-semibold">실시간 대화</CardTitle>
+                <Badge variant="secondary" className="text-[10px] font-medium h-5">
+                  <Activity className="h-3 w-3 mr-1" />
+                  LIVE
+                </Badge>
+              </div>
+              <Link
+                href="/inbox"
+                className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+              >
+                전체보기 <ArrowRight className="h-3 w-3" />
+              </Link>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border/50">
+                <AnimatePresence>
+                  {recentConversations.map((conv, index) => (
+                    <motion.div
+                      key={conv.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.4 + index * 0.06, duration: 0.4 }}
                     >
-                      {/* Unread indicator */}
-                      <div className="w-1.5 flex-shrink-0">
-                        {conv.unread && (
-                          <span className="block h-1.5 w-1.5 rounded-full bg-primary" />
-                        )}
-                      </div>
-
-                      {/* Channel + Flag */}
-                      <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                        <ChannelBadge channel={conv.channel} />
-                        <CountryFlag code={conv.country} />
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{conv.customer}</span>
-                          <span className="text-xs text-muted-foreground truncate">{conv.hospital}</span>
+                      <Link
+                        href="/inbox"
+                        className="flex items-center gap-3 px-5 py-3.5 hover:bg-muted/50 transition-all duration-200 group"
+                      >
+                        {/* Unread indicator */}
+                        <div className="w-1.5 flex-shrink-0">
+                          {conv.unread && (
+                            <span className="block h-1.5 w-1.5 rounded-full bg-primary" />
+                          )}
                         </div>
-                        <p className="text-sm text-muted-foreground truncate mt-0.5">{conv.message}</p>
-                      </div>
 
-                      {/* Right side */}
-                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                        <StatusBadge status={conv.status} />
-                        <span className="text-[11px] text-muted-foreground">{conv.time}</span>
-                      </div>
+                        {/* Channel + Flag */}
+                        <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                          <ChannelBadge channel={conv.channel} />
+                          <CountryFlag code={conv.country} />
+                        </div>
 
-                      {/* Arrow on hover */}
-                      <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors flex-shrink-0" />
-                    </Link>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          </CardContent>
-        </Card>
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{conv.customer}</span>
+                            <span className="text-xs text-muted-foreground truncate">{conv.hospital}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate mt-0.5">{conv.message}</p>
+                        </div>
+
+                        {/* Right side */}
+                        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                          <StatusBadge status={conv.status} />
+                          <span className="text-[11px] text-muted-foreground">{conv.time}</span>
+                        </div>
+
+                        {/* Arrow on hover */}
+                        <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors flex-shrink-0" />
+                      </Link>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* Right Column - Takes 2 columns */}
         <div className="lg:col-span-2 space-y-6">
           {/* Channel Distribution */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold">채널별 문의량</CardTitle>
-                <span className="text-xs text-muted-foreground font-medium">오늘 총 {totalMessages}건</span>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {channelStats.map((channel, idx) => (
-                <motion.div
-                  key={channel.name}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.3 + idx * 0.08 }}
-                  className="group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="flex items-center justify-center h-7 w-7 rounded-lg text-[10px] font-bold flex-shrink-0"
-                      style={{
-                        backgroundColor: channel.color,
-                        color: channel.name === "카카오톡" ? "#3C1E1E" : "white",
-                      }}
-                    >
-                      {channel.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium">{channel.name}</span>
-                        <span className="text-sm font-semibold tabular-nums">{channel.count}</span>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.4, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-semibold">채널별 문의량</CardTitle>
+                  <span className="text-xs text-muted-foreground font-medium">오늘 총 {totalMessages}건</span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {channelStats.map((channel, idx) => (
+                  <motion.div
+                    key={channel.name}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 + idx * 0.08 }}
+                    className="group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex items-center justify-center h-7 w-7 rounded-lg text-[10px] font-bold flex-shrink-0"
+                        style={{
+                          backgroundColor: channel.color,
+                          color: channel.name === "카카오톡" ? "#3C1E1E" : "white",
+                        }}
+                      >
+                        {channel.icon}
                       </div>
-                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{ backgroundColor: channel.color }}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${channel.percentage}%` }}
-                          transition={{ duration: 0.8, delay: 0.4 + idx * 0.1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
-                        />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium">{channel.name}</span>
+                          <span className="text-sm font-semibold tabular-nums">{channel.count}</span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full rounded-full progress-shine"
+                            style={{ backgroundColor: channel.color }}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${channel.percentage}%` }}
+                            transition={{ duration: 0.8, delay: 0.6 + idx * 0.1, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
-            </CardContent>
-          </Card>
+                  </motion.div>
+                ))}
+              </CardContent>
+            </Card>
+          </motion.div>
 
           {/* AI Accuracy by Hospital */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold">거래처별 AI 정확도</CardTitle>
-                <Link
-                  href="/analytics"
-                  className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
-                >
-                  상세 <ArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {hospitalAccuracy.map((hospital, idx) => (
-                <motion.div
-                  key={hospital.name}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 + idx * 0.1 }}
-                  className="flex items-center gap-3"
-                >
-                  <MiniRing
-                    percentage={hospital.accuracy}
-                    color={
-                      hospital.accuracy >= 90
-                        ? "#22c55e"
-                        : hospital.accuracy >= 85
-                        ? "#f59e0b"
-                        : "#ef4444"
-                    }
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{hospital.name}</span>
-                      <div className="flex items-center gap-1">
-                        {hospital.trend === "up" ? (
-                          <TrendingUp className="h-3 w-3 text-emerald-500" />
-                        ) : (
-                          <TrendingDown className="h-3 w-3 text-red-500" />
-                        )}
-                        <span
-                          className={`text-sm font-bold tabular-nums ${
-                            hospital.accuracy >= 90
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : hospital.accuracy >= 85
-                              ? "text-amber-600 dark:text-amber-400"
-                              : "text-red-600 dark:text-red-400"
-                          }`}
-                        >
-                          {hospital.accuracy}%
-                        </span>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.5, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-semibold">거래처별 AI 정확도</CardTitle>
+                  <Link
+                    href="/analytics"
+                    className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                  >
+                    상세 <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {hospitalAccuracy.map((hospital, idx) => (
+                  <motion.div
+                    key={hospital.name}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.6 + idx * 0.1 }}
+                    className="flex items-center gap-3"
+                  >
+                    <MiniRing
+                      percentage={hospital.accuracy}
+                      color={
+                        hospital.accuracy >= 90
+                          ? "#22c55e"
+                          : hospital.accuracy >= 85
+                          ? "#f59e0b"
+                          : "#ef4444"
+                      }
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{hospital.name}</span>
+                        <div className="flex items-center gap-1">
+                          {hospital.trend === "up" ? (
+                            <TrendingUp className="h-3 w-3 text-emerald-500" />
+                          ) : (
+                            <TrendingDown className="h-3 w-3 text-red-500" />
+                          )}
+                          <span
+                            className={`text-sm font-bold tabular-nums ${
+                              hospital.accuracy >= 90
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : hospital.accuracy >= 85
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-red-600 dark:text-red-400"
+                            }`}
+                          >
+                            {hospital.accuracy}%
+                          </span>
+                        </div>
                       </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {hospital.totalQueries}건 중 {hospital.autoResolved}건 자동 처리
+                      </p>
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {hospital.totalQueries}건 중 {hospital.autoResolved}건 자동 처리
-                    </p>
-                  </div>
-                </motion.div>
-              ))}
-            </CardContent>
-          </Card>
+                  </motion.div>
+                ))}
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
       </div>
 
@@ -611,7 +743,7 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
         >
-          <Card className="border-0 shadow-sm hover-lift">
+          <Card className="border-0 shadow-sm card-3d">
             <CardContent className="p-4 flex items-center gap-4">
               <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-blue-500/10">
                 <Globe className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -638,7 +770,7 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.9 }}
         >
-          <Card className="border-0 shadow-sm hover-lift">
+          <Card className="border-0 shadow-sm card-3d">
             <CardContent className="p-4 flex items-center gap-4">
               <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-violet-500/10">
                 <Users className="h-5 w-5 text-violet-600 dark:text-violet-400" />
@@ -657,7 +789,7 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.0 }}
         >
-          <Card className="border-0 shadow-sm hover-lift">
+          <Card className="border-0 shadow-sm card-3d">
             <CardContent className="p-4 flex items-center gap-4">
               <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-emerald-500/10">
                 <Sparkles className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />

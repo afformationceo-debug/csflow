@@ -369,13 +369,13 @@ export default function TeamPage() {
       <div className="flex items-center justify-between animate-in-up">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
-            <div className="flex items-center justify-center h-9 w-9 rounded-xl bg-primary/10">
-              <Users className="h-[18px] w-[18px] text-primary" />
+            <div className="flex items-center justify-center h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 shadow-md">
+              <Users className="h-[18px] w-[18px] text-white" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight">담당자 관리</h1>
           </div>
           <p className="text-sm text-muted-foreground ml-[46px]">
-            팀원 권한 및 할당을 관리합니다
+            함께 일하는 팀원들을 관리하고 역할을 배정하세요
           </p>
         </div>
 
@@ -389,8 +389,8 @@ export default function TeamPage() {
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <div className="flex items-center justify-center h-8 w-8 rounded-xl bg-primary/10">
-                  <Mail className="h-4 w-4 text-primary" />
+                <div className="flex items-center justify-center h-8 w-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 shadow-sm">
+                  <Mail className="h-4 w-4 text-white" />
                 </div>
                 팀원 초대
               </DialogTitle>
@@ -437,7 +437,7 @@ export default function TeamPage() {
                   <SelectContent>
                     <SelectItem value="admin">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center justify-center h-5 w-5 rounded-md bg-red-500/10">
+                        <div className="flex items-center justify-center h-5 w-5 rounded-full bg-red-500/10">
                           <ShieldCheck className="h-3 w-3 text-red-500" />
                         </div>
                         관리자
@@ -445,7 +445,7 @@ export default function TeamPage() {
                     </SelectItem>
                     <SelectItem value="manager">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center justify-center h-5 w-5 rounded-md bg-blue-500/10">
+                        <div className="flex items-center justify-center h-5 w-5 rounded-full bg-blue-500/10">
                           <Shield className="h-3 w-3 text-blue-500" />
                         </div>
                         매니저
@@ -453,7 +453,7 @@ export default function TeamPage() {
                     </SelectItem>
                     <SelectItem value="agent">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center justify-center h-5 w-5 rounded-md bg-green-500/10">
+                        <div className="flex items-center justify-center h-5 w-5 rounded-full bg-green-500/10">
                           <Headphones className="h-3 w-3 text-green-500" />
                         </div>
                         상담사
@@ -461,7 +461,7 @@ export default function TeamPage() {
                     </SelectItem>
                     <SelectItem value="coordinator">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center justify-center h-5 w-5 rounded-md bg-amber-500/10">
+                        <div className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-500/10">
                           <Clipboard className="h-3 w-3 text-amber-500" />
                         </div>
                         코디
@@ -519,7 +519,7 @@ export default function TeamPage() {
         animate="show"
       >
         <motion.div variants={itemVariants} whileHover={cardHover}>
-          <Card className="border-0 shadow-sm bg-gradient-to-br from-violet-500/5 to-indigo-500/5 hover-lift">
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-violet-500/5 to-indigo-500/5 card-3d rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-violet-500/10">
@@ -545,7 +545,7 @@ export default function TeamPage() {
         </motion.div>
 
         <motion.div variants={itemVariants} whileHover={cardHover}>
-          <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-500/5 to-green-500/5 hover-lift">
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-500/5 to-green-500/5 card-3d rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-emerald-500/10">
@@ -572,7 +572,7 @@ export default function TeamPage() {
         </motion.div>
 
         <motion.div variants={itemVariants} whileHover={cardHover}>
-          <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-500/5 to-cyan-500/5 hover-lift">
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-500/5 to-cyan-500/5 card-3d rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-blue-500/10">
@@ -599,7 +599,7 @@ export default function TeamPage() {
         </motion.div>
 
         <motion.div variants={itemVariants} whileHover={cardHover}>
-          <Card className="border-0 shadow-sm bg-gradient-to-br from-orange-500/5 to-amber-500/5 hover-lift">
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-orange-500/5 to-amber-500/5 card-3d rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-orange-500/10">
@@ -631,7 +631,7 @@ export default function TeamPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
       >
-        <Card className="border-0 shadow-sm">
+        <Card className="border-0 shadow-sm rounded-2xl">
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
@@ -673,7 +673,7 @@ export default function TeamPage() {
           return (
             <motion.div key={member.id} variants={itemVariants} whileHover={cardHover}>
               <Card
-                className={`border-0 shadow-sm bg-gradient-to-br ${rCfg.gradientFrom} ${rCfg.gradientTo} hover-lift group relative overflow-hidden`}
+                className={`border-0 shadow-sm bg-gradient-to-br ${rCfg.gradientFrom} ${rCfg.gradientTo} card-3d rounded-2xl group relative overflow-hidden`}
               >
                 <CardContent className="p-5">
                   {/* Top Row: Avatar + Name + Status */}
@@ -787,7 +787,7 @@ export default function TeamPage() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: "spring" as const, stiffness: 300, damping: 25 }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardContent className="py-16 text-center">
               <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-muted/50 mx-auto mb-4">
                 <Users className="h-8 w-8 text-muted-foreground/40" />
@@ -805,11 +805,11 @@ export default function TeamPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4, type: "spring" as const, stiffness: 300, damping: 25 }}
       >
-        <Card className="border-0 shadow-sm overflow-hidden">
+        <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-3">
-              <div className="flex items-center justify-center h-9 w-9 rounded-xl bg-primary/10">
-                <Shield className="h-[18px] w-[18px] text-primary" />
+              <div className="flex items-center justify-center h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 shadow-sm">
+                <Shield className="h-[18px] w-[18px] text-white" />
               </div>
               <div>
                 <span className="text-base font-semibold">역할별 권한</span>

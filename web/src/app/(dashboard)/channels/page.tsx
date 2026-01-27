@@ -45,12 +45,11 @@ import {
   TrendingUp,
   Zap,
   Globe,
+  Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// ── Types ──
 
 type ChannelType = "line" | "whatsapp" | "facebook" | "instagram" | "kakao" | "wechat";
 
@@ -65,16 +64,14 @@ interface ConnectedChannel {
   createdAt: string;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+// ── Constants ──
 
 const CHANNEL_LABELS: Record<ChannelType, string> = {
   line: "LINE",
   whatsapp: "WhatsApp",
   facebook: "Facebook",
   instagram: "Instagram",
-  kakao: "\uCE74\uCE74\uC624\uD1A1",
+  kakao: "카카오톡",
   wechat: "WeChat",
 };
 
@@ -135,76 +132,72 @@ const CHANNEL_ICONS: Record<ChannelType, React.ElementType> = {
   wechat: MessageSquare,
 };
 
-// ---------------------------------------------------------------------------
-// Mock data
-// ---------------------------------------------------------------------------
+// ── Mock data ──
 
 const MOCK_CHANNELS: ConnectedChannel[] = [
   {
     id: "ch-001",
     channelType: "line",
-    accountName: "\uD798\uB9C1\uC548\uACFC LINE",
+    accountName: "힐링안과 LINE",
     accountId: "healing_eye_jp",
     isActive: true,
     messageCount: 1245,
-    lastActiveAt: "2\uBD84 \uC804",
+    lastActiveAt: "2분 전",
     createdAt: "2025-08-15",
   },
   {
     id: "ch-002",
     channelType: "line",
-    accountName: "\uAC15\uB0A8\uD53C\uBD80\uACFC LINE",
+    accountName: "강남피부과 LINE",
     accountId: "gangnam_skin_jp",
     isActive: true,
     messageCount: 823,
-    lastActiveAt: "5\uBD84 \uC804",
+    lastActiveAt: "5분 전",
     createdAt: "2025-09-10",
   },
   {
     id: "ch-003",
     channelType: "whatsapp",
-    accountName: "\uD798\uB9C1\uC548\uACFC WhatsApp",
+    accountName: "힐링안과 WhatsApp",
     accountId: "+82-2-xxxx-xxxx",
     isActive: true,
     messageCount: 567,
-    lastActiveAt: "12\uBD84 \uC804",
+    lastActiveAt: "12분 전",
     createdAt: "2025-10-01",
   },
   {
     id: "ch-004",
     channelType: "facebook",
-    accountName: "\uC11C\uC6B8\uC131\uD615 Facebook",
+    accountName: "서울성형 Facebook",
     accountId: "seoul_plastic",
     isActive: true,
     messageCount: 412,
-    lastActiveAt: "18\uBD84 \uC804",
+    lastActiveAt: "18분 전",
     createdAt: "2025-10-20",
   },
   {
     id: "ch-005",
     channelType: "instagram",
-    accountName: "\uC11C\uC6B8\uC131\uD615 Instagram",
+    accountName: "서울성형 Instagram",
     accountId: "seoul_plastic_ig",
     isActive: true,
     messageCount: 298,
-    lastActiveAt: "25\uBD84 \uC804",
+    lastActiveAt: "25분 전",
     createdAt: "2025-11-05",
   },
   {
     id: "ch-006",
     channelType: "kakao",
-    accountName: "\uC2A4\uB9C8\uC77C\uCE58\uACFC \uCE74\uCE74\uC624\uD1A1",
+    accountName: "스마일치과 카카오톡",
     accountId: "smile_dental",
     isActive: false,
     messageCount: 156,
-    lastActiveAt: "3\uC2DC\uAC04 \uC804",
+    lastActiveAt: "3시간 전",
     createdAt: "2025-12-01",
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Helper: Fetch channels from Supabase with mock fallback
-// ---------------------------------------------------------------------------
+// ── Helper: Fetch channels with mock fallback ──
 
 async function fetchChannels(): Promise<ConnectedChannel[]> {
   try {
@@ -229,106 +222,68 @@ async function fetchChannels(): Promise<ConnectedChannel[]> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Animated progress bar component
-// ---------------------------------------------------------------------------
+// ── Animated bar ──
 
-function AnimatedBar({
-  value,
-  max,
-  color,
-  delay = 0,
-}: {
-  value: number;
-  max: number;
-  color: string;
-  delay?: number;
-}) {
+function AnimatedBar({ value, max, color, delay = 0 }: { value: number; max: number; color: string; delay?: number }) {
   const percentage = max > 0 ? Math.min((value / max) * 100, 100) : 0;
-
   return (
     <div className="h-1.5 w-full rounded-full bg-muted/50 overflow-hidden">
       <motion.div
-        className="h-full rounded-full"
+        className="h-full rounded-full progress-shine"
         style={{ backgroundColor: color }}
         initial={{ width: 0 }}
         animate={{ width: `${percentage}%` }}
-        transition={{ duration: 0.8, delay, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+        transition={{ duration: 0.8, delay, ease: smoothEase }}
       />
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Container animation variants
-// ---------------------------------------------------------------------------
+// ── 애니메이션 프리셋 ──
+
+const smoothEase = [0.22, 1, 0.36, 1] as [number, number, number, number];
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.06,
-    },
-  },
+  visible: { opacity: 1, transition: { staggerChildren: 0.06 } },
 };
 
 const itemVariants = {
   hidden: { opacity: 0, y: 16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
-  },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: smoothEase } },
 };
 
-const cardHover = {
-  y: -2,
-  transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
-};
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+// ── 메인 컴포넌트 ──
 
 export default function ChannelsPage() {
   const [channels, setChannels] = useState<ConnectedChannel[]>(MOCK_CHANNELS);
   const [dialogOpen, setDialogOpen] = useState(false);
-
-  // New channel form state
   const [newChannelType, setNewChannelType] = useState<ChannelType | "">("");
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountId, setNewAccountId] = useState("");
   const [newCredentials, setNewCredentials] = useState("");
 
-  // Attempt DB fetch on mount
   useEffect(() => {
     fetchChannels().then(setChannels);
   }, []);
 
-  // Derived stats
+  // 통계
   const totalChannels = channels.length;
   const activeChannels = channels.filter((c) => c.isActive).length;
   const inactiveChannels = channels.filter((c) => !c.isActive).length;
   const todayMessages = channels.reduce((sum, c) => sum + c.messageCount, 0);
   const maxMessages = Math.max(...channels.map((c) => c.messageCount), 1);
 
-  // Toggle active
   const handleToggle = (id: string, checked: boolean) => {
-    setChannels((prev) =>
-      prev.map((ch) => (ch.id === id ? { ...ch, isActive: checked } : ch))
-    );
+    setChannels((prev) => prev.map((ch) => (ch.id === id ? { ...ch, isActive: checked } : ch)));
   };
 
-  // Delete channel
   const handleDelete = (id: string) => {
     setChannels((prev) => prev.filter((ch) => ch.id !== id));
   };
 
-  // Add channel
   const handleAddChannel = () => {
     if (!newChannelType || !newAccountName || !newAccountId) return;
-
     const newChannel: ConnectedChannel = {
       id: `ch-${Date.now()}`,
       channelType: newChannelType as ChannelType,
@@ -336,10 +291,9 @@ export default function ChannelsPage() {
       accountId: newAccountId,
       isActive: true,
       messageCount: 0,
-      lastActiveAt: "\uBC29\uAE08 \uC804",
+      lastActiveAt: "방금 전",
       createdAt: new Date().toISOString().split("T")[0],
     };
-
     setChannels((prev) => [...prev, newChannel]);
     setDialogOpen(false);
     setNewChannelType("");
@@ -348,159 +302,88 @@ export default function ChannelsPage() {
     setNewCredentials("");
   };
 
-  // Stats cards data
   const summaryStats = [
-    {
-      title: "\uCD1D \uC5F0\uACB0 \uCC44\uB110",
-      value: totalChannels,
-      icon: Link2,
-      color: "text-blue-500",
-      iconBg: "bg-blue-500/10",
-      gradientFrom: "from-blue-500/10",
-      gradientTo: "to-blue-600/5",
-      barColor: "#3B82F6",
-      subtitle: "\uC804\uCCB4 \uCC44\uB110",
-    },
-    {
-      title: "\uD65C\uC131 \uCC44\uB110",
-      value: activeChannels,
-      icon: Radio,
-      color: "text-emerald-500",
-      iconBg: "bg-emerald-500/10",
-      gradientFrom: "from-emerald-500/10",
-      gradientTo: "to-emerald-600/5",
-      barColor: "#10B981",
-      subtitle: "\uC2E4\uC2DC\uAC04 \uC218\uC2E0 \uC911",
-    },
-    {
-      title: "\uBE44\uD65C\uC131 \uCC44\uB110",
-      value: inactiveChannels,
-      icon: CircleOff,
-      color: "text-slate-400",
-      iconBg: "bg-slate-500/10",
-      gradientFrom: "from-slate-500/10",
-      gradientTo: "to-slate-600/5",
-      barColor: "#94A3B8",
-      subtitle: "\uC77C\uC2DC \uC911\uC9C0",
-    },
-    {
-      title: "\uC624\uB298 \uBA54\uC2DC\uC9C0",
-      value: todayMessages.toLocaleString(),
-      icon: MessageSquare,
-      color: "text-violet-500",
-      iconBg: "bg-violet-500/10",
-      gradientFrom: "from-violet-500/10",
-      gradientTo: "to-violet-600/5",
-      barColor: "#8B5CF6",
-      subtitle: "\uCC98\uB9AC\uB41C \uBA54\uC2DC\uC9C0",
-    },
+    { title: "총 연결 채널", value: totalChannels, icon: Link2, color: "text-blue-500", iconBg: "bg-blue-500/10", gradientFrom: "from-blue-500/10", gradientTo: "to-blue-600/5", barColor: "#3B82F6", subtitle: "전체 채널" },
+    { title: "활성 채널", value: activeChannels, icon: Radio, color: "text-emerald-500", iconBg: "bg-emerald-500/10", gradientFrom: "from-emerald-500/10", gradientTo: "to-emerald-600/5", barColor: "#10B981", subtitle: "실시간 수신 중" },
+    { title: "비활성 채널", value: inactiveChannels, icon: CircleOff, color: "text-slate-400", iconBg: "bg-slate-500/10", gradientFrom: "from-slate-500/10", gradientTo: "to-slate-600/5", barColor: "#94A3B8", subtitle: "일시 중지" },
+    { title: "오늘 메시지", value: todayMessages.toLocaleString(), icon: MessageSquare, color: "text-violet-500", iconBg: "bg-violet-500/10", gradientFrom: "from-violet-500/10", gradientTo: "to-violet-600/5", barColor: "#8B5CF6", subtitle: "처리된 메시지" },
   ];
 
-  // Channel type distribution for quick stats
-  const channelDistribution = channels.reduce(
-    (acc, ch) => {
-      acc[ch.channelType] = (acc[ch.channelType] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
+  const channelDistribution = channels.reduce((acc, ch) => {
+    acc[ch.channelType] = (acc[ch.channelType] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <div className="space-y-6 animate-in-up">
-      {/* ----------------------------------------------------------------- */}
-      {/* Page Header                                                       */}
-      {/* ----------------------------------------------------------------- */}
+      {/* ── 페이지 헤더 ── */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-              <Globe className="h-5 w-5 text-primary" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500">
+              <Globe className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                {"\uCC44\uB110 \uAD00\uB9AC"}
-              </h1>
+              <h1 className="text-2xl font-bold tracking-tight">채널 관리</h1>
               <p className="text-[13px] text-muted-foreground">
-                {"\uBA54\uC2E0\uC800 \uCC44\uB110\uC744 \uC5F0\uACB0\uD558\uACE0 \uAD00\uB9AC\uD569\uB2C8\uB2E4"}
+                연결된 메신저 채널을 한눈에 관리하세요
               </p>
             </div>
           </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 shadow-sm">
+            <Button className="gap-2 shadow-sm rounded-xl">
               <Plus className="w-4 h-4" />
-              {"\uCC44\uB110 \uCD94\uAC00"}
+              채널 추가
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
-              <DialogTitle>{"\uC0C8 \uCC44\uB110 \uCD94\uAC00"}</DialogTitle>
+              <DialogTitle>새 채널 추가</DialogTitle>
               <DialogDescription>
-                {"\uC5F0\uACB0\uD560 \uBA54\uC2E0\uC800 \uCC44\uB110 \uC815\uBCF4\uB97C \uC785\uB825\uD558\uC138\uC694."}
+                연결할 메신저 채널 정보를 입력하세요.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label>{"\uCC44\uB110 \uC720\uD615"}</Label>
-                <Select
-                  value={newChannelType}
-                  onValueChange={(v) => setNewChannelType(v as ChannelType)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={"\uCC44\uB110\uC744 \uC120\uD0DD\uD558\uC138\uC694"} />
+                <Label>채널 유형</Label>
+                <Select value={newChannelType} onValueChange={(v) => setNewChannelType(v as ChannelType)}>
+                  <SelectTrigger className="w-full rounded-lg">
+                    <SelectValue placeholder="채널을 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="line">LINE</SelectItem>
                     <SelectItem value="whatsapp">WhatsApp</SelectItem>
                     <SelectItem value="facebook">Facebook Messenger</SelectItem>
                     <SelectItem value="instagram">Instagram DM</SelectItem>
-                    <SelectItem value="kakao">{"\uCE74\uCE74\uC624\uD1A1"}</SelectItem>
+                    <SelectItem value="kakao">카카오톡</SelectItem>
                     <SelectItem value="wechat">WeChat</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>{"\uACC4\uC815 \uC774\uB984"}</Label>
-                <Input
-                  placeholder={"\uC608: \uD798\uB9C1\uC548\uACFC LINE"}
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                />
+                <Label>계정 이름</Label>
+                <Input placeholder="예: 힐링안과 LINE" value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} className="rounded-lg" />
               </div>
               <div className="grid gap-2">
-                <Label>{"\uACC4\uC815 ID"}</Label>
-                <Input
-                  placeholder={"\uC608: healing_eye_jp"}
-                  value={newAccountId}
-                  onChange={(e) => setNewAccountId(e.target.value)}
-                />
+                <Label>계정 ID</Label>
+                <Input placeholder="예: healing_eye_jp" value={newAccountId} onChange={(e) => setNewAccountId(e.target.value)} className="rounded-lg" />
               </div>
               <div className="grid gap-2">
-                <Label>{"\uC778\uC99D \uC815\uBCF4 (Credentials)"}</Label>
-                <Input
-                  type="password"
-                  placeholder="Access Token / API Key"
-                  value={newCredentials}
-                  onChange={(e) => setNewCredentials(e.target.value)}
-                />
+                <Label>인증 정보 (Credentials)</Label>
+                <Input type="password" placeholder="Access Token / API Key" value={newCredentials} onChange={(e) => setNewCredentials(e.target.value)} className="rounded-lg" />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                {"\uCDE8\uC18C"}
-              </Button>
-              <Button onClick={handleAddChannel} disabled={!newChannelType || !newAccountName || !newAccountId}>
-                {"\uCC44\uB110 \uC5F0\uACB0"}
-              </Button>
+              <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-lg">취소</Button>
+              <Button onClick={handleAddChannel} disabled={!newChannelType || !newAccountName || !newAccountId} className="rounded-lg">채널 연결</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Summary Stats                                                     */}
-      {/* ----------------------------------------------------------------- */}
+      {/* ── 요약 통계 ── */}
       <motion.div
         className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
         variants={containerVariants}
@@ -508,14 +391,14 @@ export default function ChannelsPage() {
         animate="visible"
       >
         {summaryStats.map((stat, index) => (
-          <motion.div key={stat.title} variants={itemVariants} whileHover={cardHover}>
-            <Card className={`relative overflow-hidden border-0 shadow-sm bg-gradient-to-br ${stat.gradientFrom} ${stat.gradientTo} hover-lift`}>
+          <motion.div key={stat.title} variants={itemVariants}>
+            <Card className={`relative overflow-hidden border-0 shadow-sm bg-gradient-to-br ${stat.gradientFrom} ${stat.gradientTo} card-3d`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${stat.iconBg}`}>
                     <stat.icon className={`h-4 w-4 ${stat.color}`} />
                   </div>
-                  {stat.title === "\uD65C\uC131 \uCC44\uB110" && activeChannels > 0 && (
+                  {stat.title === "활성 채널" && activeChannels > 0 && (
                     <span className="flex items-center gap-1.5">
                       <span className="live-dot h-2 w-2 rounded-full bg-emerald-500" />
                       <span className="text-[11px] font-medium text-emerald-600">Live</span>
@@ -523,12 +406,8 @@ export default function ChannelsPage() {
                   )}
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    {stat.title}
-                  </p>
-                  <p className="text-2xl font-bold tabular-nums tracking-tight">
-                    {stat.value}
-                  </p>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{stat.title}</p>
+                  <p className="text-2xl font-bold tabular-nums tracking-tight">{stat.value}</p>
                   <p className="text-[11px] text-muted-foreground">{stat.subtitle}</p>
                 </div>
                 <div className="mt-3">
@@ -545,37 +424,32 @@ export default function ChannelsPage() {
         ))}
       </motion.div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Channel Connection Section                                        */}
-      {/* ----------------------------------------------------------------- */}
+      {/* ── 새 채널 연결 섹션 ── */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.4, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+        transition={{ delay: 0.3, duration: 0.4, ease: smoothEase }}
       >
-        <Card className="border-0 shadow-sm overflow-hidden">
+        <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
-                <Zap className="h-4 w-4 text-primary" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-blue-500/20">
+                <Sparkles className="h-4 w-4 text-violet-500" />
               </div>
               <div>
-                <CardTitle className="text-[15px]">{"\uC0C8 \uCC44\uB110 \uC5F0\uACB0"}</CardTitle>
+                <CardTitle className="text-[15px]">빠른 채널 연결</CardTitle>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {"\uACE0\uAC1D \uBB38\uC758\uB97C \uBC1B\uC744 \uBA54\uC2E0\uC800 \uCC44\uB110\uC744 \uC5F0\uACB0\uD558\uC138\uC694"}
+                  고객 문의를 받을 메신저 채널을 연결하세요
                 </p>
               </div>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 stagger-children">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {/* Meta Platform */}
               <div
-                className="group relative rounded-xl bg-gradient-to-br from-blue-500/5 to-purple-500/5 p-4 cursor-pointer transition-all duration-200 hover:from-blue-500/10 hover:to-purple-500/10 hover-lift"
-                onClick={() => {
-                  setNewChannelType("facebook");
-                  setDialogOpen(true);
-                }}
+                className="group relative rounded-xl bg-gradient-to-br from-blue-500/5 to-purple-500/5 p-4 cursor-pointer transition-all duration-200 hover:from-blue-500/10 hover:to-purple-500/10 card-3d"
+                onClick={() => { setNewChannelType("facebook"); setDialogOpen(true); }}
               >
                 <div className="flex items-center gap-3">
                   <div className="flex -space-x-2">
@@ -591,9 +465,7 @@ export default function ChannelsPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-[13px] font-semibold">Meta Platform</h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      Facebook, Instagram, WhatsApp
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">Facebook, Instagram, WhatsApp</p>
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                     <Plus className="w-4 h-4 text-muted-foreground" />
@@ -603,11 +475,8 @@ export default function ChannelsPage() {
 
               {/* LINE */}
               <div
-                className="group relative rounded-xl bg-gradient-to-br from-[#06C755]/5 to-[#06C755]/[0.02] p-4 cursor-pointer transition-all duration-200 hover:from-[#06C755]/10 hover:to-[#06C755]/5 hover-lift"
-                onClick={() => {
-                  setNewChannelType("line");
-                  setDialogOpen(true);
-                }}
+                className="group relative rounded-xl bg-gradient-to-br from-[#06C755]/5 to-[#06C755]/[0.02] p-4 cursor-pointer transition-all duration-200 hover:from-[#06C755]/10 hover:to-[#06C755]/5 card-3d"
+                onClick={() => { setNewChannelType("line"); setDialogOpen(true); }}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-[#06C755]/10 flex items-center justify-center">
@@ -615,9 +484,7 @@ export default function ChannelsPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-[13px] font-semibold">LINE</h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      LINE Official Account
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">LINE Official Account</p>
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                     <Plus className="w-4 h-4 text-muted-foreground" />
@@ -627,21 +494,16 @@ export default function ChannelsPage() {
 
               {/* KakaoTalk */}
               <div
-                className="group relative rounded-xl bg-gradient-to-br from-[#FEE500]/10 to-[#FEE500]/[0.02] p-4 cursor-pointer transition-all duration-200 hover:from-[#FEE500]/15 hover:to-[#FEE500]/5 hover-lift"
-                onClick={() => {
-                  setNewChannelType("kakao");
-                  setDialogOpen(true);
-                }}
+                className="group relative rounded-xl bg-gradient-to-br from-[#FEE500]/10 to-[#FEE500]/[0.02] p-4 cursor-pointer transition-all duration-200 hover:from-[#FEE500]/15 hover:to-[#FEE500]/5 card-3d"
+                onClick={() => { setNewChannelType("kakao"); setDialogOpen(true); }}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-[#FEE500]/15 flex items-center justify-center">
                     <MessageCircle className="w-4 h-4 text-[#B8A000]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-[13px] font-semibold">{"\uCE74\uCE74\uC624\uD1A1"}</h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      {"\uCE74\uCE74\uC624 i \uC624\uD508\uBE4C\uB354"}
-                    </p>
+                    <h3 className="text-[13px] font-semibold">카카오톡</h3>
+                    <p className="text-[11px] text-muted-foreground">카카오 i 오픈빌더</p>
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                     <Plus className="w-4 h-4 text-muted-foreground" />
@@ -653,15 +515,13 @@ export default function ChannelsPage() {
         </Card>
       </motion.div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Connected Channels List                                           */}
-      {/* ----------------------------------------------------------------- */}
+      {/* ── 연결된 채널 목록 ── */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.4, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+        transition={{ delay: 0.4, duration: 0.4, ease: smoothEase }}
       >
-        <Card className="border-0 shadow-sm overflow-hidden">
+        <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -670,28 +530,25 @@ export default function ChannelsPage() {
                 </div>
                 <div>
                   <CardTitle className="text-[15px] flex items-center gap-2">
-                    {"\uC5F0\uACB0\uB41C \uCC44\uB110"}
-                    <Badge
-                      variant="secondary"
-                      className="text-[11px] font-semibold tabular-nums h-5 px-1.5 rounded-md"
-                    >
+                    연결된 채널
+                    <Badge variant="secondary" className="text-[11px] font-semibold tabular-nums h-5 px-1.5 rounded-full">
                       {channels.length}
                     </Badge>
                   </CardTitle>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {"\uD604\uC7AC \uC5F0\uACB0\uB41C \uBA54\uC2E0\uC800 \uCC44\uB110 \uBAA9\uB85D\uC785\uB2C8\uB2E4"}
+                    현재 연결된 메신저 채널 목록입니다
                   </p>
                 </div>
               </div>
 
-              {/* Channel type mini-pills */}
+              {/* 채널 타입 미니 뱃지 */}
               <div className="hidden md:flex items-center gap-1.5">
                 {Object.entries(channelDistribution).map(([type, count]) => {
                   const style = CHANNEL_BADGE_STYLES[type as ChannelType];
                   return (
                     <span
                       key={type}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
                       style={{
                         backgroundColor: `${style.color}15`,
                         color: style.color === "#FEE500" ? "#B8A000" : style.color,
@@ -708,23 +565,14 @@ export default function ChannelsPage() {
           <CardContent className="pt-0">
             {channels.length === 0 ? (
               <div className="text-center py-12">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mx-auto mb-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/50 mx-auto mb-3">
                   <Link2 className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {"\uC5F0\uACB0\uB41C \uCC44\uB110\uC774 \uC5C6\uC2B5\uB2C8\uB2E4"}
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  {"\uC704\uC5D0\uC11C \uC0C8 \uCC44\uB110\uC744 \uC5F0\uACB0\uD558\uC138\uC694."}
-                </p>
+                <p className="text-sm font-medium text-muted-foreground">연결된 채널이 없습니다</p>
+                <p className="text-[11px] text-muted-foreground mt-1">위에서 새 채널을 연결하세요.</p>
               </div>
             ) : (
-              <motion.div
-                className="space-y-2"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-              >
+              <motion.div className="space-y-2" variants={containerVariants} initial="hidden" animate="visible">
                 <AnimatePresence mode="popLayout">
                   {channels.map((channel) => {
                     const Icon = CHANNEL_ICONS[channel.channelType];
@@ -734,13 +582,7 @@ export default function ChannelsPage() {
                       <motion.div
                         key={channel.id}
                         variants={itemVariants}
-                        exit={{
-                          opacity: 0,
-                          x: -20,
-                          height: 0,
-                          marginBottom: 0,
-                          transition: { duration: 0.2 },
-                        }}
+                        exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0, transition: { duration: 0.2 } }}
                         layout
                         whileHover={{ scale: 1.005 }}
                         className={`group relative flex items-center gap-4 rounded-xl p-3.5 transition-colors ${
@@ -749,32 +591,22 @@ export default function ChannelsPage() {
                             : "bg-muted/30"
                         }`}
                       >
-                        {/* Channel icon */}
+                        {/* 채널 아이콘 */}
                         <div
                           className="relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
-                          style={{
-                            backgroundColor: `${style.color}15`,
-                          }}
+                          style={{ backgroundColor: `${style.color}15` }}
                         >
-                          <Icon
-                            className="w-5 h-5"
-                            style={{
-                              color: style.color === "#FEE500" ? "#B8A000" : style.color,
-                            }}
-                          />
+                          <Icon className="w-5 h-5" style={{ color: style.color === "#FEE500" ? "#B8A000" : style.color }} />
                           {channel.isActive && (
-                            <span
-                              className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background"
-                              style={{ backgroundColor: style.color }}
-                            />
+                            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background" style={{ backgroundColor: style.color }} />
                           )}
                         </div>
 
-                        {/* Channel info */}
+                        {/* 채널 정보 */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <span
-                              className="inline-flex items-center px-1.5 py-px rounded text-[10px] font-bold tracking-wide"
+                              className="inline-flex items-center px-1.5 py-px rounded-md text-[10px] font-bold tracking-wide"
                               style={{
                                 backgroundColor: `${style.color}20`,
                                 color: style.color === "#FEE500" ? "#B8A000" : style.color,
@@ -782,23 +614,15 @@ export default function ChannelsPage() {
                             >
                               {CHANNEL_LABELS[channel.channelType]}
                             </span>
-                            <span className="font-medium text-[13px] truncate">
-                              {channel.accountName}
-                            </span>
+                            <span className="font-medium text-[13px] truncate">{channel.accountName}</span>
                             {channel.isActive ? (
-                              <Badge
-                                variant="secondary"
-                                className="bg-emerald-500/10 text-emerald-600 text-[10px] h-[18px] px-1.5 font-semibold border-0"
-                              >
+                              <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 text-[10px] h-[18px] px-1.5 font-semibold border-0 rounded-full">
                                 <span className="live-dot mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                {"\uD65C\uC131"}
+                                활성
                               </Badge>
                             ) : (
-                              <Badge
-                                variant="secondary"
-                                className="bg-muted text-muted-foreground text-[10px] h-[18px] px-1.5 font-medium border-0"
-                              >
-                                {"\uBE44\uD65C\uC131"}
+                              <Badge variant="secondary" className="bg-muted text-muted-foreground text-[10px] h-[18px] px-1.5 font-medium border-0 rounded-full">
+                                비활성
                               </Badge>
                             )}
                           </div>
@@ -810,10 +634,8 @@ export default function ChannelsPage() {
                             <span className="hidden sm:inline text-muted-foreground/40">|</span>
                             <span className="hidden sm:flex items-center gap-1">
                               <MessageSquare className="w-3 h-3" />
-                              <span className="tabular-nums font-medium">
-                                {channel.messageCount.toLocaleString()}
-                              </span>
-                              {"\uAC74"}
+                              <span className="tabular-nums font-medium">{channel.messageCount.toLocaleString()}</span>
+                              건
                             </span>
                             <span className="hidden sm:inline text-muted-foreground/40">|</span>
                             <span className="hidden sm:flex items-center gap-1">
@@ -821,7 +643,6 @@ export default function ChannelsPage() {
                               {channel.lastActiveAt}
                             </span>
                           </div>
-                          {/* Mini progress bar for message volume */}
                           <div className="mt-2 hidden sm:block">
                             <AnimatedBar
                               value={channel.messageCount}
@@ -832,19 +653,10 @@ export default function ChannelsPage() {
                           </div>
                         </div>
 
-                        {/* Actions */}
+                        {/* 액션 */}
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <Switch
-                            checked={channel.isActive}
-                            onCheckedChange={(checked) =>
-                              handleToggle(channel.id, checked)
-                            }
-                          />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
+                          <Switch checked={channel.isActive} onCheckedChange={(checked) => handleToggle(channel.id, checked)} />
+                          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
                             <Settings2 className="w-4 h-4 text-muted-foreground" />
                           </Button>
                           <Button

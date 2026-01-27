@@ -512,13 +512,13 @@ export default function TenantsPage() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-              <Building2 className="h-4.5 w-4.5 text-primary" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 shadow-sm">
+              <Building2 className="h-4.5 w-4.5 text-white" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight">거래처 관리</h1>
           </div>
           <p className="text-sm text-muted-foreground ml-[42px]">
-            병원/클리닉 거래처 정보를 관리합니다
+            소중한 파트너 병원과 클리닉을 한눈에 관리하세요
           </p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -641,7 +641,7 @@ export default function TenantsPage() {
       >
         {summaryStats.map((stat) => (
           <motion.div key={stat.title} variants={itemVariants} whileHover={cardHover}>
-            <Card className={`border-0 shadow-sm bg-gradient-to-br ${stat.gradient} hover-lift overflow-hidden`}>
+            <Card className={`border-0 shadow-sm bg-gradient-to-br ${stat.gradient} card-3d overflow-hidden rounded-2xl backdrop-blur-sm bg-card/80`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                   <div className="space-y-2">
@@ -697,7 +697,7 @@ export default function TenantsPage() {
                 whileHover={cardHover}
               >
                 <Card
-                  className={`border-0 shadow-sm bg-gradient-to-br ${specialtyInfo.gradient} hover-lift overflow-hidden group`}
+                  className={`border-0 shadow-sm bg-gradient-to-br ${specialtyInfo.gradient} card-3d overflow-hidden group rounded-2xl backdrop-blur-sm bg-card/80`}
                 >
                   <CardContent className="p-5">
                     {/* Top Row: Avatar, Name, Badges, Actions */}
@@ -724,7 +724,7 @@ export default function TenantsPage() {
                             )}
                             {tenant.status === "suspended" && (
                               <Badge
-                                className="bg-red-500/10 text-red-500 border-0 text-[10px] px-1.5 py-0"
+                                className="bg-red-500/10 text-red-500 border-0 text-[10px] px-1.5 py-0 rounded-full"
                               >
                                 중지
                               </Badge>
@@ -732,7 +732,7 @@ export default function TenantsPage() {
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <Badge
-                              className={`${SPECIALTY_BADGE_COLORS[tenant.specialty]} border-0 text-[10px] px-1.5 py-0 font-medium`}
+                              className={`${SPECIALTY_BADGE_COLORS[tenant.specialty]} border-0 text-[10px] px-1.5 py-0 font-medium rounded-full`}
                             >
                               <SpecialtyIcon className="mr-0.5 h-2.5 w-2.5" />
                               {specialtyInfo.label}
@@ -833,17 +833,17 @@ export default function TenantsPage() {
 
                     {/* AI Config Tags */}
                     <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                      <div className="flex items-center gap-1 text-[10px] bg-background/60 px-2 py-0.5 rounded-md">
+                      <div className="flex items-center gap-1 text-[10px] bg-background/60 backdrop-blur-sm px-2 py-0.5 rounded-full">
                         <Brain className="h-2.5 w-2.5 text-violet-500" />
                         <span className="font-medium">{tenant.ai_config.preferred_model}</span>
                       </div>
-                      <div className="flex items-center gap-1 text-[10px] bg-background/60 px-2 py-0.5 rounded-md">
+                      <div className="flex items-center gap-1 text-[10px] bg-background/60 backdrop-blur-sm px-2 py-0.5 rounded-full">
                         <Target className="h-2.5 w-2.5 text-orange-500" />
                         <span className="font-medium">
                           {(tenant.ai_config.confidence_threshold * 100).toFixed(0)}%
                         </span>
                       </div>
-                      <div className="flex items-center gap-1 text-[10px] bg-background/60 px-2 py-0.5 rounded-md">
+                      <div className="flex items-center gap-1 text-[10px] bg-background/60 backdrop-blur-sm px-2 py-0.5 rounded-full">
                         <Zap
                           className={`h-2.5 w-2.5 ${
                             tenant.ai_config.auto_response_enabled
@@ -862,7 +862,7 @@ export default function TenantsPage() {
                         </span>
                       </div>
                       {tenant.stats.escalation_rate > 10 && (
-                        <div className="flex items-center gap-1 text-[10px] bg-red-500/10 px-2 py-0.5 rounded-md">
+                        <div className="flex items-center gap-1 text-[10px] bg-red-500/10 px-2 py-0.5 rounded-full">
                           <TrendingUp className="h-2.5 w-2.5 text-red-500" />
                           <span className="font-medium text-red-600 dark:text-red-400">
                             에스컬레이션 {tenant.stats.escalation_rate}%
@@ -880,7 +880,7 @@ export default function TenantsPage() {
                           return (
                             <div
                               key={`${ch.type}-${i}`}
-                              className="flex items-center gap-0.5 text-[10px] bg-background/60 px-1.5 py-0.5 rounded"
+                              className="flex items-center gap-0.5 text-[10px] bg-background/60 backdrop-blur-sm px-1.5 py-0.5 rounded-full"
                               title={ch.accountName}
                             >
                               <ChannelIcon className={`h-2.5 w-2.5 ${channelInfo.color}`} />
@@ -914,7 +914,7 @@ export default function TenantsPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm rounded-2xl backdrop-blur-sm bg-card/80">
             <CardContent className="py-12 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mx-auto mb-4">
                 <Search className="h-6 w-6 text-muted-foreground/50" />
@@ -933,7 +933,7 @@ export default function TenantsPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <Card className="border-0 shadow-sm bg-gradient-to-br from-primary/5 to-primary/10">
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl backdrop-blur-sm bg-card/80">
             <CardContent className="py-14 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 mx-auto mb-4">
                 <Building2 className="h-7 w-7 text-primary" />
@@ -1042,7 +1042,7 @@ export default function TenantsPage() {
                           parseInt(e.target.value, 10) / 100,
                       })
                     }
-                    className="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                    className="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary progress-shine"
                   />
                   <div className="flex justify-between text-[10px] text-muted-foreground">
                     <span>50% (느슨함)</span>
@@ -1054,7 +1054,7 @@ export default function TenantsPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-emerald-500/5 to-emerald-500/10">
+                <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-emerald-500/5 to-emerald-500/10 backdrop-blur-sm">
                   <div className="space-y-0.5">
                     <Label className="text-sm font-medium">자동 응대 활성화</Label>
                     <p className="text-[11px] text-muted-foreground">
@@ -1139,7 +1139,7 @@ export default function TenantsPage() {
                     {editingAIConfig.escalation_keywords.map((keyword, i) => (
                       <Badge
                         key={i}
-                        className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-0 text-[11px] px-2 py-0.5"
+                        className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-0 text-[11px] px-2 py-0.5 rounded-full"
                       >
                         {keyword}
                       </Badge>

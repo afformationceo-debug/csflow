@@ -146,46 +146,93 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 }
 
-/* Glass Morphism */
+/* ============================================ */
+/* GPU-accelerated smooth transitions           */
+/* ============================================ */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ============================================ */
+/* Glass Morphism 2.0                           */
+/* ============================================ */
 .glass {
-  background: oklch(1 0 0 / 5%);
-  backdrop-filter: blur(12px);
-  border: 1px solid oklch(1 0 0 / 10%);
+  background: oklch(1 0 0 / 60%);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid oklch(1 0 0 / 12%);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 4%), 0 1px 2px oklch(0 0 0 / 2%);
 }
 
 .dark .glass {
-  background: oklch(1 0 0 / 3%);
+  background: oklch(1 0 0 / 4%);
+  backdrop-filter: blur(16px) saturate(150%);
   border: 1px solid oklch(1 0 0 / 8%);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 20%), 0 1px 2px oklch(0 0 0 / 15%);
 }
 
-/* Gradient Text */
+/* ============================================ */
+/* Gradient Text                                */
+/* ============================================ */
 .gradient-text {
-  background: linear-gradient(135deg, oklch(0.65 0.2 260), oklch(0.7 0.2 290));
+  background: linear-gradient(135deg, oklch(0.55 0.22 260), oklch(0.6 0.22 290));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Glow Effects */
+/* ============================================ */
+/* 3D Card Effect                               */
+/* ============================================ */
+.card-3d {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.card-3d:hover {
+  transform: translateY(-4px) perspective(1000px) rotateX(1deg);
+  box-shadow:
+    0 20px 40px -12px oklch(0.55 0.2 260 / 12%),
+    0 8px 16px -8px oklch(0 0 0 / 6%);
+}
+
+.dark .card-3d:hover {
+  box-shadow:
+    0 20px 40px -12px oklch(0.55 0.2 260 / 20%),
+    0 8px 16px -8px oklch(0 0 0 / 30%);
+}
+
+/* ============================================ */
+/* Soft Glow Effects                            */
+/* ============================================ */
 .glow-primary {
-  box-shadow: 0 0 20px oklch(0.65 0.2 260 / 30%);
+  box-shadow: 0 0 24px oklch(0.55 0.2 260 / 20%), 0 0 8px oklch(0.55 0.2 260 / 10%);
 }
 
 .glow-success {
-  box-shadow: 0 0 20px oklch(0.7 0.2 145 / 30%);
+  box-shadow: 0 0 24px oklch(0.65 0.2 145 / 20%), 0 0 8px oklch(0.65 0.2 145 / 10%);
 }
 
 .glow-urgent {
-  box-shadow: 0 0 20px oklch(0.6 0.2 25 / 30%);
+  box-shadow: 0 0 24px oklch(0.6 0.2 25 / 20%), 0 0 8px oklch(0.6 0.2 25 / 10%);
 }
 
-/* Scrollbar Styling */
+.glow-violet {
+  box-shadow: 0 0 24px oklch(0.6 0.2 290 / 20%), 0 0 8px oklch(0.6 0.2 290 / 10%);
+}
+
+/* ============================================ */
+/* Scrollbar Styling                            */
+/* ============================================ */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -193,23 +240,25 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.5 0 0 / 30%);
-  border-radius: 4px;
+  background: oklch(0.5 0 0 / 20%);
+  border-radius: 100px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.5 0 0 / 50%);
+  background: oklch(0.5 0 0 / 40%);
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: oklch(1 0 0 / 20%);
+  background: oklch(1 0 0 / 15%);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: oklch(1 0 0 / 30%);
+  background: oklch(1 0 0 / 25%);
 }
 
-/* Channel Badge Colors */
+/* ============================================ */
+/* Channel Badge Colors                         */
+/* ============================================ */
 .channel-line {
   background: #06C755;
   color: white;
@@ -235,42 +284,47 @@
   color: #3C1E1E;
 }
 
-/* Status Indicator Animation */
+/* ============================================ */
+/* Status Indicator Animation                   */
+/* ============================================ */
 @keyframes pulse-urgent {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .status-urgent-pulse {
-  animation: pulse-urgent 2s ease-in-out infinite;
+  animation: pulse-urgent 1.8s ease-in-out infinite;
 }
 
-/* AI Processing Animation */
+/* ============================================ */
+/* AI Thinking Animation (enhanced)             */
+/* ============================================ */
 @keyframes ai-thinking {
-  0% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.4;
-  }
+  0% { opacity: 0.3; transform: scale(0.97); }
+  50% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.3; transform: scale(0.97); }
 }
 
 .ai-thinking {
   animation: ai-thinking 1.5s ease-in-out infinite;
 }
 
-/* Smooth Page Transitions */
+@keyframes ai-glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px oklch(0.6 0.2 290 / 15%); }
+  50% { box-shadow: 0 0 20px oklch(0.6 0.2 290 / 30%), 0 0 40px oklch(0.6 0.2 290 / 10%); }
+}
+
+.ai-glow-pulse {
+  animation: ai-glow-pulse 2s ease-in-out infinite;
+}
+
+/* ============================================ */
+/* Smooth Page Transitions                      */
+/* ============================================ */
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
@@ -279,24 +333,43 @@
 }
 
 .animate-in-up {
-  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Stagger children animation */
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-in-scale {
+  animation: fadeInScale 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ============================================ */
+/* Stagger children animation                   */
+/* ============================================ */
 .stagger-children > * {
   opacity: 0;
-  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
-.stagger-children > *:nth-child(7) { animation-delay: 300ms; }
-.stagger-children > *:nth-child(8) { animation-delay: 350ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 360ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 420ms; }
 
-/* Shimmer loading effect */
+/* ============================================ */
+/* Shimmer loading effect                       */
+/* ============================================ */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -308,7 +381,9 @@
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
-/* Count-up number animation */
+/* ============================================ */
+/* Count-up number animation                    */
+/* ============================================ */
 @keyframes countPulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.02); }
@@ -318,17 +393,21 @@
   animation: countPulse 2s ease-in-out infinite;
 }
 
-/* Live dot indicator */
+/* ============================================ */
+/* Live dot indicator                           */
+/* ============================================ */
 @keyframes liveDot {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.8); }
+  50% { opacity: 0.4; transform: scale(0.75); }
 }
 
 .live-dot {
   animation: liveDot 1.5s ease-in-out infinite;
 }
 
-/* Smooth bar grow */
+/* ============================================ */
+/* Smooth bar grow                              */
+/* ============================================ */
 @keyframes barGrow {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
@@ -336,39 +415,52 @@
 
 .bar-grow {
   transform-origin: left;
-  animation: barGrow 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: barGrow 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Ring progress animation */
+/* ============================================ */
+/* Ring progress animation                      */
+/* ============================================ */
 @keyframes ringProgress {
   from { stroke-dashoffset: var(--ring-circumference, 283); }
   to { stroke-dashoffset: var(--ring-offset, 0); }
 }
 
 .ring-progress {
-  animation: ringProgress 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: ringProgress 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Hover lift effect */
+/* ============================================ */
+/* Hover lift effect (enhanced with 3D)         */
+/* ============================================ */
 .hover-lift {
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 
 .hover-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px -5px oklch(0 0 0 / 10%);
+  transform: translateY(-3px);
+  box-shadow:
+    0 12px 32px -8px oklch(0 0 0 / 8%),
+    0 4px 8px -4px oklch(0 0 0 / 4%);
 }
 
 .dark .hover-lift:hover {
-  box-shadow: 0 8px 25px -5px oklch(0 0 0 / 30%);
+  box-shadow:
+    0 12px 32px -8px oklch(0 0 0 / 35%),
+    0 4px 8px -4px oklch(0 0 0 / 20%);
 }
 
-/* Smooth scroll */
+/* ============================================ */
+/* Smooth scroll                                */
+/* ============================================ */
 html {
   scroll-behavior: smooth;
 }
 
-/* Gradient border */
+/* ============================================ */
+/* Gradient border                              */
+/* ============================================ */
 .gradient-border {
   position: relative;
 }
@@ -379,19 +471,101 @@ html {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(135deg, oklch(0.65 0.2 260), oklch(0.7 0.2 290));
+  background: linear-gradient(135deg, oklch(0.55 0.22 260), oklch(0.6 0.22 290));
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   pointer-events: none;
 }
 
-/* Sparkle background */
+/* ============================================ */
+/* Sparkle / Ambient background                 */
+/* ============================================ */
 .sparkle-bg {
-  background-image: radial-gradient(ellipse at 20% 50%, oklch(0.65 0.2 260 / 5%) 0%, transparent 50%),
-                    radial-gradient(ellipse at 80% 50%, oklch(0.7 0.2 290 / 5%) 0%, transparent 50%);
+  background-image:
+    radial-gradient(ellipse at 15% 30%, oklch(0.55 0.2 260 / 4%) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 70%, oklch(0.6 0.2 290 / 4%) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, oklch(0.65 0.15 145 / 2%) 0%, transparent 60%);
 }
 
 .dark .sparkle-bg {
-  background-image: radial-gradient(ellipse at 20% 50%, oklch(0.65 0.2 260 / 8%) 0%, transparent 50%),
-                    radial-gradient(ellipse at 80% 50%, oklch(0.7 0.2 290 / 8%) 0%, transparent 50%);
+  background-image:
+    radial-gradient(ellipse at 15% 30%, oklch(0.55 0.2 260 / 8%) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 70%, oklch(0.6 0.2 290 / 8%) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, oklch(0.65 0.15 145 / 4%) 0%, transparent 60%);
+}
+
+/* ============================================ */
+/* Floating animation for decorative elements   */
+/* ============================================ */
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33% { transform: translateY(-6px) rotate(1deg); }
+  66% { transform: translateY(3px) rotate(-0.5deg); }
+}
+
+.float-slow {
+  animation: float 6s ease-in-out infinite;
+}
+
+.float-medium {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* ============================================ */
+/* Warm greeting gradient for hero cards        */
+/* ============================================ */
+.hero-gradient {
+  background: linear-gradient(135deg,
+    oklch(0.5 0.2 260) 0%,
+    oklch(0.48 0.22 275) 40%,
+    oklch(0.52 0.2 290) 100%
+  );
+}
+
+.hero-gradient-warm {
+  background: linear-gradient(135deg,
+    oklch(0.55 0.18 260) 0%,
+    oklch(0.5 0.2 280) 50%,
+    oklch(0.58 0.16 300) 100%
+  );
+}
+
+/* ============================================ */
+/* Smooth focus ring for accessibility          */
+/* ============================================ */
+:focus-visible {
+  outline: 2px solid oklch(0.55 0.2 260);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============================================ */
+/* Subtle text shadow for emphasis              */
+/* ============================================ */
+.text-glow {
+  text-shadow: 0 0 20px oklch(0.55 0.2 260 / 20%);
+}
+
+/* ============================================ */
+/* Progress shine effect for bars               */
+/* ============================================ */
+@keyframes progressShine {
+  0% { left: -150%; }
+  100% { left: 150%; }
+}
+
+.progress-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-shine::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 20%), transparent);
+  animation: progressShine 2.5s ease-in-out infinite;
 }
