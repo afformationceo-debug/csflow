@@ -265,3 +265,133 @@
 .ai-thinking {
   animation: ai-thinking 1.5s ease-in-out infinite;
 }
+
+/* Smooth Page Transitions */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in-up {
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Stagger children animation */
+.stagger-children > * {
+  opacity: 0;
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 350ms; }
+
+/* Shimmer loading effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent 25%, oklch(1 0 0 / 8%) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Count-up number animation */
+@keyframes countPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.number-highlight {
+  animation: countPulse 2s ease-in-out infinite;
+}
+
+/* Live dot indicator */
+@keyframes liveDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.live-dot {
+  animation: liveDot 1.5s ease-in-out infinite;
+}
+
+/* Smooth bar grow */
+@keyframes barGrow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.bar-grow {
+  transform-origin: left;
+  animation: barGrow 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Ring progress animation */
+@keyframes ringProgress {
+  from { stroke-dashoffset: var(--ring-circumference, 283); }
+  to { stroke-dashoffset: var(--ring-offset, 0); }
+}
+
+.ring-progress {
+  animation: ringProgress 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Hover lift effect */
+.hover-lift {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px -5px oklch(0 0 0 / 10%);
+}
+
+.dark .hover-lift:hover {
+  box-shadow: 0 8px 25px -5px oklch(0 0 0 / 30%);
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Gradient border */
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, oklch(0.65 0.2 260), oklch(0.7 0.2 290));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Sparkle background */
+.sparkle-bg {
+  background-image: radial-gradient(ellipse at 20% 50%, oklch(0.65 0.2 260 / 5%) 0%, transparent 50%),
+                    radial-gradient(ellipse at 80% 50%, oklch(0.7 0.2 290 / 5%) 0%, transparent 50%);
+}
+
+.dark .sparkle-bg {
+  background-image: radial-gradient(ellipse at 20% 50%, oklch(0.65 0.2 260 / 8%) 0%, transparent 50%),
+                    radial-gradient(ellipse at 80% 50%, oklch(0.7 0.2 290 / 8%) 0%, transparent 50%);
+}

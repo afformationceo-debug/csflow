@@ -1693,16 +1693,59 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 - [x] 테스트 환경 설정 (`/src/test/setup.ts`) ✅
 - [x] RAG 파이프라인 테스트 (`/src/test/services/rag-pipeline.test.ts`) ✅
 - [x] 채널 어댑터 테스트 (`/src/test/services/channels.test.ts`) ✅
+- [x] 번역 서비스 테스트 (`/src/test/services/translation.test.ts` - 17 tests) ✅
+- [x] 템플릿 서비스 테스트 (`/src/test/services/templates.test.ts` - 14 tests) ✅
+- [x] LLM 라우터 테스트 (`/src/test/services/llm.test.ts` - 13 tests) ✅
+- [x] SLA 모니터링 테스트 (`/src/test/services/sla-monitoring.test.ts` - 16 tests) ✅
+- [x] 만족도 조사 테스트 (`/src/test/services/satisfaction-survey.test.ts` - 13 tests) ✅
+- [x] QStash 작업큐 테스트 (`/src/test/services/qstash.test.ts` - 7 tests) ✅
+- [x] 총 98개 단위 테스트 통과 (8개 파일) ✅
 - [ ] E2E 테스트 (Playwright)
 - [ ] 통합 테스트 추가
 
-#### 7.6 환자 포털 (별도 앱)
+#### 7.6 Sentry 에러 모니터링 ✅
+- [x] @sentry/nextjs 설치 ✅
+- [x] 클라이언트 설정 (`/sentry.client.config.ts`) ✅
+- [x] 서버 설정 (`/sentry.server.config.ts`) ✅
+- [x] Edge 설정 (`/sentry.edge.config.ts`) ✅
+- [x] next.config.ts withSentryConfig 래핑 ✅
+- [x] 글로벌 에러 바운더리 (`/src/app/global-error.tsx`) ✅
+- [x] 환경변수 설정 (SENTRY_DSN, SENTRY_ORG, SENTRY_PROJECT) ✅
+- [ ] Sentry 프로젝트 생성 후 실제 DSN 값 `.env.local`에 등록 (대기 중)
+
+#### 7.7 CI/CD 파이프라인 ✅
+- [x] GitHub Actions 워크플로우 (`.github/workflows/ci.yml`) ✅
+- [x] Lint → Test → Build → Deploy 파이프라인 ✅
+- [x] PR 시 Preview 배포 (Vercel) ✅
+- [x] main push 시 Production 배포 ✅
+- [x] GitHub 웹 인터페이스에서 workflow 파일 직접 커밋 완료 ✅
+
+#### 7.8 Slack 알림 서비스 ✅
+- [x] Slack Web API 기반 알림 서비스 (`/src/services/slack-notification.ts`) ✅
+- [x] 에스컬레이션 알림 (우선순위별 이모지, Block Kit UI) ✅
+- [x] 예약 확정 알림 ✅
+- [x] 24시간 무응답 알림 ✅
+- [x] 기존 Webhook 방식 호환 유지 ✅
+- [x] escalation-notify 라우트 Slack Web API 통합 ✅
+
+#### 7.9 LINE 채널 자격증명 등록 ✅
+- [x] LINE Channel ID, Secret, Access Token `.env.local` 등록 ✅
+- [x] LINE Bot Basic ID 등록 (@246kdolz) ✅
+
+#### 7.10 환자 포털 (별도 앱)
 - [ ] 별도 Next.js 앱 생성
 - [ ] 환자 로그인/회원가입
 - [ ] 예약 조회/변경
 - [ ] 상담 내역 조회
 - [ ] 문서 다운로드
 - [ ] 다국어 지원
+
+#### 7.11 사이드바 페이지 구현 ✅
+- [x] 채널 관리 페이지 (`/channels`) - 채널 요약 카드, 연동 섹션, 채널 목록/추가/삭제 ✅
+- [x] 거래처 관리 페이지 (`/tenants`) - 거래처 카드, AI 설정 다이얼로그, 통계 ✅
+- [x] 담당자 관리 페이지 (`/team`) - 팀원 목록, 역할 RBAC, 초대 다이얼로그 ✅
+- [x] 설정 메인 페이지 (`/settings`) - 5탭 구성 (일반/AI/번역/알림/채널) ✅
+- [x] Playwright E2E 렌더링 검증 완료 ✅
 
 ---
 

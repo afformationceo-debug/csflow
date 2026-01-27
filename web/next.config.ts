@@ -16,14 +16,22 @@ export default withSentryConfig(nextConfig, {
   // Upload source maps for better error tracking
   widenClientFileUpload: true,
 
-  // Hide source maps from browser devtools in production
-  hideSourceMaps: true,
+  // Source maps configuration (replaces deprecated hideSourceMaps)
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: true,
+  },
 
-  // Disable Sentry telemetry
-  disableLogger: true,
+  // Webpack-based instrumentation (replaces deprecated top-level options)
+  webpack: {
+    autoInstrumentServerFunctions: true,
+    autoInstrumentMiddleware: true,
+    autoInstrumentAppDirectory: true,
+  },
 
-  // Automatically instrument API routes and server components
-  autoInstrumentServerFunctions: true,
-  autoInstrumentMiddleware: true,
-  autoInstrumentAppDirectory: true,
+  // Tree shaking configuration (replaces deprecated disableLogger)
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeReplayIframe: true,
+    excludeReplayShadowDom: true,
+  },
 });

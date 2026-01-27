@@ -1,53 +1,114 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+// Select components available if needed for alternative period picker
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Bot,
   MessageSquare,
   TrendingUp,
   TrendingDown,
   Clock,
-  Users,
   ThumbsUp,
   AlertTriangle,
   Globe,
   Building,
+  ArrowUpRight,
+  Activity,
+  BarChart3,
+  Timer,
+  Languages,
+  ShieldAlert,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
-// Mock analytics data
-const overviewStats = {
-  totalConversations: 1247,
-  totalConversationsChange: 12.5,
-  aiProcessedRate: 82.3,
-  aiProcessedRateChange: 5.2,
-  avgResponseTime: 1.2,
-  avgResponseTimeChange: -0.3,
-  customerSatisfaction: 4.6,
-  customerSatisfactionChange: 0.2,
-};
+// ─── Period Options ──────────────────────────────────────────────────────────
+const periodOptions = [
+  { value: "1d", label: "오늘" },
+  { value: "7d", label: "최근 7일" },
+  { value: "30d", label: "최근 30일" },
+  { value: "90d", label: "최근 90일" },
+];
 
-const aiPerformance = {
-  totalResponses: 1024,
-  avgConfidence: 87.2,
-  escalationRate: 17.7,
-  learningImprovements: 8,
-};
+// ─── Mock Data ───────────────────────────────────────────────────────────────
 
-const channelStats = [
-  { name: "LINE", count: 452, percentage: 36.2, change: 8.5 },
-  { name: "WhatsApp", count: 325, percentage: 26.1, change: 12.3 },
-  { name: "카카오톡", count: 278, percentage: 22.3, change: -2.1 },
-  { name: "Instagram", count: 122, percentage: 9.8, change: 15.7 },
-  { name: "Facebook", count: 70, percentage: 5.6, change: -5.2 },
+const kpiCards = [
+  {
+    id: "conversations",
+    label: "총 대화",
+    value: 1247,
+    format: "number",
+    change: 12.5,
+    changeLabel: "전주 대비",
+    icon: MessageSquare,
+    color: "blue",
+    sparkline: [820, 910, 980, 1050, 1120, 1180, 1247],
+  },
+  {
+    id: "ai-resolution",
+    label: "AI 자동 해결율",
+    value: 82.3,
+    format: "percent",
+    change: 5.2,
+    changeLabel: "전주 대비",
+    icon: Bot,
+    color: "violet",
+    sparkline: [72, 74, 76, 78, 79, 81, 82.3],
+  },
+  {
+    id: "response-time",
+    label: "평균 응답시간",
+    value: 1.2,
+    format: "minutes",
+    change: -18.0,
+    changeLabel: "전주 대비",
+    icon: Clock,
+    color: "emerald",
+    sparkline: [2.1, 1.9, 1.7, 1.5, 1.4, 1.3, 1.2],
+  },
+  {
+    id: "csat",
+    label: "CSAT 점수",
+    value: 4.6,
+    format: "score",
+    change: 4.5,
+    changeLabel: "전주 대비",
+    icon: ThumbsUp,
+    color: "amber",
+    sparkline: [4.2, 4.3, 4.3, 4.4, 4.5, 4.5, 4.6],
+  },
+  {
+    id: "escalation",
+    label: "에스컬레이션율",
+    value: 17.7,
+    format: "percent",
+    change: -2.3,
+    changeLabel: "전주 대비",
+    icon: ShieldAlert,
+    color: "rose",
+    sparkline: [22, 21, 20, 19.5, 19, 18.2, 17.7],
+  },
+];
+
+const channelDistribution = [
+  { name: "LINE", count: 452, percentage: 36.2, color: "#06C755" },
+  { name: "WhatsApp", count: 325, percentage: 26.1, color: "#25D366" },
+  { name: "카카오톡", count: 278, percentage: 22.3, color: "#FEE500" },
+  { name: "Instagram", count: 122, percentage: 9.8, color: "#E1306C" },
+  { name: "Facebook", count: 70, percentage: 5.6, color: "#1877F2" },
+];
+
+const dailyTrends = [
+  { day: "월", conversations: 156, resolved: 128 },
+  { day: "화", conversations: 189, resolved: 158 },
+  { day: "수", conversations: 201, resolved: 172 },
+  { day: "목", conversations: 178, resolved: 151 },
+  { day: "금", conversations: 215, resolved: 184 },
+  { day: "토", conversations: 167, resolved: 139 },
+  { day: "일", conversations: 141, resolved: 115 },
 ];
 
 const tenantPerformance = [
@@ -57,7 +118,9 @@ const tenantPerformance = [
     aiAccuracy: 92.1,
     escalationRate: 12.3,
     satisfaction: 4.8,
-    trend: "up",
+    avgResponse: 0.8,
+    trend: "up" as const,
+    change: 8.2,
   },
   {
     name: "스마일치과",
@@ -65,7 +128,9 @@ const tenantPerformance = [
     aiAccuracy: 88.7,
     escalationRate: 15.8,
     satisfaction: 4.5,
-    trend: "up",
+    avgResponse: 1.1,
+    trend: "up" as const,
+    change: 5.1,
   },
   {
     name: "서울성형",
@@ -73,7 +138,9 @@ const tenantPerformance = [
     aiAccuracy: 85.3,
     escalationRate: 21.2,
     satisfaction: 4.3,
-    trend: "down",
+    avgResponse: 1.5,
+    trend: "down" as const,
+    change: -3.4,
   },
   {
     name: "강남피부과",
@@ -81,427 +148,1001 @@ const tenantPerformance = [
     aiAccuracy: 91.5,
     escalationRate: 14.1,
     satisfaction: 4.6,
-    trend: "up",
+    avgResponse: 0.9,
+    trend: "up" as const,
+    change: 6.7,
   },
 ];
 
-const countryStats = [
-  { country: "일본", flag: "🇯🇵", count: 412, percentage: 33.0 },
-  { country: "중국", flag: "🇨🇳", count: 298, percentage: 23.9 },
-  { country: "베트남", flag: "🇻🇳", count: 187, percentage: 15.0 },
-  { country: "미국", flag: "🇺🇸", count: 156, percentage: 12.5 },
-  { country: "대만", flag: "🇹🇼", count: 98, percentage: 7.9 },
-  { country: "기타", flag: "🌍", count: 96, percentage: 7.7 },
+const languageDistribution = [
+  { language: "일본어", code: "JA", percentage: 33.0, count: 412, color: "#ef4444" },
+  { language: "중국어", code: "ZH", percentage: 23.9, count: 298, color: "#f59e0b" },
+  { language: "베트남어", code: "VI", percentage: 15.0, count: 187, color: "#22c55e" },
+  { language: "영어", code: "EN", percentage: 12.5, count: 156, color: "#3b82f6" },
+  { language: "대만어", code: "TW", percentage: 7.9, count: 98, color: "#8b5cf6" },
+  { language: "기타", code: "ETC", percentage: 7.7, count: 96, color: "#6b7280" },
 ];
 
-const hourlyVolume = [
-  { hour: "00", count: 12 },
-  { hour: "02", count: 8 },
-  { hour: "04", count: 5 },
-  { hour: "06", count: 15 },
-  { hour: "08", count: 45 },
-  { hour: "10", count: 78 },
-  { hour: "12", count: 65 },
-  { hour: "14", count: 82 },
-  { hour: "16", count: 91 },
-  { hour: "18", count: 76 },
-  { hour: "20", count: 54 },
-  { hour: "22", count: 32 },
+const escalationReasons = [
+  { reason: "AI 신뢰도 미달", count: 45, percentage: 35.2, severity: "high" as const },
+  { reason: "가격 협상 요청", count: 32, percentage: 25.0, severity: "medium" as const },
+  { reason: "복잡한 의료 문의", count: 28, percentage: 21.9, severity: "high" as const },
+  { reason: "고객 불만/컴플레인", count: 15, percentage: 11.7, severity: "critical" as const },
+  { reason: "긴급 상황 (수술 후)", count: 8, percentage: 6.2, severity: "critical" as const },
 ];
+
+const responseTimeDistribution = [
+  { range: "< 30초", count: 312, percentage: 25.0 },
+  { range: "30초-1분", count: 387, percentage: 31.0 },
+  { range: "1-3분", count: 274, percentage: 22.0 },
+  { range: "3-5분", count: 149, percentage: 11.9 },
+  { range: "5-10분", count: 87, percentage: 7.0 },
+  { range: "> 10분", count: 38, percentage: 3.1 },
+];
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function formatKPIValue(value: number, format: string): string {
+  switch (format) {
+    case "number":
+      return value.toLocaleString();
+    case "percent":
+      return `${value}%`;
+    case "minutes":
+      return `${value}분`;
+    case "score":
+      return `${value}/5.0`;
+    default:
+      return String(value);
+  }
+}
+
+function getColorClasses(color: string) {
+  const map: Record<string, { bg: string; text: string; icon: string }> = {
+    blue: {
+      bg: "bg-blue-500/10",
+      text: "text-blue-600 dark:text-blue-400",
+      icon: "text-blue-500",
+    },
+    violet: {
+      bg: "bg-violet-500/10",
+      text: "text-violet-600 dark:text-violet-400",
+      icon: "text-violet-500",
+    },
+    emerald: {
+      bg: "bg-emerald-500/10",
+      text: "text-emerald-600 dark:text-emerald-400",
+      icon: "text-emerald-500",
+    },
+    amber: {
+      bg: "bg-amber-500/10",
+      text: "text-amber-600 dark:text-amber-400",
+      icon: "text-amber-500",
+    },
+    rose: {
+      bg: "bg-rose-500/10",
+      text: "text-rose-600 dark:text-rose-400",
+      icon: "text-rose-500",
+    },
+  };
+  return map[color] || map.blue;
+}
+
+function getSeverityColor(severity: string) {
+  switch (severity) {
+    case "critical":
+      return "bg-red-500/10 text-red-600 dark:text-red-400";
+    case "high":
+      return "bg-orange-500/10 text-orange-600 dark:text-orange-400";
+    case "medium":
+      return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400";
+    default:
+      return "bg-gray-500/10 text-gray-600 dark:text-gray-400";
+  }
+}
+
+// ─── Mini Sparkline (CSS/SVG) ────────────────────────────────────────────────
+
+function Sparkline({
+  data,
+  color,
+  height = 32,
+  width = 80,
+}: {
+  data: number[];
+  color: string;
+  height?: number;
+  width?: number;
+}) {
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const padding = 2;
+
+  const points = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * (width - padding * 2) + padding;
+      const y = height - padding - ((v - min) / range) * (height - padding * 2);
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const fillPoints = `${padding},${height - padding} ${points} ${width - padding},${height - padding}`;
+
+  const colorMap: Record<string, { stroke: string; fill: string }> = {
+    blue: { stroke: "#3b82f6", fill: "rgba(59,130,246,0.1)" },
+    violet: { stroke: "#8b5cf6", fill: "rgba(139,92,246,0.1)" },
+    emerald: { stroke: "#10b981", fill: "rgba(16,185,129,0.1)" },
+    amber: { stroke: "#f59e0b", fill: "rgba(245,158,11,0.1)" },
+    rose: { stroke: "#f43f5e", fill: "rgba(244,63,94,0.1)" },
+  };
+
+  const c = colorMap[color] || colorMap.blue;
+
+  return (
+    <svg width={width} height={height} className="overflow-visible">
+      <polygon points={fillPoints} fill={c.fill} />
+      <polyline
+        points={points}
+        fill="none"
+        stroke={c.stroke}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Latest point dot */}
+      {data.length > 0 && (
+        <circle
+          cx={width - padding}
+          cy={
+            height -
+            padding -
+            ((data[data.length - 1] - min) / range) * (height - padding * 2)
+          }
+          r="2.5"
+          fill={c.stroke}
+        />
+      )}
+    </svg>
+  );
+}
+
+// ─── Donut Chart (SVG) ───────────────────────────────────────────────────────
+
+function DonutChart({
+  data,
+}: {
+  data: { label: string; percentage: number; color: string }[];
+}) {
+  const radius = 60;
+  const strokeWidth = 14;
+  const circumference = 2 * Math.PI * radius;
+  let cumulativePercentage = 0;
+
+  const segments = data.map((item) => {
+    const offset = cumulativePercentage;
+    cumulativePercentage += item.percentage;
+    return {
+      ...item,
+      dashoffset: circumference * (1 - item.percentage / 100),
+      rotation: (offset / 100) * 360 - 90,
+    };
+  });
+
+  return (
+    <svg viewBox="0 0 160 160" className="w-full h-full">
+      {/* Background ring */}
+      <circle
+        cx="80"
+        cy="80"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        className="text-muted/30"
+        strokeWidth={strokeWidth}
+      />
+      {/* Segments */}
+      {segments.map((seg, i) => (
+        <circle
+          key={i}
+          cx="80"
+          cy="80"
+          r={radius}
+          fill="none"
+          stroke={seg.color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${(seg.percentage / 100) * circumference} ${circumference}`}
+          strokeLinecap="round"
+          transform={`rotate(${seg.rotation} 80 80)`}
+          className="ring-progress"
+          style={
+            {
+              "--ring-circumference": circumference,
+              "--ring-offset": circumference * (1 - seg.percentage / 100),
+              animationDelay: `${i * 150}ms`,
+            } as React.CSSProperties
+          }
+        />
+      ))}
+      {/* Center text */}
+      <text
+        x="80"
+        y="74"
+        textAnchor="middle"
+        className="fill-foreground text-[22px] font-bold"
+        style={{ fontVariantNumeric: "tabular-nums" }}
+      >
+        {data.length}
+      </text>
+      <text
+        x="80"
+        y="92"
+        textAnchor="middle"
+        className="fill-muted-foreground text-[11px]"
+      >
+        languages
+      </text>
+    </svg>
+  );
+}
+
+// ─── Animation Config ────────────────────────────────────────────────────────
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.06,
+    },
+  },
+};
+
+const easeCurve: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.4,
+      ease: easeCurve,
+    },
+  },
+};
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
+  const [period, setPeriod] = useState("7d");
+
+  const maxDailyConversations = Math.max(...dailyTrends.map((d) => d.conversations));
+  const maxResponseCount = Math.max(...responseTimeDistribution.map((d) => d.count));
+
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {/* ── Page Header ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">분석 및 리포트</h1>
-          <p className="text-muted-foreground">CS 자동화 성과와 인사이트를 확인하세요</p>
+          <h1 className="text-2xl font-bold tracking-tight">분석 및 리포트</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            CS 자동화 성과와 인사이트를 확인하세요
+          </p>
         </div>
-        <Select defaultValue="7d">
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="기간 선택" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="1d">오늘</SelectItem>
-            <SelectItem value="7d">최근 7일</SelectItem>
-            <SelectItem value="30d">최근 30일</SelectItem>
-            <SelectItem value="90d">최근 90일</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 mr-2">
+            <span className="live-dot inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="text-[11px] text-muted-foreground">실시간</span>
+          </div>
+          <div className="flex items-center rounded-lg border border-border/50 bg-muted/30 p-0.5">
+            {periodOptions.map((opt) => (
+              <Button
+                key={opt.value}
+                variant={period === opt.value ? "default" : "ghost"}
+                size="sm"
+                className={`h-7 px-3 text-xs rounded-md ${
+                  period === opt.value
+                    ? "shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setPeriod(opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Overview Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                총 대화
-              </CardTitle>
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {overviewStats.totalConversations.toLocaleString()}
-              </div>
-              <div className="flex items-center text-xs text-green-500">
-                <TrendingUp className="mr-1 h-3 w-3" />
-                +{overviewStats.totalConversationsChange}% 전주 대비
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+      {/* ── KPI Cards ───────────────────────────────────────────────── */}
+      <motion.div
+        className="grid gap-4 grid-cols-2 lg:grid-cols-5 stagger-children"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {kpiCards.map((kpi) => {
+          const Icon = kpi.icon;
+          const colors = getColorClasses(kpi.color);
+          const isPositiveGood = kpi.id !== "escalation";
+          const isGood = isPositiveGood ? kpi.change >= 0 : kpi.change <= 0;
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                AI 처리율
-              </CardTitle>
-              <Bot className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{overviewStats.aiProcessedRate}%</div>
-              <div className="flex items-center text-xs text-green-500">
-                <TrendingUp className="mr-1 h-3 w-3" />
-                +{overviewStats.aiProcessedRateChange}%
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                평균 응답시간
-              </CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{overviewStats.avgResponseTime}분</div>
-              <div className="flex items-center text-xs text-green-500">
-                <TrendingDown className="mr-1 h-3 w-3" />
-                {overviewStats.avgResponseTimeChange}분
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                고객 만족도
-              </CardTitle>
-              <ThumbsUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {overviewStats.customerSatisfaction}/5.0
-              </div>
-              <div className="flex items-center text-xs text-green-500">
-                <TrendingUp className="mr-1 h-3 w-3" />
-                +{overviewStats.customerSatisfactionChange}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* AI Performance */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5" />
-              AI 성과 분석
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">총 AI 응답</p>
-                <p className="text-2xl font-bold">{aiPerformance.totalResponses.toLocaleString()}</p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">평균 신뢰도</p>
-                <p className="text-2xl font-bold text-green-500">
-                  {aiPerformance.avgConfidence}%
-                </p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">에스컬레이션율</p>
-                <p className="text-2xl font-bold text-yellow-500">
-                  {aiPerformance.escalationRate}%
-                </p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">학습 개선 건수</p>
-                <p className="text-2xl font-bold text-blue-500">
-                  +{aiPerformance.learningImprovements}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <p className="text-sm font-medium mb-3">시간대별 문의량</p>
-              <div className="flex items-end gap-1 h-24">
-                {hourlyVolume.map((item) => (
-                  <div
-                    key={item.hour}
-                    className="flex-1 bg-primary/20 hover:bg-primary/40 transition-colors rounded-t"
-                    style={{ height: `${(item.count / 100) * 100}%` }}
-                    title={`${item.hour}시: ${item.count}건`}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                <span>00시</span>
-                <span>12시</span>
-                <span>24시</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Channel Performance */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
-              채널별 성과
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {channelStats.map((channel) => (
-                <div key={channel.name} className="flex items-center gap-4">
-                  <div className="w-20 text-sm font-medium">{channel.name}</div>
-                  <div className="flex-1">
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full"
-                        style={{ width: `${channel.percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="w-16 text-right text-sm">{channel.count}건</div>
-                  <div
-                    className={`w-16 text-right text-xs ${
-                      channel.change >= 0 ? "text-green-500" : "text-red-500"
-                    }`}
-                  >
-                    {channel.change >= 0 ? "+" : ""}
-                    {channel.change}%
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Tenant Performance */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building className="h-5 w-5" />
-              거래처별 성과
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {tenantPerformance.map((tenant) => (
+          return (
+            <motion.div key={kpi.id} variants={itemVariants}>
+              <Card className="border-0 shadow-sm hover-lift overflow-hidden relative">
+                {/* Subtle gradient background */}
                 <div
-                  key={tenant.name}
-                  className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">{tenant.name}</span>
-                    {tenant.trend === "up" ? (
-                      <TrendingUp className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4 text-red-500" />
-                    )}
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">대화</p>
-                      <p className="font-medium">{tenant.conversations}</p>
+                  className={`absolute inset-0 opacity-[0.03] ${
+                    kpi.color === "blue"
+                      ? "bg-gradient-to-br from-blue-500 to-blue-600"
+                      : kpi.color === "violet"
+                      ? "bg-gradient-to-br from-violet-500 to-violet-600"
+                      : kpi.color === "emerald"
+                      ? "bg-gradient-to-br from-emerald-500 to-emerald-600"
+                      : kpi.color === "amber"
+                      ? "bg-gradient-to-br from-amber-500 to-amber-600"
+                      : "bg-gradient-to-br from-rose-500 to-rose-600"
+                  }`}
+                />
+                <CardContent className="p-4 relative">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className={`rounded-xl p-2 ${colors.bg}`}>
+                      <Icon className={`h-4 w-4 ${colors.icon}`} />
                     </div>
-                    <div>
-                      <p className="text-muted-foreground">AI 정확도</p>
-                      <p
-                        className={`font-medium ${
-                          tenant.aiAccuracy >= 90
-                            ? "text-green-500"
-                            : tenant.aiAccuracy >= 85
-                            ? "text-yellow-500"
-                            : "text-red-500"
+                    <Sparkline data={kpi.sparkline} color={kpi.color} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                      {kpi.label}
+                    </p>
+                    <p
+                      className="text-2xl font-bold tracking-tight"
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {formatKPIValue(kpi.value, kpi.format)}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {isGood ? (
+                        <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3 text-rose-500" />
+                      )}
+                      <span
+                        className={`text-[11px] font-medium tabular-nums ${
+                          isGood ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                         }`}
                       >
-                        {tenant.aiAccuracy}%
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">에스컬레이션</p>
-                      <p className="font-medium">{tenant.escalationRate}%</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">만족도</p>
-                      <p className="font-medium">{tenant.satisfaction}/5</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Country Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Globe className="h-5 w-5" />
-              국가별 분포
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {countryStats.map((country) => (
-                <div key={country.country} className="flex items-center gap-3">
-                  <span className="text-2xl">{country.flag}</span>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">{country.country}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {country.count}건 ({country.percentage}%)
+                        {kpi.change > 0 ? "+" : ""}
+                        {kpi.change}%
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {kpi.changeLabel}
                       </span>
                     </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          );
+        })}
+      </motion.div>
+
+      {/* ── Charts Row ──────────────────────────────────────────────── */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Channel Distribution */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.4, ease: easeCurve }}
+        >
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="rounded-xl p-2 bg-blue-500/10">
+                    <BarChart3 className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <CardTitle className="text-sm font-semibold">채널별 문의 분포</CardTitle>
+                </div>
+                <Badge variant="secondary" className="text-[11px] font-normal">
+                  총 {channelDistribution.reduce((s, c) => s + c.count, 0).toLocaleString()}건
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div className="space-y-3">
+                {channelDistribution.map((channel, i) => (
+                  <div key={channel.name} className="group">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: channel.color }}
+                        />
+                        <span className="text-sm font-medium">{channel.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="text-sm tabular-nums text-muted-foreground"
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {channel.count.toLocaleString()}건
+                        </span>
+                        <span
+                          className="text-[11px] tabular-nums font-medium w-10 text-right"
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {channel.percentage}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-muted/50 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-primary/60 rounded-full"
-                        style={{ width: `${country.percentage}%` }}
+                        className="h-full rounded-full bar-grow transition-all"
+                        style={{
+                          width: `${channel.percentage}%`,
+                          backgroundColor: channel.color,
+                          animationDelay: `${i * 100}ms`,
+                        }}
                       />
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-      {/* Bottom Cards */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Top Issues */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              주요 에스컬레이션 사유
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {[
-                { reason: "신뢰도 미달", count: 45, percentage: 35.2 },
-                { reason: "가격 협상", count: 32, percentage: 25.0 },
-                { reason: "복잡한 의료 문의", count: 28, percentage: 21.9 },
-                { reason: "불만/컴플레인", count: 15, percentage: 11.7 },
-                { reason: "긴급 상황", count: 8, percentage: 6.2 },
-              ].map((item, index) => (
-                <div key={item.reason} className="flex items-center gap-3">
-                  <Badge variant="outline" className="w-6 h-6 p-0 justify-center">
-                    {index + 1}
-                  </Badge>
-                  <span className="flex-1 text-sm">{item.reason}</span>
-                  <span className="text-sm text-muted-foreground">{item.count}건</span>
+        {/* Daily Trends */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35, duration: 0.4, ease: easeCurve }}
+        >
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="rounded-xl p-2 bg-violet-500/10">
+                    <Activity className="h-4 w-4 text-violet-500" />
+                  </div>
+                  <CardTitle className="text-sm font-semibold">일별 대화 트렌드</CardTitle>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Top Agents */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              상담사 실적
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {[
-                { name: "김매니저", resolved: 45, avgTime: 32, satisfaction: 4.9 },
-                { name: "박상담사", resolved: 38, avgTime: 41, satisfaction: 4.7 },
-                { name: "이상담사", resolved: 29, avgTime: 38, satisfaction: 4.6 },
-                { name: "최상담사", resolved: 24, avgTime: 45, satisfaction: 4.5 },
-              ].map((agent, index) => (
-                <div
-                  key={agent.name}
-                  className="flex items-center gap-3 p-2 rounded bg-muted/50"
-                >
-                  <Badge variant="outline" className="w-6 h-6 p-0 justify-center">
-                    {index + 1}
-                  </Badge>
-                  <span className="flex-1 text-sm font-medium">{agent.name}</span>
-                  <div className="text-xs text-muted-foreground">
-                    {agent.resolved}건 | {agent.avgTime}분 | ⭐{agent.satisfaction}
+                <div className="flex items-center gap-3 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2 w-2 rounded-full bg-primary" />
+                    <span className="text-muted-foreground">문의</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                    <span className="text-muted-foreground">해결</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div className="flex items-end gap-2 h-[180px] pt-4">
+                {dailyTrends.map((day, i) => {
+                  const convHeight = (day.conversations / maxDailyConversations) * 100;
+                  const resHeight = (day.resolved / maxDailyConversations) * 100;
+                  return (
+                    <div
+                      key={day.day}
+                      className="flex-1 flex flex-col items-center gap-1 group"
+                    >
+                      {/* Value on hover */}
+                      <div className="text-[10px] tabular-nums text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {day.conversations}
+                      </div>
+                      {/* Bars */}
+                      <div className="w-full flex gap-0.5 items-end flex-1">
+                        <div className="flex-1 relative">
+                          <div
+                            className="w-full bg-primary/20 rounded-t-md transition-all duration-300 group-hover:bg-primary/30"
+                            style={{
+                              height: `${convHeight}%`,
+                              animationDelay: `${i * 80}ms`,
+                            }}
+                          />
+                        </div>
+                        <div className="flex-1 relative">
+                          <div
+                            className="w-full bg-emerald-500/30 rounded-t-md transition-all duration-300 group-hover:bg-emerald-500/40"
+                            style={{
+                              height: `${resHeight}%`,
+                              animationDelay: `${i * 80 + 40}ms`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                      {/* Day label */}
+                      <span className="text-[11px] text-muted-foreground font-medium">
+                        {day.day}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Summary bar */}
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/50">
+                <div className="text-[11px] text-muted-foreground">
+                  주간 총 문의: <span className="font-semibold text-foreground tabular-nums">{dailyTrends.reduce((s, d) => s + d.conversations, 0).toLocaleString()}</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  해결율: <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                    {(
+                      (dailyTrends.reduce((s, d) => s + d.resolved, 0) /
+                        dailyTrends.reduce((s, d) => s + d.conversations, 0)) *
+                      100
+                    ).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
 
-        {/* Quick Insights */}
-        <Card>
-          <CardHeader>
-            <CardTitle>주요 인사이트</CardTitle>
+      {/* ── Middle Row: Language + Escalation + Response Time ──────── */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Language Distribution Donut */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.4, ease: easeCurve }}
+        >
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2.5">
+                <div className="rounded-xl p-2 bg-indigo-500/10">
+                  <Languages className="h-4 w-4 text-indigo-500" />
+                </div>
+                <CardTitle className="text-sm font-semibold">언어별 분포</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-4">
+                {/* Donut */}
+                <div className="w-[140px] h-[140px] flex-shrink-0">
+                  <DonutChart
+                    data={languageDistribution.map((l) => ({
+                      label: l.language,
+                      percentage: l.percentage,
+                      color: l.color,
+                    }))}
+                  />
+                </div>
+                {/* Legend */}
+                <div className="flex-1 space-y-1.5">
+                  {languageDistribution.map((lang) => (
+                    <div key={lang.code} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2 w-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: lang.color }}
+                        />
+                        <span className="text-[12px] font-medium">{lang.language}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="text-[11px] text-muted-foreground tabular-nums"
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {lang.count}건
+                        </span>
+                        <span
+                          className="text-[11px] font-semibold tabular-nums w-8 text-right"
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {lang.percentage}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Escalation Reasons */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45, duration: 0.4, ease: easeCurve }}
+        >
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="rounded-xl p-2 bg-orange-500/10">
+                    <AlertTriangle className="h-4 w-4 text-orange-500" />
+                  </div>
+                  <CardTitle className="text-sm font-semibold">에스컬레이션 사유</CardTitle>
+                </div>
+                <Badge variant="secondary" className="text-[11px] font-normal">
+                  총 {escalationReasons.reduce((s, r) => s + r.count, 0)}건
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2.5">
+                {escalationReasons.map((item, index) => (
+                  <div
+                    key={item.reason}
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors group"
+                  >
+                    <span
+                      className="text-[11px] font-bold text-muted-foreground w-4 text-center tabular-nums"
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {index + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[12px] font-medium truncate">
+                          {item.reason}
+                        </span>
+                        <Badge
+                          variant="secondary"
+                          className={`text-[9px] px-1.5 py-0 h-4 ${getSeverityColor(item.severity)}`}
+                        >
+                          {item.severity === "critical"
+                            ? "긴급"
+                            : item.severity === "high"
+                            ? "높음"
+                            : "중간"}
+                        </Badge>
+                      </div>
+                      <div className="h-1 bg-muted/50 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-orange-400/60 bar-grow"
+                          style={{
+                            width: `${item.percentage}%`,
+                            animationDelay: `${index * 100}ms`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span
+                      className="text-[11px] font-semibold text-muted-foreground tabular-nums w-8 text-right"
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {item.count}건
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Response Time Distribution */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 0.4, ease: easeCurve }}
+        >
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="rounded-xl p-2 bg-emerald-500/10">
+                    <Timer className="h-4 w-4 text-emerald-500" />
+                  </div>
+                  <CardTitle className="text-sm font-semibold">응답시간 분포</CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {responseTimeDistribution.map((bucket, i) => {
+                  const barWidth = (bucket.count / maxResponseCount) * 100;
+                  const isGood = i < 2;
+                  const isOk = i === 2 || i === 3;
+                  const barColor = isGood
+                    ? "bg-emerald-400/60"
+                    : isOk
+                    ? "bg-amber-400/60"
+                    : "bg-rose-400/60";
+                  return (
+                    <div key={bucket.range} className="group">
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-medium text-muted-foreground w-14 text-right flex-shrink-0">
+                          {bucket.range}
+                        </span>
+                        <div className="flex-1 h-5 bg-muted/30 rounded overflow-hidden relative">
+                          <div
+                            className={`h-full rounded ${barColor} bar-grow flex items-center`}
+                            style={{
+                              width: `${barWidth}%`,
+                              animationDelay: `${i * 80}ms`,
+                            }}
+                          >
+                            {barWidth > 20 && (
+                              <span
+                                className="text-[10px] font-semibold text-foreground/70 ml-2 tabular-nums"
+                                style={{ fontVariantNumeric: "tabular-nums" }}
+                              >
+                                {bucket.count}
+                              </span>
+                            )}
+                          </div>
+                          {barWidth <= 20 && (
+                            <span
+                              className="absolute left-[calc(var(--bar-w)+8px)] top-1/2 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground tabular-nums"
+                              style={
+                                {
+                                  "--bar-w": `${barWidth}%`,
+                                  fontVariantNumeric: "tabular-nums",
+                                } as React.CSSProperties
+                              }
+                            >
+                              {bucket.count}
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className="text-[11px] text-muted-foreground tabular-nums w-8 text-right flex-shrink-0"
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {bucket.percentage}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Summary */}
+              <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">
+                  3분 이내 응답:
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 ml-1 tabular-nums">
+                    {((312 + 387 + 274) / 1247 * 100).toFixed(1)}%
+                  </span>
+                </span>
+                <span className="text-muted-foreground">
+                  중간값:
+                  <span className="font-semibold text-foreground ml-1">1.1분</span>
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* ── Tenant Performance Table ──────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.55, duration: 0.4, ease: easeCurve }}
+      >
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="rounded-xl p-2 bg-sky-500/10">
+                  <Building className="h-4 w-4 text-sky-500" />
+                </div>
+                <CardTitle className="text-sm font-semibold">거래처별 성과 비교</CardTitle>
+              </div>
+              <Badge variant="secondary" className="text-[11px] font-normal">
+                {tenantPerformance.length}개 거래처
+              </Badge>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                <p className="text-sm font-medium text-green-500">👍 좋은 성과</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  LINE 채널 문의량이 전주 대비 8.5% 증가했습니다. 일본 시장 마케팅
-                  효과가 나타나고 있습니다.
-                </p>
-              </div>
-              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                <p className="text-sm font-medium text-yellow-500">⚠️ 개선 필요</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  서울성형의 AI 정확도가 85.3%로 목표(90%) 미달입니다. 지식베이스
-                  보강이 필요합니다.
-                </p>
-              </div>
-              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                <p className="text-sm font-medium text-blue-500">💡 추천</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  가격 협상 관련 에스컬레이션이 25%를 차지합니다. 가격 정책 FAQ를
-                  보강하면 자동화율이 향상될 것으로 예상됩니다.
-                </p>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="text-[11px] font-semibold text-muted-foreground text-left py-2.5 pr-4 uppercase tracking-wider">
+                      거래처
+                    </th>
+                    <th className="text-[11px] font-semibold text-muted-foreground text-right py-2.5 px-4 uppercase tracking-wider">
+                      대화 수
+                    </th>
+                    <th className="text-[11px] font-semibold text-muted-foreground text-right py-2.5 px-4 uppercase tracking-wider">
+                      AI 정확도
+                    </th>
+                    <th className="text-[11px] font-semibold text-muted-foreground text-right py-2.5 px-4 uppercase tracking-wider">
+                      에스컬레이션
+                    </th>
+                    <th className="text-[11px] font-semibold text-muted-foreground text-right py-2.5 px-4 uppercase tracking-wider">
+                      CSAT
+                    </th>
+                    <th className="text-[11px] font-semibold text-muted-foreground text-right py-2.5 px-4 uppercase tracking-wider">
+                      응답시간
+                    </th>
+                    <th className="text-[11px] font-semibold text-muted-foreground text-right py-2.5 pl-4 uppercase tracking-wider">
+                      변화
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tenantPerformance.map((tenant) => (
+                    <tr
+                      key={tenant.name}
+                      className="border-b border-border/30 last:border-0 hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                            <span className="text-xs font-bold text-primary">
+                              {tenant.name.charAt(0)}
+                            </span>
+                          </div>
+                          <span className="text-sm font-medium">{tenant.name}</span>
+                        </div>
+                      </td>
+                      <td
+                        className="py-3 px-4 text-right text-sm tabular-nums"
+                        style={{ fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {tenant.conversations.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <span
+                          className={`text-sm font-medium tabular-nums ${
+                            tenant.aiAccuracy >= 90
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : tenant.aiAccuracy >= 85
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-rose-600 dark:text-rose-400"
+                          }`}
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {tenant.aiAccuracy}%
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <span
+                          className={`text-sm tabular-nums ${
+                            tenant.escalationRate <= 15
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : tenant.escalationRate <= 20
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-rose-600 dark:text-rose-400"
+                          }`}
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {tenant.escalationRate}%
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span
+                            className="text-sm font-medium tabular-nums"
+                            style={{ fontVariantNumeric: "tabular-nums" }}
+                          >
+                            {tenant.satisfaction}
+                          </span>
+                          <div className="flex">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <div
+                                key={star}
+                                className={`h-1.5 w-1.5 rounded-full mx-px ${
+                                  star <= Math.round(tenant.satisfaction)
+                                    ? "bg-amber-400"
+                                    : "bg-muted"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </td>
+                      <td
+                        className="py-3 px-4 text-right text-sm tabular-nums"
+                        style={{ fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {tenant.avgResponse}분
+                      </td>
+                      <td className="py-3 pl-4 text-right">
+                        <div
+                          className={`inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums px-1.5 py-0.5 rounded ${
+                            tenant.trend === "up"
+                              ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                              : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
+                          }`}
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {tenant.trend === "up" ? (
+                            <TrendingUp className="h-3 w-3" />
+                          ) : (
+                            <TrendingDown className="h-3 w-3" />
+                          )}
+                          {tenant.change > 0 ? "+" : ""}
+                          {tenant.change}%
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
+
+      {/* ── Insights Row ──────────────────────────────────────────── */}
+      <motion.div
+        className="grid gap-4 lg:grid-cols-3 stagger-children"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={itemVariants}>
+          <Card className="border-0 shadow-sm overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.03] to-emerald-600/[0.01]" />
+            <CardContent className="p-4 relative">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl p-2 bg-emerald-500/10 flex-shrink-0">
+                  <TrendingUp className="h-4 w-4 text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
+                    좋은 성과
+                  </p>
+                  <p className="text-[13px] leading-relaxed text-muted-foreground">
+                    LINE 채널 문의량이 전주 대비 <span className="font-semibold text-foreground">8.5%</span> 증가했습니다.
+                    일본 시장 마케팅 효과가 나타나고 있으며, AI 자동 해결율도 <span className="font-semibold text-foreground">82.3%</span>로
+                    목표치를 초과 달성했습니다.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <Card className="border-0 shadow-sm overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-500/[0.03] to-amber-600/[0.01]" />
+            <CardContent className="p-4 relative">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl p-2 bg-amber-500/10 flex-shrink-0">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">
+                    개선 필요
+                  </p>
+                  <p className="text-[13px] leading-relaxed text-muted-foreground">
+                    서울성형의 AI 정확도가 <span className="font-semibold text-foreground">85.3%</span>로 목표(90%) 미달입니다.
+                    에스컬레이션율이 <span className="font-semibold text-foreground">21.2%</span>로 가장 높아
+                    지식베이스 보강이 시급합니다.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <Card className="border-0 shadow-sm overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/[0.03] to-blue-600/[0.01]" />
+            <CardContent className="p-4 relative">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl p-2 bg-blue-500/10 flex-shrink-0">
+                  <Globe className="h-4 w-4 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-1">
+                    추천 액션
+                  </p>
+                  <p className="text-[13px] leading-relaxed text-muted-foreground">
+                    가격 협상 관련 에스컬레이션이 <span className="font-semibold text-foreground">25%</span>를 차지합니다.
+                    가격 정책 FAQ를 보강하면 자동화율이 <span className="font-semibold text-foreground">5~8%</span>
+                    향상될 것으로 예상됩니다.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

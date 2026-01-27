@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { EscalationPriority } from "@/lib/supabase/types";
+import { slackNotificationService } from "@/services/slack-notification";
 
 // Only import verifySignatureAppRouter if signing keys are available
 const hasQStashKeys = !!(
@@ -16,54 +17,6 @@ interface EscalationNotifyPayload {
     reason: string;
     priority: EscalationPriority;
   };
-}
-
-/**
- * Send KakaoTalk AlimTalk notification for escalation
- */
-async function sendKakaoAlimTalk(data: {
-  phone: string;
-  templateId: string;
-  variables: Record<string, string>;
-}): Promise<boolean> {
-  // TODO: Implement KakaoTalk AlimTalk API integration
-  // This requires KakaoTalk Channel and AlimTalk template registration
-
-  const kakaoRestApiKey = process.env.KAKAO_REST_API_KEY;
-  if (!kakaoRestApiKey) {
-    console.warn("KakaoTalk API key not configured");
-    return false;
-  }
-
-  // Placeholder for actual implementation
-  console.log("Would send KakaoTalk AlimTalk:", data);
-  return true;
-}
-
-/**
- * Send Slack notification
- */
-async function sendSlackNotification(data: {
-  webhookUrl: string;
-  message: {
-    text: string;
-    blocks?: unknown[];
-  };
-}): Promise<boolean> {
-  try {
-    const response = await fetch(data.webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data.message),
-    });
-
-    return response.ok;
-  } catch (error) {
-    console.error("Slack notification error:", error);
-    return false;
-  }
 }
 
 /**
@@ -180,83 +133,25 @@ async function handler(request: NextRequest) {
 
 대시보드에서 확인하세요.`;
 
-    // Send Slack notification
+    // Send Slack notification via Web API token (primary)
+    const slackChannel = (settings as Record<string, unknown>).slack_channel as string | undefined;
+    await slackNotificationService.sendEscalationNotification(
+      {
+        escalationId: data.escalationId,
+        tenantName: tenantData.display_name,
+        customerName: conversation.customer.name || "알 수 없음",
+        customerCountry: conversation.customer.country || "미상",
+        priority: data.priority,
+        reason: data.reason,
+      },
+      slackChannel
+    );
+
+    // Fallback: Send via webhook if configured (기존 호환)
     if (settings.slack_webhook_url) {
-      const slackMessage = {
+      await slackNotificationService.sendViaWebhook(settings.slack_webhook_url, {
         text: notificationText,
-        blocks: [
-          {
-            type: "header",
-            text: {
-              type: "plain_text",
-              text: `${priorityEmoji} 새 에스컬레이션`,
-              emoji: true,
-            },
-          },
-          {
-            type: "section",
-            fields: [
-              {
-                type: "mrkdwn",
-                text: `*거래처:*\n${tenantData.display_name}`,
-              },
-              {
-                type: "mrkdwn",
-                text: `*고객:*\n${conversation.customer.name || "알 수 없음"}`,
-              },
-              {
-                type: "mrkdwn",
-                text: `*우선순위:*\n${data.priority.toUpperCase()}`,
-              },
-              {
-                type: "mrkdwn",
-                text: `*국가:*\n${conversation.customer.country || "미상"}`,
-              },
-            ],
-          },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `*사유:*\n${data.reason}`,
-            },
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "대시보드에서 보기",
-                },
-                url: `${process.env.NEXT_PUBLIC_APP_URL}/escalations/${data.escalationId}`,
-              },
-            ],
-          },
-        ],
-      };
-
-      await sendSlackNotification({
-        webhookUrl: settings.slack_webhook_url,
-        message: slackMessage,
       });
-    }
-
-    // Send KakaoTalk AlimTalk to notification phones
-    if (settings.notification_phones && settings.notification_phones.length > 0) {
-      for (const phone of settings.notification_phones) {
-        await sendKakaoAlimTalk({
-          phone,
-          templateId: "escalation_notification",
-          variables: {
-            tenant_name: tenantData.display_name,
-            customer_name: conversation.customer.name || "알 수 없음",
-            priority: data.priority,
-            reason: data.reason.slice(0, 100),
-          },
-        });
-      }
     }
 
     // Log notification sent
