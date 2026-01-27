@@ -5,6 +5,7 @@
 
 import { createServiceClient } from "@/lib/supabase/server";
 import { enqueueJob } from "@/lib/upstash/qstash";
+import { crmService } from "@/services/crm";
 import {
   AutomationRule,
   AutomationTrigger,
@@ -524,6 +525,27 @@ class RuleEngine {
         );
         break;
 
+      case "create_crm_booking":
+        await this.executeCreateCRMBooking(
+          action.config as { bookingType: string; scheduledDate?: string; notes?: string },
+          context
+        );
+        break;
+
+      case "update_crm_customer":
+        await this.executeUpdateCRMCustomer(
+          action.config as { fields: Record<string, string> },
+          context
+        );
+        break;
+
+      case "add_crm_note":
+        await this.executeAddCRMNote(
+          action.config as { content: string },
+          context
+        );
+        break;
+
       default:
         console.warn(`Unhandled action type: ${action.type}`);
     }
@@ -732,6 +754,124 @@ class RuleEngine {
       },
       body: body ? JSON.stringify(JSON.parse(body)) : undefined,
     });
+  }
+
+  /**
+   * Execute create_crm_booking action
+   */
+  private async executeCreateCRMBooking(
+    config: { bookingType: string; scheduledDate?: string; notes?: string },
+    context: ExecutionContext
+  ): Promise<void> {
+    if (!context.customerId) {
+      throw new Error("Customer ID required for create_crm_booking");
+    }
+
+    // Get CRM customer ID from our customer record
+    const supabase = await createServiceClient();
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("crm_customer_id")
+      .eq("id", context.customerId)
+      .single();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const crmCustomerId = (customer as any)?.crm_customer_id;
+    if (!crmCustomerId) {
+      console.warn(`No CRM customer ID for customer ${context.customerId}`);
+      return;
+    }
+
+    const notes = config.notes
+      ? this.interpolateTemplate(config.notes, context.variables)
+      : undefined;
+
+    const scheduledDate = config.scheduledDate
+      ? this.interpolateTemplate(config.scheduledDate, context.variables)
+      : new Date().toISOString().split("T")[0];
+
+    await crmService.createBooking({
+      customerId: crmCustomerId,
+      serviceType: config.bookingType,
+      bookingDate: scheduledDate,
+      notes,
+    });
+  }
+
+  /**
+   * Execute update_crm_customer action
+   */
+  private async executeUpdateCRMCustomer(
+    config: { fields: Record<string, string> },
+    context: ExecutionContext
+  ): Promise<void> {
+    if (!context.customerId) {
+      throw new Error("Customer ID required for update_crm_customer");
+    }
+
+    const supabase = await createServiceClient();
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("crm_customer_id")
+      .eq("id", context.customerId)
+      .single();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const crmCustomerId = (customer as any)?.crm_customer_id;
+    if (!crmCustomerId) {
+      console.warn(`No CRM customer ID for customer ${context.customerId}`);
+      return;
+    }
+
+    // Interpolate template variables in field values
+    const interpolatedFields: Record<string, string> = {};
+    for (const [key, value] of Object.entries(config.fields)) {
+      interpolatedFields[key] = this.interpolateTemplate(value, context.variables);
+    }
+
+    await crmService.updateCustomer(crmCustomerId, interpolatedFields);
+  }
+
+  /**
+   * Execute add_crm_note action
+   */
+  private async executeAddCRMNote(
+    config: { content: string },
+    context: ExecutionContext
+  ): Promise<void> {
+    if (!context.customerId) {
+      throw new Error("Customer ID required for add_crm_note");
+    }
+
+    const supabase = await createServiceClient();
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("crm_customer_id")
+      .eq("id", context.customerId)
+      .single();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const crmCustomerId = (customer as any)?.crm_customer_id;
+    if (!crmCustomerId) {
+      console.warn(`No CRM customer ID for customer ${context.customerId}`);
+      return;
+    }
+
+    const content = this.interpolateTemplate(config.content, context.variables);
+
+    // Use CRM service to add note, fall back to internal notes if CRM fails
+    try {
+      await crmService.addNote(crmCustomerId, content);
+    } catch {
+      // Fallback: store note in our own database
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any).from("internal_notes").insert({
+        conversation_id: context.conversationId,
+        tenant_id: context.tenantId,
+        author_id: "system",
+        content: `[CRM Note] ${content}`,
+      });
+    }
   }
 
   /**

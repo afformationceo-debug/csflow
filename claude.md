@@ -1765,7 +1765,24 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 - [x] 설정 메인 페이지 (`/settings`) - 5탭 구성 (일반/AI/번역/알림/채널) ✅
 - [x] Playwright E2E 렌더링 검증 완료 ✅
 
-#### 7.14 전체 UI/UX 업그레이드 ✅
+#### 7.14 LLM 7개 기능 전체 구현 완료 ✅
+- [x] **기능 1: 담당자 수동 번역** - `POST /api/messages` 엔드포인트 + DeepL `to_customer` 번역 + QStash 발송 ✅
+- [x] **기능 2: AI RAG 파이프라인** - 이전 Phase에서 완료 (pgvector + RRF + GPT-4/Claude) ✅
+- [x] **기능 3: 리마인드 AI** - `/api/jobs/check-no-response` 크론 API + Slack 알림 + 에스컬레이션 자동 생성 ✅
+- [x] **기능 4: 이미지 인식** - LINE/Meta 웹훅 Step 5.5에 `analyzeImage()` (GPT-4V) 연결 ✅
+- [x] **기능 5: 음성 인식** - LINE/Meta 웹훅 Step 5.5에 `transcribeVoiceFromUrl()` (Whisper) 연결 ✅
+- [x] **기능 6: CRM 자동 액션** - `rule-engine.ts`에 `create_crm_booking/update_crm_customer/add_crm_note` 핸들러 추가 ✅
+- [x] **기능 7: 자동 태그** - 이전 Phase에서 완료 (`add_customer_tag/update_consultation_tag`) ✅
+- [x] TypeScript 빌드 에러 수정 (spread types fix in webhook routes) ✅
+- [x] `claude.ai.md` LLM 감사 문서 전체 업데이트 (7/7 완료) ✅
+
+#### 7.15 Vercel 배포 설정 ✅
+- [x] `vercel.json` 생성 (루트 디렉토리 → `web/` 서브디렉토리 빌드 설정) ✅
+- [x] `buildCommand: "cd web && npm install && npm run build"` ✅
+- [x] `outputDirectory: "web/.next"` ✅
+- [x] 404 NOT_FOUND 오류 수정 (Root Directory 미설정 문제) ✅
+
+#### 7.16 전체 UI/UX 업그레이드 ✅
 - [x] `globals.css` 업그레이드 - `card-3d`, `hero-gradient`, `ai-glow-pulse`, `progress-shine`, `float-slow`, `float-medium`, `animate-in-scale` CSS 클래스 추가 ✅
 - [x] **대시보드** (`/dashboard`) - 시간대별 인사, hero gradient, AI Insight 카드, card-3d 효과 ✅
 - [x] **통합 인박스** (`/inbox`) - 3패널 입장 애니메이션, AI 어시스턴트 라벨, amber 내부노트, AnimatePresence 필터링 ✅

@@ -8,6 +8,8 @@ import { translationService, SupportedLanguage } from "@/services/translation";
 import { ragPipeline } from "@/services/ai";
 import { serverEscalationService } from "@/services/escalations";
 import { enqueueJob } from "@/lib/upstash/qstash";
+import { analyzeImage } from "@/services/ai/image-analysis";
+import { transcribeVoiceFromUrl } from "@/services/ai/voice-processing";
 
 // Disable body parsing for signature verification
 export const dynamic = "force-dynamic";
@@ -150,6 +152,77 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
       translatedText,
       "KO"
     );
+  }
+
+  // 5.5 Process image or audio messages
+  if (message.contentType === "image" && message.mediaUrl) {
+    try {
+      const analysis = await analyzeImage(message.mediaUrl, {
+        tenantId,
+        context: messageText,
+        language: originalLanguage === "KO" ? "ko" : originalLanguage?.toLowerCase(),
+      });
+      // Use image description as the message text for RAG
+      messageText = analysis.suggestedResponse || analysis.description;
+      // Store analysis in message metadata
+      await (supabase.from("messages") as any)
+        .update({
+          content: messageText,
+          metadata: {
+            ...(savedMessage.metadata as Record<string, unknown> || {}),
+            image_analysis: {
+              category: analysis.category,
+              tags: analysis.tags,
+              medical_relevance: analysis.medicalRelevance,
+              confidence: analysis.confidence,
+            },
+          },
+        })
+        .eq("id", savedMessage.id);
+    } catch (e) {
+      console.error("Image analysis failed:", e);
+    }
+  }
+
+  if (message.contentType === "audio" && message.mediaUrl) {
+    try {
+      const transcription = await transcribeVoiceFromUrl(message.mediaUrl, {
+        language: originalLanguage?.toLowerCase(),
+      });
+      // Use transcribed text for RAG
+      messageText = transcription.text;
+      // Store transcription in message
+      await (supabase.from("messages") as any)
+        .update({
+          content: transcription.text,
+          metadata: {
+            ...(savedMessage.metadata as Record<string, unknown> || {}),
+            voice_transcription: {
+              duration: transcription.duration,
+              confidence: transcription.confidence,
+              language: transcription.language,
+              segments: transcription.segments,
+            },
+          },
+        })
+        .eq("id", savedMessage.id);
+
+      // Also translate transcription to Korean if needed
+      if (transcription.language !== "ko") {
+        const translation = await translationService.translateForCS(
+          transcription.text,
+          "to_agent"
+        );
+        translatedText = translation.text;
+        await serverMessageService.updateTranslation(
+          savedMessage.id,
+          translation.text,
+          "KO"
+        );
+      }
+    } catch (e) {
+      console.error("Voice transcription failed:", e);
+    }
   }
 
   // 6. Check if AI is enabled for this conversation and tenant
