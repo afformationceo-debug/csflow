@@ -560,6 +560,9 @@ export default function InboxPage() {
   const [isTranslating, setIsTranslating] = useState(false);
   const translationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Runtime translation cache for old messages without translatedContent
+  const [runtimeTranslations, setRuntimeTranslations] = useState<Record<string, string>>({});
+
   // DB state
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [dbConversations, setDbConversations] = useState<Conversation[]>([]);
@@ -1942,9 +1945,59 @@ export default function InboxPage() {
                                   )}
                                   {/* Main message content: Show customer language version */}
                                   <p className="text-sm leading-relaxed">
-                                    {(msg.sender === "agent" || msg.sender === "ai") && msg.translatedContent
-                                      ? msg.translatedContent
-                                      : msg.content}
+                                    {(() => {
+                                      // For agent/AI messages to non-Korean customers
+                                      if ((msg.sender === "agent" || msg.sender === "ai")) {
+                                        const customerLang = selectedConversation?.customer.language?.toUpperCase();
+
+                                        // If customer is Korean, show Korean content
+                                        if (!customerLang || customerLang === "KO") {
+                                          return msg.content;
+                                        }
+
+                                        // If we have translation in DB, use it
+                                        if (msg.translatedContent) {
+                                          return msg.translatedContent;
+                                        }
+
+                                        // Check runtime translation cache
+                                        if (runtimeTranslations[msg.id]) {
+                                          return runtimeTranslations[msg.id];
+                                        }
+
+                                        // For old messages without translation, show Korean with fallback request
+                                        // Trigger translation in background
+                                        if (msg.content && !msg.id.startsWith("optimistic-")) {
+                                          setTimeout(() => {
+                                            fetch("/api/translate", {
+                                              method: "POST",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({
+                                                text: msg.content,
+                                                targetLanguage: customerLang,
+                                                sourceLanguage: "KO",
+                                              }),
+                                            })
+                                            .then(res => res.json())
+                                            .then(data => {
+                                              if (data.translatedText) {
+                                                setRuntimeTranslations(prev => ({
+                                                  ...prev,
+                                                  [msg.id]: data.translatedText
+                                                }));
+                                              }
+                                            })
+                                            .catch(() => {});
+                                          }, 100);
+                                        }
+
+                                        // Show Korean as fallback while translating
+                                        return msg.content;
+                                      }
+
+                                      // For customer messages, show as-is
+                                      return msg.content;
+                                    })()}
                                   </p>
                                   {/* Translation toggle: Show Korean version for reference */}
                                   {showTranslation && msg.translatedContent && (

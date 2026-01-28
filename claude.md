@@ -6797,6 +6797,261 @@ import { UserCircle } from "lucide-react";
 
 #### Auto-Registration Pattern
 - Webhook 수신 시 `getOrCreateCustomer()` 호출
+
+---
+
+## 27. 인박스 번역 시스템 근본 수정 (2026-01-29)
+
+### 27.1 문제 상황
+
+**사용자 반복 보고 (3회):**
+1. EN 고객에게 AI 메시지 전송 시 **한국어로 표시**됨 (영어로 표시되어야 함)
+2. "한국어 의미" 토글 섹션에 **영어가 표시**됨 (한국어가 표시되어야 함)
+3. 총 대화 수가 **항상 1로 표시**됨 (실제 개수로 표시되어야 함)
+4. 수신/발신 메시지 카운트가 **0으로 돌아감** (실시간 카운트되어야 함)
+
+### 27.2 근본 원인 분석
+
+#### Production API 데이터 확인
+```bash
+curl https://csflow.vercel.app/api/conversations/.../messages
+# Result:
+{
+  "sender": null,            # ← sender_type 필드 누락
+  "content": "안녕하세요...",  # ← 한국어만 저장됨
+  "translatedContent": null,  # ← 번역 없음
+  "direction": "outbound"
+}
+```
+
+**발견된 근본 문제:**
+1. **`translateToCustomerLanguage` 파라미터 미전달**
+   - 프론트엔드 → API 호출 시 이 파라미터를 전달하지 않음
+   - API는 번역을 시도하지 않음 → `translated_content` 필드가 `null`
+   - UI는 `translatedContent`가 없으면 `content`(한국어)를 표시 → 거꾸로 보임
+
+2. **변수명 불일치**
+   - 코드: `autoTranslate` 사용
+   - 실제 state: `autoTranslateEnabled`
+   - → 파라미터가 `undefined`로 전달됨
+
+3. **총 대화 수 필터링 로직 복잡**
+   - `dbConversations` 로컬 state를 복잡하게 필터링
+   - 필터 조건이 정확하지 않아 항상 0개 반환 → fallback으로 API 값 사용
+   - 그런데 실제 DB에 1개만 있어서 "1"이 맞는 값이었음
+
+### 27.3 수정 사항
+
+#### Fix 1: 번역 파라미터 추가 (2곳)
+
+**위치 1: 일반 메시지 전송 (Enter 키)**
+```typescript
+// Before (inbox/page.tsx:2377-2383)
+body: JSON.stringify({
+  conversationId: selectedConversation.id,
+  content,
+  isInternalNote: wasInternalNote,
+  targetLanguage: !wasInternalNote ? targetLanguage : undefined,
+}),
+
+// After
+body: JSON.stringify({
+  conversationId: selectedConversation.id,
+  content,
+  isInternalNote: wasInternalNote,
+  translateToCustomerLanguage: !wasInternalNote && autoTranslateEnabled, // ← NEW
+  targetLanguage: !wasInternalNote ? targetLanguage : undefined,
+}),
+```
+
+**위치 2: AI 제안 바로 전송 버튼**
+```typescript
+// Before (inbox/page.tsx:2178-2188)
+body: JSON.stringify({
+  conversationId: selectedConversation.id,
+  content,
+  targetLanguage,
+  senderType: "ai",
+  aiMetadata: { ... },
+}),
+
+// After
+body: JSON.stringify({
+  conversationId: selectedConversation.id,
+  content,
+  translateToCustomerLanguage: autoTranslateEnabled, // ← NEW
+  targetLanguage,
+  senderType: "ai",
+  aiMetadata: { ... },
+}),
+```
+
+#### Fix 2: 총 대화 수 단순화
+
+**Before (inbox/page.tsx:2865-2872):**
+```typescript
+{(() => {
+  const localCount = dbConversations.filter(c => {
+    const cid = (c as any)._customerId;
+    const selectedCid = (selectedConversation as any)?._customerId;
+    return cid && selectedCid && cid === selectedCid;
+  }).length;
+  return localCount > 0 ? localCount : dbCustomerProfile.totalConversations;
+})()}
+```
+
+**After:**
+```typescript
+{dbCustomerProfile.totalConversations || 0}
+```
+
+**근거:** API가 DB에서 정확히 카운트하므로 복잡한 로컬 필터링 불필요
+
+#### Fix 3: 메시지 방향 필드
+
+**확인 결과: 이미 올바르게 작동 중**
+- Line 891: DB 조회 시 `sender_type` → `sender` 매핑 ✓
+- Line 937: Realtime 수신 시 `sender_type` → `sender` 매핑 ✓
+- Line 898, 944: `direction` 필드 매핑 ✓
+- 수신/발신 카운트 (Line 2886, 2890): `direction === "inbound"/"outbound"` 필터링 ✓
+
+### 27.4 데이터 흐름 (수정 후)
+
+#### 메시지 전송 플로우
+```
+[프론트엔드 - 한국어 입력]
+  ↓ autoTranslateEnabled: true
+  ↓ translateToCustomerLanguage: true
+[POST /api/messages]
+  ↓ translationService.translateForCS("한국어", "EN")
+  ↓ DeepL API 호출
+[DB 저장]
+  - content: "안녕하세요..." (한국어 원문)
+  - translated_content: "Hello..." (영어 번역)
+  - sender_type: "agent" / "ai"
+  - direction: "outbound"
+
+[프론트엔드 메시지 표시]
+  ↓ EN 고객 대화
+  ↓ msg.sender === "ai" && msg.translatedContent
+  ↓ 메인 메시지: translatedContent (영어) ← 고객이 읽는 버전
+  ↓ 토글 버튼 클릭 시: content (한국어) ← 참고용
+```
+
+#### 총 대화 수 플로우
+```
+[고객 프로필 조회]
+  ↓ GET /api/customers/:id/profile
+  ↓ SQL: SELECT COUNT(*) FROM conversations WHERE customer_id = :id
+[응답]
+  - totalConversations: 1 (실제 DB 카운트)
+
+[프론트엔드 표시]
+  ↓ dbCustomerProfile.totalConversations
+  ↓ 1 ← 정확한 값
+```
+
+### 27.5 파일 변경 사항
+
+#### 수정 파일 (1개)
+**`/web/src/app/(dashboard)/inbox/page.tsx`**
+- Line 2381: `translateToCustomerLanguage` 파라미터 추가 (Enter 전송)
+- Line 2181: `translateToCustomerLanguage` 파라미터 추가 (AI 전송)
+- Line 2864-2873: 총 대화 수 로직 단순화
+
+**변경 통계:**
+- +4 lines (파라미터 추가)
+- -9 lines (복잡한 필터링 로직 제거)
+- Net: -5 lines
+
+### 27.6 테스트 및 검증
+
+#### 빌드 검증
+```bash
+$ npm run build
+✓ Compiled successfully
+├ 30 pages
+├ 42 API routes
+└ 0 TypeScript errors
+```
+
+#### Production 배포
+```bash
+$ git commit -m "Fix inbox translation and message display issues"
+$ git push origin main
+→ Vercel auto-deployment triggered
+```
+
+#### 예상 동작 (배포 후)
+1. **EN 고객 메시지:**
+   - 메인: "Hello, thank you for..." (영어)
+   - 토글: "안녕하세요, 리주란..." (한국어)
+
+2. **총 대화:**
+   - API 카운트 직접 표시 (현재: 1)
+
+3. **메시지 카운트:**
+   - 수신: N개 (direction === "inbound")
+   - 발신: M개 (direction === "outbound")
+
+### 27.7 커밋 정보
+
+**Commit:** `cd05da1`
+**Message:** "Fix inbox translation and message display issues"
+
+**Summary:**
+- CRITICAL FIX: Enable AI/agent message translation to customer language
+- Add `translateToCustomerLanguage` parameter to API calls
+- Fix `autoTranslate` → `autoTranslateEnabled` variable name
+- Simplify total conversations count logic (use API directly)
+- Root cause: parameter never sent to API → `translated_content` stayed null
+
+**Files Changed:** 1
+**Insertions:** 4
+**Deletions:** 9
+**Net:** -5 lines
+
+---
+
+### 27.8 주요 학습 사항
+
+#### 1. 번역 시스템 아키텍처 이해
+**올바른 구조:**
+```
+content (원문 - 한국어)
+  ↓ API 번역
+translated_content (고객 언어)
+  ↓ UI 표시 로직
+AI/Agent 메시지 → translatedContent 우선 (고객에게 읽기 쉬운 버전)
+Customer 메시지 → content 우선 (이미 고객 언어)
+```
+
+**잘못된 가정:**
+- "API가 자동으로 번역할 것이다" ✗
+- "파라미터 이름이 비슷하면 작동할 것이다" ✗
+- "`content`가 항상 보여질 버전이다" ✗
+
+#### 2. 프론트엔드-백엔드 계약 준수
+- API 문서에 명시된 파라미터는 **정확히** 전달해야 함
+- Optional 파라미터도 의미 있는 값이면 **명시적으로** 전달
+- 변수명 불일치는 **undefined 전달**과 동일 → 기능 미작동
+
+#### 3. Production 데이터 기반 디버깅
+- 가정하지 말고 **실제 API 응답 확인**
+- `curl` + `jq`로 빠르게 검증 가능
+- DB 스키마와 실제 저장된 값의 일치 확인 필수
+
+#### 4. 사용자 좌절 대응
+- 같은 문제 반복 보고 시 → **근본 원인** 재분석 필요
+- 표면적 수정만으로는 해결 안 됨
+- "이전 수정이 작동 안 함" → 가정 재검토, 데이터 흐름 추적
+
+#### 5. 단순성의 중요성
+**Before:** 복잡한 로컬 필터링 + fallback 로직
+**After:** API 값 직접 사용
+
+→ 복잡한 로직은 버그의 온상
+→ 신뢰할 수 있는 단일 소스(API)를 우선
 - channel_user_id 기준 고객 식별
 - 신규 고객 자동 생성 + 초기 프로필 설정
 - 대화 내용 분석으로 점진적 프로필 보강
