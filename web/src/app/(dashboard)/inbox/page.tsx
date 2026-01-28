@@ -837,10 +837,10 @@ export default function InboxPage() {
   }, [searchQuery]);
 
   return (
-    <div className="h-[calc(100vh-7rem)]">
-      <ResizablePanelGroup orientation="horizontal" className="h-full gap-2">
+    <div className="h-full">
+      <ResizablePanelGroup orientation="horizontal" className="h-full">
         {/* ─── Left Panel: Conversation List ─── */}
-        <ResizablePanel defaultSize={28} minSize={20} maxSize={45}>
+        <ResizablePanel id="left" defaultSize="28%" minSize="20%" maxSize="45%">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -1156,10 +1156,10 @@ export default function InboxPage() {
           </motion.div>
         </ResizablePanel>
 
-        <ResizableHandle withHandle className="mx-0.5" />
+        <ResizableHandle withHandle />
 
         {/* ─── Center Panel: Chat Area ─── */}
-        <ResizablePanel defaultSize={44} minSize={30}>
+        <ResizablePanel id="center" defaultSize="44%" minSize="30%">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1647,10 +1647,10 @@ export default function InboxPage() {
           </motion.div>
         </ResizablePanel>
 
-        <ResizableHandle withHandle className="mx-0.5" />
+        <ResizableHandle withHandle />
 
         {/* ─── Right Panel: Customer Profile ─── */}
-        <ResizablePanel defaultSize={28} minSize={18} maxSize={40}>
+        <ResizablePanel id="right" defaultSize="28%" minSize="18%" maxSize="40%">
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
