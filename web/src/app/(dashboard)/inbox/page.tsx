@@ -609,6 +609,9 @@ export default function InboxPage() {
   // AI recommendation state (Issue 1)
   const [aiSuggestion, setAiSuggestion] = useState<{ original: string; korean: string } | null>(null);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [ragLogs, setRagLogs] = useState<string[]>([]);
+  const [ragSources, setRagSources] = useState<any[]>([]);
+  const [showRagLogs, setShowRagLogs] = useState(false);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1088,6 +1091,8 @@ export default function InboxPage() {
 
     setIsAiGenerating(true);
     setAiSuggestion(null);
+    setRagLogs([]);
+    setRagSources([]);
     fetch(`/api/conversations/${selectedConversation.id}/ai-suggest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1096,6 +1101,12 @@ export default function InboxPage() {
       .then(data => {
         if (data.suggestion) {
           setAiSuggestion(data.suggestion);
+        }
+        if (data.logs) {
+          setRagLogs(data.logs);
+        }
+        if (data.sources) {
+          setRagSources(data.sources);
         }
       })
       .catch(() => {
@@ -1111,6 +1122,8 @@ export default function InboxPage() {
   useEffect(() => {
     setAiSuggestion(null);
     setIsAiGenerating(false);
+    setRagLogs([]);
+    setRagSources([]);
   }, [selectedConversation?.id]);
 
   // Auto-detect interests/concerns when messages change
@@ -2181,6 +2194,32 @@ export default function InboxPage() {
                               </div>
                               <p className="text-xs text-muted-foreground">{aiSuggestion.korean}</p>
                             </div>
+
+                            {/* RAG Execution Logs */}
+                            {ragLogs.length > 0 && (
+                              <details
+                                className="mt-2 pt-2 border-t border-violet-100 dark:border-violet-900"
+                                open={showRagLogs}
+                                onToggle={(e) => setShowRagLogs((e.target as HTMLDetailsElement).open)}
+                              >
+                                <summary className="cursor-pointer text-[10px] font-medium text-violet-600 dark:text-violet-400 flex items-center gap-1 hover:text-violet-700 dark:hover:text-violet-300 transition-colors">
+                                  🔍 RAG 실행 로그 ({ragLogs.length}개)
+                                  {ragSources.length > 0 && (
+                                    <span className="ml-1 text-violet-500/70">· {ragSources.length}개 문서 참조</span>
+                                  )}
+                                </summary>
+                                <div className="mt-2 space-y-0.5 max-h-48 overflow-y-auto">
+                                  {ragLogs.map((log, i) => (
+                                    <div
+                                      key={i}
+                                      className="text-[9px] leading-relaxed font-mono text-muted-foreground/80 whitespace-pre-wrap break-all"
+                                    >
+                                      {log}
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
                           </div>
                         )}
                       </motion.div>

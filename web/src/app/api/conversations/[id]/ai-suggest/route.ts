@@ -1,22 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { ragPipeline } from "@/services/ai/rag-pipeline";
+import type { SupportedLanguage } from "@/services/translation";
 
 export const dynamic = "force-dynamic";
 
 /**
  * POST /api/conversations/[id]/ai-suggest
- * Generate AI recommended response for a conversation
- * Returns both customer-language text and Korean meaning
+ * Generate AI recommended response for a conversation using RAG pipeline
+ * Returns: suggestion + detailed RAG logs for debugging
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logs: string[] = [];
+  const startTime = Date.now();
+
   try {
+    logs.push(`[${new Date().toISOString()}] AI 제안 생성 시작`);
+
     const { id } = await params;
     const supabase = await createServiceClient();
 
     // Fetch the conversation with customer info
+    logs.push("✓ 대화 정보 조회 중...");
     const { data: conversation } = await (supabase as any)
       .from("conversations")
       .select(`
@@ -27,10 +35,16 @@ export async function POST(
       .single();
 
     if (!conversation) {
-      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      logs.push("✗ 대화를 찾을 수 없습니다");
+      return NextResponse.json({ error: "Conversation not found", logs }, { status: 404 });
     }
 
+    logs.push(`✓ 대화 ID: ${id}`);
+    logs.push(`✓ 고객: ${conversation.customer?.name || "Unknown"}`);
+    logs.push(`✓ 고객 언어: ${conversation.customer?.language || "ko"}`);
+
     // Fetch recent messages for context (last 10)
+    logs.push("✓ 최근 메시지 조회 중 (최대 10개)...");
     const { data: messages } = await (supabase as any)
       .from("messages")
       .select("*")
@@ -39,118 +53,80 @@ export async function POST(
       .limit(10);
 
     const recentMessages = (messages || []).reverse();
-    const customerLang = conversation.customer?.language || "ko";
+    logs.push(`✓ 조회된 메시지: ${recentMessages.length}개`);
+
+    const customerLang = (conversation.customer?.language || "ko") as SupportedLanguage;
     const lastInbound = recentMessages.filter((m: any) => m.direction === "inbound").pop();
 
     if (!lastInbound) {
-      return NextResponse.json({ suggestion: null });
+      logs.push("✗ 고객 메시지가 없습니다");
+      return NextResponse.json({ suggestion: null, logs });
     }
 
-    // Get tenant info for context
+    logs.push(`✓ 마지막 고객 메시지: "${lastInbound.content.substring(0, 50)}..."`);
+
     const tenantId = conversation.tenant_id;
-    let tenantInfo = "";
-    if (tenantId) {
-      const { data: tenant } = await (supabase as any)
-        .from("tenants")
-        .select("name, display_name, specialty")
-        .eq("id", tenantId)
-        .single();
-      if (tenant) {
-        tenantInfo = `병원: ${tenant.display_name || tenant.name} (${tenant.specialty || "종합"})`;
-      }
-    }
 
-    // Build conversation context
-    const contextMessages = recentMessages.map((m: any) => {
-      const role = m.direction === "inbound" ? "고객" : (m.sender_type === "ai" ? "AI" : "상담사");
-      return `${role}: ${m.content}`;
-    }).join("\n");
+    // Build conversation history for RAG
+    const conversationHistory = recentMessages.map((m: any) => ({
+      role: m.direction === "inbound" ? "user" : "assistant",
+      content: m.content,
+    }));
 
-    // Language mapping for prompt
-    const langNames: Record<string, string> = {
-      ja: "일본어", en: "영어", zh: "중국어(번체)", "zh-hans": "중국어(간체)",
-      th: "태국어", vi: "베트남어", ko: "한국어", mn: "몽골어",
-    };
-    const targetLangName = langNames[customerLang.toLowerCase()] || customerLang;
+    logs.push("━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    logs.push("🔍 RAG 파이프라인 실행 중...");
+    logs.push("━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-    // Use OpenAI to generate a suggestion
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      // Fallback: return a template response
-      return NextResponse.json({
-        suggestion: {
-          original: getTemplateSuggestion(customerLang, lastInbound.content),
-          korean: "안녕하세요, 문의 감사합니다. 자세한 안내 도와드리겠습니다.",
-        },
-      });
-    }
-
-    const systemPrompt = `You are a professional medical tourism customer service AI for a Korean hospital.
-${tenantInfo}
-Generate a helpful, friendly response to the customer's latest message.
-You must respond in two parts:
-1. "original": The response in ${targetLangName} (the customer's language)
-2. "korean": The same response translated to Korean
-
-Rules:
-- Be polite, professional and helpful
-- If asking about price, give a general range or suggest a consultation
-- If asking about procedures, provide brief accurate info
-- Keep responses concise (1-3 sentences)
-- Match the customer's language exactly
-- Return valid JSON only: {"original": "...", "korean": "..."}`;
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `대화 맥락:\n${contextMessages}\n\n고객의 최신 메시지에 대한 추천 응답을 생성해주세요.` },
-        ],
-        temperature: 0.7,
-        max_tokens: 300,
-      }),
+    // Use RAG pipeline
+    const ragResult = await ragPipeline.process({
+      query: lastInbound.translated_content || lastInbound.content,
+      tenantId,
+      conversationId: id,
+      customerLanguage: customerLang,
+      conversationHistory,
     });
 
-    if (!response.ok) {
-      return NextResponse.json({
-        suggestion: {
-          original: getTemplateSuggestion(customerLang, lastInbound.content),
-          korean: "안녕하세요, 문의 감사합니다. 자세한 안내 도와드리겠습니다.",
-        },
+    logs.push(`✓ RAG 처리 완료 (${Date.now() - startTime}ms)`);
+    logs.push(`✓ 사용 모델: ${ragResult.model}`);
+    logs.push(`✓ 신뢰도: ${Math.round((ragResult.confidence || 0) * 100)}%`);
+
+    if (ragResult.sources && ragResult.sources.length > 0) {
+      logs.push(`✓ 참조 문서: ${ragResult.sources.length}개`);
+      ragResult.sources.forEach((src, idx) => {
+        logs.push(`  ${idx + 1}. ${src.name} (관련도: ${Math.round((src.relevanceScore || 0) * 100)}%)`);
+        if (src.description) {
+          logs.push(`     → ${src.description.substring(0, 80)}...`);
+        }
       });
+    } else {
+      logs.push("⚠ 참조 문서 없음 (컨텍스트 기반 응답)");
     }
 
-    const aiData = await response.json();
-    const aiContent = aiData.choices?.[0]?.message?.content || "";
-
-    try {
-      // Parse JSON response
-      const cleaned = aiContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      const parsed = JSON.parse(cleaned);
-      return NextResponse.json({
-        suggestion: {
-          original: parsed.original || "",
-          korean: parsed.korean || "",
-        },
-      });
-    } catch {
-      // If JSON parsing fails, use the raw text
-      return NextResponse.json({
-        suggestion: {
-          original: aiContent,
-          korean: aiContent,
-        },
-      });
+    if (ragResult.shouldEscalate) {
+      logs.push(`⚠ 에스컬레이션 권장: ${ragResult.escalationReason}`);
     }
+
+    logs.push("━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    logs.push(`✓ 총 처리 시간: ${Date.now() - startTime}ms`);
+
+    return NextResponse.json({
+      suggestion: {
+        original: ragResult.translatedResponse || ragResult.response,
+        korean: ragResult.response,
+        confidence: ragResult.confidence,
+        shouldEscalate: ragResult.shouldEscalate,
+        escalationReason: ragResult.escalationReason,
+      },
+      logs,
+      sources: ragResult.sources || [],
+    });
   } catch (error) {
+    logs.push(`✗ 오류 발생: ${error instanceof Error ? error.message : "Unknown error"}`);
     console.error("AI suggest error:", error);
-    return NextResponse.json({ error: "Failed to generate suggestion" }, { status: 500 });
+    return NextResponse.json({
+      error: "Failed to generate suggestion",
+      logs
+    }, { status: 500 });
   }
 }
 

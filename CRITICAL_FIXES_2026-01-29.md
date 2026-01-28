@@ -298,10 +298,228 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 
 ---
 
+## 문제 3: RAG 실행 로그 가시성 부족 ✅ 해결
+
+### 증상
+- **사용자 요청**: "ai가 추천답변에 대한 rag어디서 어떻게 했는지 뜨는 실시간 로그에 대한 기록을 보여지게 해주셔야합니다"
+- **문제**: AI 제안 응답이 생성될 때 어떤 지식베이스 문서를 참조했는지, 신뢰도가 어떻게 계산되었는지 등의 내부 과정이 보이지 않음
+- **영향 범위**: CS 담당자가 AI 응답의 근거를 파악하기 어려움
+
+### 근본 원인
+`/web/src/app/api/conversations/[id]/ai-suggest/route.ts`:
+- 기존에는 단순한 GPT-4 호출만 사용
+- RAG 파이프라인을 거치지 않아 지식베이스 참조 정보 없음
+- 실행 과정에 대한 로깅이 전혀 없음
+
+### 해결 방법
+
+#### 1단계: AI Suggest API를 RAG 파이프라인으로 완전 재작성 (라인 1-140)
+```typescript
+import { ragPipeline } from "@/services/ai/rag-pipeline";
+
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const logs: string[] = [];
+  const startTime = Date.now();
+
+  try {
+    logs.push(`[${new Date().toISOString()}] AI 제안 생성 시작`);
+
+    // 1. 대화 정보 조회
+    logs.push("✓ 대화 정보 조회 중...");
+    const { data: conversation } = await supabase
+      .from("conversations")
+      .select(`*, customer:customers(*)`)
+      .eq("id", id)
+      .single();
+
+    logs.push(`✓ 대화 ID: ${id}`);
+    logs.push(`✓ 고객: ${conversation.customer?.name || "Unknown"}`);
+    logs.push(`✓ 고객 언어: ${conversation.customer?.language || "ko"}`);
+
+    // 2. 최근 메시지 조회
+    logs.push("✓ 최근 메시지 조회 중 (최대 10개)...");
+    const { data: messages } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", id)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    logs.push(`✓ 조회된 메시지: ${messages.length}개`);
+
+    // 3. RAG 파이프라인 실행
+    logs.push("━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    logs.push("🔍 RAG 파이프라인 실행 중...");
+    logs.push("━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    const ragResult = await ragPipeline.process({
+      query: lastInbound.translated_content || lastInbound.content,
+      tenantId: conversation.tenant_id,
+      conversationId: id,
+      customerLanguage: customerLang,
+      conversationHistory,
+    });
+
+    logs.push(`✓ RAG 처리 완료 (${Date.now() - startTime}ms)`);
+    logs.push(`✓ 사용 모델: ${ragResult.model}`);
+    logs.push(`✓ 신뢰도: ${Math.round((ragResult.confidence || 0) * 100)}%`);
+
+    // 4. 참조 문서 로깅
+    if (ragResult.sources && ragResult.sources.length > 0) {
+      logs.push(`✓ 참조 문서: ${ragResult.sources.length}개`);
+      ragResult.sources.forEach((src, idx) => {
+        logs.push(`  ${idx + 1}. ${src.name} (관련도: ${Math.round((src.relevanceScore || 0) * 100)}%)`);
+        if (src.description) {
+          logs.push(`     → ${src.description.substring(0, 80)}...`);
+        }
+      });
+    } else {
+      logs.push("⚠ 참조 문서 없음 (컨텍스트 기반 응답)");
+    }
+
+    // 5. 에스컬레이션 경고
+    if (ragResult.shouldEscalate) {
+      logs.push(`⚠ 에스컬레이션 권장: ${ragResult.escalationReason}`);
+    }
+
+    logs.push("━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    logs.push(`✓ 총 처리 시간: ${Date.now() - startTime}ms`);
+
+    // 6. 응답 반환 (로그 포함)
+    return NextResponse.json({
+      suggestion: {
+        original: ragResult.translatedResponse || ragResult.response,
+        korean: ragResult.response,
+        confidence: ragResult.confidence,
+        shouldEscalate: ragResult.shouldEscalate,
+        escalationReason: ragResult.escalationReason,
+      },
+      logs,
+      sources: ragResult.sources || [],
+    });
+  } catch (error) {
+    logs.push(`✗ 오류 발생: ${error instanceof Error ? error.message : "Unknown error"}`);
+    return NextResponse.json({ error: "Failed to generate suggestion", logs }, { status: 500 });
+  }
+}
+```
+
+#### 2단계: 인박스 UI에 로그 표시 추가 (`/web/src/app/(dashboard)/inbox/page.tsx`)
+
+**상태 추가** (라인 610-615):
+```typescript
+const [aiSuggestion, setAiSuggestion] = useState<{ original: string; korean: string } | null>(null);
+const [isAiGenerating, setIsAiGenerating] = useState(false);
+const [ragLogs, setRagLogs] = useState<string[]>([]);
+const [ragSources, setRagSources] = useState<any[]>([]);
+const [showRagLogs, setShowRagLogs] = useState(false);
+```
+
+**API 호출 시 로그 캡처** (라인 1089-1117):
+```typescript
+fetch(`/api/conversations/${selectedConversation.id}/ai-suggest`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+})
+  .then(res => res.json())
+  .then(data => {
+    if (data.suggestion) {
+      setAiSuggestion(data.suggestion);
+    }
+    if (data.logs) {
+      setRagLogs(data.logs);  // 로그 저장
+    }
+    if (data.sources) {
+      setRagSources(data.sources);  // 소스 저장
+    }
+  })
+```
+
+**로그 패널 UI** (라인 2195-2225):
+```typescript
+{/* RAG Execution Logs */}
+{ragLogs.length > 0 && (
+  <details
+    className="mt-2 pt-2 border-t border-violet-100 dark:border-violet-900"
+    open={showRagLogs}
+    onToggle={(e) => setShowRagLogs((e.target as HTMLDetailsElement).open)}
+  >
+    <summary className="cursor-pointer text-[10px] font-medium text-violet-600 dark:text-violet-400 flex items-center gap-1 hover:text-violet-700 dark:hover:text-violet-300 transition-colors">
+      🔍 RAG 실행 로그 ({ragLogs.length}개)
+      {ragSources.length > 0 && (
+        <span className="ml-1 text-violet-500/70">· {ragSources.length}개 문서 참조</span>
+      )}
+    </summary>
+    <div className="mt-2 space-y-0.5 max-h-48 overflow-y-auto">
+      {ragLogs.map((log, i) => (
+        <div
+          key={i}
+          className="text-[9px] leading-relaxed font-mono text-muted-foreground/80 whitespace-pre-wrap break-all"
+        >
+          {log}
+        </div>
+      ))}
+    </div>
+  </details>
+)}
+```
+
+**대화 전환 시 로그 초기화** (라인 1121-1126):
+```typescript
+useEffect(() => {
+  setAiSuggestion(null);
+  setIsAiGenerating(false);
+  setRagLogs([]);
+  setRagSources([]);
+}, [selectedConversation?.id]);
+```
+
+### 수정된 파일
+- `/web/src/app/api/conversations/[id]/ai-suggest/route.ts` (완전 재작성, 140줄)
+- `/web/src/app/(dashboard)/inbox/page.tsx` (로그 상태 및 UI 추가, 5곳 수정)
+
+### 검증 결과
+- ✅ AI 제안 생성 시 RAG 파이프라인 실행
+- ✅ 실시간 로그에 대화 조회, 메시지 로딩, RAG 실행, 참조 문서, 신뢰도, 처리 시간 표시
+- ✅ 참조 문서 목록 및 관련도 점수 표시
+- ✅ 에스컬레이션 권장 여부 표시
+- ✅ 접히는 로그 패널로 UI 정리
+- ✅ 대화 전환 시 로그 자동 초기화
+
+### 로그 예시
+```
+[2026-01-29T12:34:56.789Z] AI 제안 생성 시작
+✓ 대화 정보 조회 중...
+✓ 대화 ID: abc-123-def
+✓ 고객: 田中太郎
+✓ 고객 언어: JA
+✓ 최근 메시지 조회 중 (최대 10개)...
+✓ 조회된 메시지: 5개
+✓ 마지막 고객 메시지: "ラシック手術の費用はいくらですか？..."
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 RAG 파이프라인 실행 중...
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ RAG 처리 완료 (1234ms)
+✓ 사용 모델: gpt-4
+✓ 신뢰도: 92%
+✓ 참조 문서: 3개
+  1. 라식 수술 가격표 (관련도: 95%)
+     → 2024년 라식 수술 양안 기준 가격: 150만원~200만원. 개인별 시력 상태에...
+  2. 라식/라섹 비교 안내 (관련도: 87%)
+     → 라식과 라섹의 차이점 및 적합한 환자군 안내...
+  3. 수술 후 관리 가이드 (관련도: 72%)
+     → 수술 후 회복 기간 및 주의사항...
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ 총 처리 시간: 1234ms
+```
+
+---
+
 ## 결론
 
-두 가지 심각한 프로덕션 이슈를 근본 원인부터 해결했습니다:
+세 가지 심각한 프로덕션 이슈를 근본 원인부터 해결했습니다:
 1. ✅ 에이전트 메시지 표시 오류 → UI 로직 수정
 2. ✅ 고객 언어 자동 감지 오류 → Webhook 언어 감지 로직 수정
+3. ✅ RAG 실행 로그 가시성 부족 → RAG 파이프라인 + 로그 UI 구현
 
 모든 수정 사항은 하위 호환성을 유지하며, 기존 데이터를 자동으로 수정합니다.
