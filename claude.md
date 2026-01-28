@@ -185,6 +185,60 @@
   - PATCH `/api/customers/[id]/profile` 엔드포인트 신규 생성
   - Optimistic UI: 로컬 상태 즉시 반영 + 백그라운드 DB 저장
 
+#### 11. 배포 에러 수정 (2026-01-29) ✅ NEW
+- **shadcn/ui table 컴포넌트 누락 에러 해결**
+  - `/web/src/components/ui/table.tsx` 생성 (`npx shadcn@latest add table`)
+  - 고객 관리 페이지 (`/customers`) 빌드 에러 해결
+
+- **TypeScript 타입 에러 수정**
+  - **Framer Motion ease 타입 에러**: `smoothEase` 배열에 `as const` 추가 → readonly tuple 타입 생성
+  - **Message 인터페이스 누락 필드**: `direction?: "inbound" | "outbound"` 필드 추가
+  - 인박스 실시간 메시지 카운트 기능에 필요한 타입 정의 완성
+
+- **배포 결과**
+  - TypeScript 빌드 0 에러 (31 pages, 48 API routes)
+  - Commit: `67b9bcc` - "Fix deployment errors: add table component and TypeScript type fixes"
+  - GitHub 푸시 완료, Vercel 자동 배포 대기
+
+- **데이터베이스 스키마 확인**
+  - `customers` 테이블: `/supabase/migrations/001_initial_schema.sql` (lines 60-75) 이미 정의됨
+  - 필드: id, tenant_id, name, phone, email, country, language, profile_image_url, tags (TEXT[]), metadata (JSONB), crm_customer_id
+  - `customer_channels` 테이블: 고객-채널 연결 테이블 이미 정의됨
+  - Supabase 마이그레이션 적용 필요 (SQL Editor에서 수동 실행)
+
+#### 12. 인박스 버그 수정 (2026-01-29) ✅ NEW
+- **AI 자동응답 언어 혼동 문제 수정** (심각한 버그)
+  - **문제**: EN 고객에게 한국어 응답 표시, 한국어 라벨에 영어 텍스트 표시
+  - **원인**: 인박스 UI에서 AI/에이전트 메시지 표시 로직 오류
+    - `msg.sender === "agent"` 조건에 `"ai"` 케이스 누락
+    - 메인 메시지와 번역 토글 라벨이 정확하지 않음
+  - **수정**: `/web/src/app/(dashboard)/inbox/page.tsx` (lines 1941-1967)
+    - AI/에이전트 메시지: `translatedContent` (고객 언어) 우선 표시
+    - 번역 토글: `content` (한국어 원문) 표시
+    - `msg.sender === "agent" || msg.sender === "ai"` 조건으로 수정
+
+- **수신/발신 메시지 수 실시간 연동 수정**
+  - **문제**: 실제 대화를 나눠도 수신/발신 메시지 수가 0으로 표시됨
+  - **원인**: DB 메시지 매핑 시 `direction` 필드 누락
+  - **수정**:
+    - 초기 로드 시 매핑 (line 899): `direction: msg.direction as "inbound" | "outbound"`
+    - Realtime 구독 매핑 (line 944): `direction: newMsg.direction` 추가
+    - Optimistic UI (lines 2166, 2361, 2441): `direction: "outbound"` 추가
+  - **결과**: 수신/발신 메시지 카운트 실시간 정확히 표시됨
+
+- **고객 관리 기능 연동 개선**
+  - **추가**: "고객 관리" 버튼 (line 2545)
+    - 고객 프로필 헤더에 버튼 추가
+    - 클릭 시 `/customers?highlight={customerId}` 새 탭 열기
+    - `ExternalLink` 아이콘 사용
+
+- **Supabase 마이그레이션 파일 확인 완료**
+  - 총 3개 파일 확인:
+    1. `/supabase/migrations/001_initial_schema.sql` - 기본 스키마 (629 lines)
+    2. `/supabase/migrations/002_message_templates.sql` - 메시지 템플릿 + OAuth 세션 (205 lines)
+    3. `/web/supabase/phase4-schema.sql` - Phase 4 엔터프라이즈 기능
+  - **실행 순서**: 001 → 002 → phase4 (Supabase SQL Editor에서 순차 실행)
+
 ---
 
 ## 경쟁사 분석: Channel.io

@@ -895,6 +895,7 @@ export default function InboxPage() {
             language: msg.original_language || undefined,
             confidence: metadata.ai_confidence ? Math.round(metadata.ai_confidence * 100) : undefined,
             sources: metadata.ai_sources || undefined,
+            direction: msg.direction as "inbound" | "outbound" | undefined,  // ADD: direction field for message count
           };
         });
 
@@ -940,6 +941,7 @@ export default function InboxPage() {
                 language: newMsg.original_language || undefined,
                 confidence: metadata.ai_confidence ? Math.round(metadata.ai_confidence * 100) : undefined,
                 sources: metadata.ai_sources || undefined,
+                direction: newMsg.direction as "inbound" | "outbound" | undefined,  // ADD: direction field
               };
               // Add new message, skip if already present (optimistic or duplicate)
               setDbMessages((prev) => {
@@ -1938,30 +1940,30 @@ export default function InboxPage() {
                                       )}
                                     </div>
                                   )}
-                                  {/* Main message content: Show translated for agent, original for customer */}
+                                  {/* Main message content: Show customer language version */}
                                   <p className="text-sm leading-relaxed">
-                                    {msg.sender === "agent" && msg.translatedContent
-                                      ? msg.translatedContent
-                                      : msg.content}
+                                    {(msg.sender === "agent" || msg.sender === "ai") && msg.translatedContent
+                                      ? msg.translatedContent  // AI/에이전트: 번역본 (고객 언어) 표시
+                                      : msg.content}  // 고객: 원문 표시
                                   </p>
-                                  {/* Translation toggle: Show opposite of main content */}
+                                  {/* Translation toggle: Show Korean version for reference */}
                                   {showTranslation && msg.translatedContent && (
                                     <div className={cn(
                                       "mt-2 pt-2 border-t",
-                                      msg.sender === "agent" ? "border-primary-foreground/20" : "border-border/40"
+                                      (msg.sender === "agent" || msg.sender === "ai") ? "border-primary-foreground/20" : "border-border/40"
                                     )}>
                                       <div className={cn(
                                         "flex items-center gap-1 text-[9px] mb-0.5",
-                                        msg.sender === "agent" ? "text-primary-foreground/70" : "text-muted-foreground"
+                                        (msg.sender === "agent" || msg.sender === "ai") ? "text-primary-foreground/70" : "text-muted-foreground"
                                       )}>
                                         <Globe className="h-2.5 w-2.5" />
-                                        {msg.sender === "agent" ? "원문 (한국어)" : "번역 (한국어)"}
+                                        {(msg.sender === "agent" || msg.sender === "ai") ? "원문 (한국어)" : "번역 (한국어)"}
                                       </div>
                                       <p className={cn(
                                         "text-xs leading-relaxed",
-                                        msg.sender === "agent" ? "text-primary-foreground/80" : "text-muted-foreground"
+                                        (msg.sender === "agent" || msg.sender === "ai") ? "text-primary-foreground/80" : "text-muted-foreground"
                                       )}>
-                                        {msg.sender === "agent" ? msg.content : msg.translatedContent}
+                                        {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
                                       </p>
                                     </div>
                                   )}
@@ -2161,6 +2163,7 @@ export default function InboxPage() {
                                       time: timeStr,
                                       confidence: aiSuggestion.confidence ? Math.round(aiSuggestion.confidence * 100) : undefined,
                                       sources: ragSources,
+                                      direction: "outbound" as const,  // ADD: direction for message count
                                     }]);
                                     // Send via API
                                     fetch("/api/messages", {
@@ -2355,6 +2358,7 @@ export default function InboxPage() {
                                 sender: wasInternalNote ? "internal_note" : "agent",
                                 content,
                                 time: timeStr,
+                                direction: "outbound" as const,  // ADD: direction for message count
                               };
                               setDbMessages((prev) => [...prev, optimisticMsg]);
 
@@ -2434,6 +2438,7 @@ export default function InboxPage() {
                             sender: wasInternalNote ? "internal_note" : "agent",
                             content,
                             time: timeStr,
+                            direction: "outbound" as const,  // ADD: direction for message count
                           };
                           setDbMessages((prev) => [...prev, optimisticMsg]);
 
@@ -2527,6 +2532,24 @@ export default function InboxPage() {
                   <h3 className="font-semibold">{dbCustomerProfile.name}</h3>
                   <div className="flex items-center justify-center gap-1.5 mt-1">
                     <span className="text-xs text-muted-foreground">{dbCustomerProfile.country}</span>
+                  </div>
+
+                  {/* Customer Management Buttons */}
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs rounded-lg"
+                      onClick={() => {
+                        const customerId = (selectedConversation as any)?._customerId;
+                        if (customerId) {
+                          window.open(`/customers?highlight=${customerId}`, "_blank");
+                        }
+                      }}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      고객 관리
+                    </Button>
                   </div>
 
                   {/* Conversion Score */}

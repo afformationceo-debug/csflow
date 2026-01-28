@@ -1376,72 +1376,307 @@ case "create_crm_booking":
 
 ---
 
-### 5.3 Saga 패턴: 분산 트랜잭션
+### 5.3 Saga 패턴: 분산 트랜잭션 (승인 워크플로우 포함)
 
-**예약 생성 트랜잭션**:
+**예약 생성 트랜잭션 (승인 기반)**:
 ```
-[Step 1] CRM 예약 생성
-[Step 2] 로컬 DB 예약 저장
-[Step 3] 고객에게 확인 메시지 전송
-[Step 4] Slack에 알림 전송
+[Step 1] 대기 중 예약 생성 (status: pending_approval)
+[Step 2] 알림 전송 (KakaoTalk Alimtalk + Slack 병렬)
+[Step 3] 승인 대기 (폴링, 24시간 타임아웃)
+[Step 4] CRM 예약 생성 (승인 후에만 실행)
+[Step 5] 로컬 DB 예약 업데이트 (status: approved)
+[Step 6] 고객에게 확인 메시지 전송
 
-실패 시: 전체 Rollback
+실패 시: 전체 Rollback + 에스컬레이션
+```
+
+**인터페이스 정의**:
+```typescript
+interface SagaContext {
+  data: BookingDto;
+  conversationId: string;
+  customerId: string;
+  tenantId: string;
+  requestId: string;
+  executedSteps: { step: SagaStep; result: any }[];
+
+  // Step별 컨텍스트 데이터
+  pendingBookingId?: string;
+  approvalId?: string;
+  crmBookingId?: string;
+  localBookingId?: string;
+  notificationResults?: {
+    kakao?: { success: boolean; messageId?: string; error?: string };
+    slack?: { success: boolean; messageId?: string; error?: string };
+  };
+}
+
+interface SagaStep {
+  name: string;
+  execute: (ctx: SagaContext) => Promise<any>;
+  compensate: (ctx: SagaContext) => Promise<void>;
+}
 ```
 
 **구현**:
 ```typescript
-class BookingSaga {
+class ApprovalBookingSaga {
   private readonly steps: SagaStep[] = [
+    // Step 1: 대기 중 예약 생성
+    {
+      name: "create_pending_booking",
+      execute: async (ctx) => {
+        const { data: booking } = await supabase
+          .from("bookings")
+          .insert({
+            ...ctx.data,
+            status: "pending_approval",
+            customer_id: ctx.customerId,
+            tenant_id: ctx.tenantId,
+            created_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        ctx.pendingBookingId = booking.id;
+        console.log(`[Saga] Pending booking created: ${booking.id}`);
+        return booking;
+      },
+      compensate: async (ctx) => {
+        try {
+          // Rollback: 대기 중 예약 삭제
+          if (ctx.pendingBookingId) {
+            await supabase
+              .from("bookings")
+              .delete()
+              .eq("id", ctx.pendingBookingId);
+            console.log(`[Saga] Deleted pending booking: ${ctx.pendingBookingId}`);
+          }
+        } catch (error) {
+          console.error(`[Saga] Failed to compensate create_pending_booking:`, error);
+        }
+      },
+    },
+
+    // Step 2: 알림 전송 (KakaoTalk + Slack 병렬)
+    {
+      name: "send_notifications",
+      execute: async (ctx) => {
+        const notificationOrchestrator = new NotificationOrchestrator();
+
+        const notificationData = {
+          bookingId: ctx.pendingBookingId!,
+          customerName: ctx.data.customerName,
+          treatmentType: ctx.data.treatmentType,
+          preferredDate: ctx.data.preferredDate,
+          preferredTime: ctx.data.preferredTime,
+          notes: ctx.data.notes,
+        };
+
+        // 병렬 알림 전송
+        const results = await notificationOrchestrator.sendBookingNotifications(
+          ctx.tenantId,
+          notificationData
+        );
+
+        ctx.notificationResults = results;
+
+        // 알림 실패 시 에스컬레이션
+        if (!results.kakao?.success && !results.slack?.success) {
+          await escalationService.create({
+            conversationId: ctx.conversationId,
+            reason: "예약 알림 전송 실패 (KakaoTalk, Slack 모두 실패)",
+            priority: "high",
+            metadata: { bookingId: ctx.pendingBookingId, notificationResults: results },
+          });
+          throw new Error("All notification channels failed");
+        }
+
+        console.log(`[Saga] Notifications sent:`, results);
+        return results;
+      },
+      compensate: async (ctx) => {
+        try {
+          // Rollback: 취소 알림 전송
+          if (ctx.notificationResults) {
+            const notificationOrchestrator = new NotificationOrchestrator();
+            await notificationOrchestrator.sendCancellationNotifications(
+              ctx.tenantId,
+              {
+                bookingId: ctx.pendingBookingId!,
+                reason: "시스템 오류로 예약이 취소되었습니다.",
+              }
+            );
+            console.log(`[Saga] Sent cancellation notifications`);
+          }
+        } catch (error) {
+          console.error(`[Saga] Failed to compensate send_notifications:`, error);
+        }
+      },
+    },
+
+    // Step 3: 승인 대기 (폴링)
+    {
+      name: "wait_for_approval",
+      execute: async (ctx) => {
+        const POLL_INTERVAL = 10000; // 10초
+        const TIMEOUT = 24 * 60 * 60 * 1000; // 24시간
+        const startTime = Date.now();
+
+        // 승인 레코드 생성
+        const { data: approval } = await supabase
+          .from("booking_approvals")
+          .insert({
+            booking_id: ctx.pendingBookingId,
+            status: "pending",
+            expires_at: new Date(Date.now() + TIMEOUT).toISOString(),
+          })
+          .select()
+          .single();
+
+        ctx.approvalId = approval.id;
+
+        // 폴링 루프
+        while (Date.now() - startTime < TIMEOUT) {
+          const { data: currentApproval } = await supabase
+            .from("booking_approvals")
+            .select("*")
+            .eq("id", ctx.approvalId)
+            .single();
+
+          if (currentApproval.status === "approved") {
+            console.log(`[Saga] Booking approved by ${currentApproval.approved_by}`);
+            return currentApproval;
+          }
+
+          if (currentApproval.status === "rejected") {
+            throw new Error(`Booking rejected: ${currentApproval.rejection_reason}`);
+          }
+
+          // 10초 대기
+          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+        }
+
+        // 타임아웃
+        await supabase
+          .from("booking_approvals")
+          .update({ status: "expired" })
+          .eq("id", ctx.approvalId);
+
+        throw new Error("Approval timeout (24 hours)");
+      },
+      compensate: async (ctx) => {
+        try {
+          // Rollback: 승인 레코드 취소
+          if (ctx.approvalId) {
+            await supabase
+              .from("booking_approvals")
+              .update({ status: "cancelled" })
+              .eq("id", ctx.approvalId);
+            console.log(`[Saga] Cancelled approval: ${ctx.approvalId}`);
+          }
+        } catch (error) {
+          console.error(`[Saga] Failed to compensate wait_for_approval:`, error);
+        }
+      },
+    },
+
+    // Step 4: CRM 예약 생성 (승인 후에만 실행!)
     {
       name: "create_crm_booking",
       execute: async (ctx) => {
         const crmBooking = await crmService.createBooking(ctx.data, ctx.requestId);
         ctx.crmBookingId = crmBooking.id;
+        console.log(`[Saga] CRM booking created: ${crmBooking.id}`);
         return crmBooking;
       },
       compensate: async (ctx) => {
-        // Rollback: CRM 예약 삭제
-        await crmService.deleteBooking(ctx.crmBookingId);
+        try {
+          // Rollback: CRM 예약 삭제
+          if (ctx.crmBookingId) {
+            await crmService.deleteBooking(ctx.crmBookingId);
+            console.log(`[Saga] Deleted CRM booking: ${ctx.crmBookingId}`);
+          }
+        } catch (error) {
+          console.error(`[Saga] Failed to compensate create_crm_booking:`, error);
+        }
       },
     },
+
+    // Step 5: 로컬 DB 예약 업데이트
     {
-      name: "create_local_booking",
+      name: "update_local_booking",
       execute: async (ctx) => {
         const { data: booking } = await supabase
           .from("bookings")
-          .insert({ crm_booking_id: ctx.crmBookingId, ...ctx.data })
+          .update({
+            crm_booking_id: ctx.crmBookingId,
+            status: "approved",
+            approved_at: new Date().toISOString(),
+          })
+          .eq("id", ctx.pendingBookingId)
           .select()
           .single();
+
         ctx.localBookingId = booking.id;
+        console.log(`[Saga] Local booking updated to approved: ${booking.id}`);
         return booking;
       },
       compensate: async (ctx) => {
-        // Rollback: 로컬 예약 삭제
-        await supabase.from("bookings").delete().eq("id", ctx.localBookingId);
+        try {
+          // Rollback: 예약 상태 복원
+          if (ctx.pendingBookingId) {
+            await supabase
+              .from("bookings")
+              .update({
+                crm_booking_id: null,
+                status: "pending_approval",
+              })
+              .eq("id", ctx.pendingBookingId);
+            console.log(`[Saga] Reverted booking status to pending_approval`);
+          }
+        } catch (error) {
+          console.error(`[Saga] Failed to compensate update_local_booking:`, error);
+        }
       },
     },
+
+    // Step 6: 고객에게 확인 메시지 전송
     {
       name: "send_confirmation",
       execute: async (ctx) => {
         await messageService.send({
           conversationId: ctx.conversationId,
-          content: `예약이 확정되었습니다! 예약 번호: ${ctx.crmBookingId}`,
+          content: `✅ 예약이 확정되었습니다!\n\n예약 번호: ${ctx.crmBookingId}\n일시: ${ctx.data.preferredDate} ${ctx.data.preferredTime}\n담당자가 곧 연락드리겠습니다.`,
         });
+        console.log(`[Saga] Confirmation message sent`);
       },
       compensate: async (ctx) => {
-        // Rollback: 취소 메시지 전송
-        await messageService.send({
-          conversationId: ctx.conversationId,
-          content: "예약 처리 중 오류가 발생하여 취소되었습니다.",
-        });
+        try {
+          // Rollback: 취소 메시지 전송
+          await messageService.send({
+            conversationId: ctx.conversationId,
+            content: "죄송합니다. 예약 처리 중 오류가 발생하여 취소되었습니다. 다시 시도해 주세요.",
+          });
+          console.log(`[Saga] Sent cancellation message to customer`);
+        } catch (error) {
+          console.error(`[Saga] Failed to compensate send_confirmation:`, error);
+        }
       },
     },
   ];
 
-  async execute(data: BookingDto, conversationId: string): Promise<BookingResult> {
+  async execute(
+    data: BookingDto,
+    conversationId: string,
+    customerId: string,
+    tenantId: string
+  ): Promise<BookingResult> {
     const context: SagaContext = {
       data,
       conversationId,
+      customerId,
+      tenantId,
       requestId: `saga_${conversationId}_${Date.now()}`,
       executedSteps: [],
     };
@@ -1454,7 +1689,11 @@ class BookingSaga {
         context.executedSteps.push({ step, result });
       }
 
-      return { success: true, bookingId: context.localBookingId };
+      return {
+        success: true,
+        bookingId: context.localBookingId,
+        crmBookingId: context.crmBookingId,
+      };
     } catch (error) {
       console.error(`[Saga] Step failed:`, error);
 
@@ -1462,10 +1701,31 @@ class BookingSaga {
       for (let i = context.executedSteps.length - 1; i >= 0; i--) {
         const { step } = context.executedSteps[i];
         console.log(`[Saga] Compensating step: ${step.name}`);
-        await step.compensate(context);
+        try {
+          await step.compensate(context);
+        } catch (compensateError) {
+          console.error(`[Saga] Compensation failed for ${step.name}:`, compensateError);
+          // 보상 실패는 로깅만 하고 계속 진행
+        }
       }
 
-      return { success: false, error: error.message };
+      // 에스컬레이션 생성
+      await escalationService.create({
+        conversationId,
+        reason: `예약 Saga 실패: ${error.message}`,
+        priority: "high",
+        metadata: {
+          sagaContext: context,
+          error: error.message,
+          stack: error.stack,
+        },
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        pendingBookingId: context.pendingBookingId, // 수동 복구용
+      };
     }
   }
 }
