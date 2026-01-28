@@ -174,6 +174,7 @@ export const ragPipeline = {
         confidence: 0,
         model: "gpt-4",
         retrievedDocuments: [],
+        sources: [],
         shouldEscalate: true,
         escalationReason: "AI 자동응대 비활성화됨",
         processingTimeMs: Date.now() - startTime,
@@ -188,6 +189,7 @@ export const ragPipeline = {
         confidence: 0,
         model: "gpt-4",
         retrievedDocuments: [],
+        sources: [],
         shouldEscalate: true,
         escalationReason: keywordEscalation.reason,
         processingTimeMs: Date.now() - startTime,
@@ -288,7 +290,7 @@ export const ragPipeline = {
           type: "knowledge_base",
           name: doc.title || `문서 #${idx + 1}`,
           description: doc.category,
-          relevanceScore: doc.score,
+          relevanceScore: doc.similarity,
         });
       });
     }
