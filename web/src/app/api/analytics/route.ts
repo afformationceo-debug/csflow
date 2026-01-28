@@ -522,24 +522,35 @@ export async function GET(request: NextRequest) {
           .gte("created_at", prevStartDate)
           .lt("created_at", prevEndDate);
 
-        // 테넌트 AI 메시지
-        const { count: tAiMsg } = await (supabase as any)
-          .from("messages")
-          .select("*", { count: "exact", head: true })
-          .in("conversation_id",
-            (supabase as any).from("conversations").select("id").eq("tenant_id", tenant.id)
-          )
-          .gte("created_at", startDate)
-          .eq("sender_type", "ai");
+        // 테넌트 AI 메시지 - 먼저 conversation IDs를 가져온 후 메시지 카운트
+        const { data: tenantConvIds } = await (supabase as any)
+          .from("conversations")
+          .select("id")
+          .eq("tenant_id", tenant.id);
 
-        const { count: tAgentMsg } = await (supabase as any)
-          .from("messages")
-          .select("*", { count: "exact", head: true })
-          .in("conversation_id",
-            (supabase as any).from("conversations").select("id").eq("tenant_id", tenant.id)
-          )
-          .gte("created_at", startDate)
-          .eq("sender_type", "agent");
+        const tConvIdList = (tenantConvIds || []).map((c: any) => c.id);
+
+        let tAiMsg = 0;
+        let tAgentMsg = 0;
+
+        if (tConvIdList.length > 0) {
+          const { count: aiCount } = await (supabase as any)
+            .from("messages")
+            .select("*", { count: "exact", head: true })
+            .in("conversation_id", tConvIdList)
+            .gte("created_at", startDate)
+            .eq("sender_type", "ai");
+
+          const { count: agentCount } = await (supabase as any)
+            .from("messages")
+            .select("*", { count: "exact", head: true })
+            .in("conversation_id", tConvIdList)
+            .gte("created_at", startDate)
+            .eq("sender_type", "agent");
+
+          tAiMsg = aiCount || 0;
+          tAgentMsg = agentCount || 0;
+        }
 
         const tTotalOut = (tAiMsg || 0) + (tAgentMsg || 0);
         const tAiAccuracy = tTotalOut > 0 ? ((tAiMsg || 0) / tTotalOut * 100) : 0;
