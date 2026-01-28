@@ -1866,6 +1866,53 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 - 한국어 UTF-8 문자 (절대 `\uXXXX` 사용 금지)
 - 친근하고 따뜻한 설명 텍스트 ("~하세요" 어미)
 
+#### 7.18 인박스 3패널 레이아웃 수정 (2026-01-28) ✅
+- [x] **근본 원인 발견**: `react-resizable-panels` v4에서 `defaultSize={28}` (number)은 **28픽셀**로 해석됨. 퍼센트가 아님! ✅
+  - v4 `pt()` 함수: `typeof number → [value, "px"]`, `typeof string → [value, "%"]`
+  - 수정: `defaultSize={28}` → `defaultSize="28%"` (string percentage)
+- [x] `ResizablePanelGroup` className에서 `flex` 제거 (라이브러리 내부 `display:flex` 충돌) ✅
+- [x] 사이드바 collapsed 상태를 Layout과 동기화 (props 전달) ✅
+- [x] 인박스 레이아웃 `h-full` + `flex-1 overflow-hidden p-3` 최적화 ✅
+- [x] 패널 크기: 좌측 28% (대화목록) / 중앙 44% (채팅) / 우측 28% (고객프로필) ✅
+- [x] Playwright 검증: 456px / 716px / 456px (1920x1080 기준) ✅
+
+#### 7.19 메신저 채널 연동 가이드 (2026-01-28)
+
+##### LINE 채널 연동 (완료)
+- **Webhook URL**: `https://csflow.vercel.app/api/webhooks/line`
+- **LINE 자격증명** (.env.local):
+  - `LINE_CHANNEL_ACCESS_TOKEN` ✅
+  - `LINE_CHANNEL_SECRET=4d6ed56d04080afca0d60e42464ec49b` ✅
+  - `LINE_CHANNEL_ID=2008754781` ✅
+  - `LINE_BOT_BASIC_ID=@246kdolz` ✅
+- **LINE Developers Console 설정 필요**:
+  1. https://developers.line.biz/ → 채널 선택
+  2. Messaging API → Webhook settings → URL: `https://csflow.vercel.app/api/webhooks/line`
+  3. "Use webhook" 토글 ON
+  4. "Verify" 버튼 클릭하여 검증
+- **DB 필요**: `channel_accounts` 테이블에 LINE 채널 레코드 필요 (account_id = LINE Bot User ID)
+
+##### Meta Platform 연동 (Facebook/Instagram/WhatsApp)
+- **통합 Webhook URL**: `https://csflow.vercel.app/api/webhooks/meta`
+- **Webhook Verify Token**: `cs_automation_verify_token`
+- **Facebook App ID**: `779249264859459`
+- **Meta Developer Console 설정 필요**:
+  1. https://developers.facebook.com/ → App 선택
+  2. Webhooks → Page subscriptions → Callback URL: `https://csflow.vercel.app/api/webhooks/meta`
+  3. Verify Token: `cs_automation_verify_token`
+  4. 구독 필드: `messages`, `messaging_postbacks`, `messaging_optins`
+  5. Instagram: `instagram_manage_messages` 권한 필요
+  6. WhatsApp: Business Account 연결 + 전화번호 등록 필요
+- **OAuth Redirect URI**: `https://csflow.vercel.app/api/oauth/meta`
+
+##### 연동 전 필수 사전 조건
+1. **Supabase 마이그레이션 실행** (아직 미실행 시):
+   - `supabase/migrations/001_initial_schema.sql`
+   - `supabase/migrations/002_message_templates.sql`
+   - `web/supabase/phase4-schema.sql`
+2. **channel_accounts 테이블에 채널 레코드 등록** (Supabase Dashboard → SQL Editor)
+3. **거래처(tenant) 레코드 생성** (AI 설정 포함)
+
 ---
 
 ## 13. 프로젝트 구조
