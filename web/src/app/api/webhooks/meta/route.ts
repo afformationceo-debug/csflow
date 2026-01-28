@@ -21,8 +21,19 @@ import { transcribeVoiceFromUrl } from "@/services/ai/voice-processing";
 // Disable body parsing for signature verification
 export const dynamic = "force-dynamic";
 
-// Verify token for webhook subscription (set in Meta App Dashboard)
-const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || "cs_automation_verify_token";
+// Verify tokens for webhook subscription (set in each Meta App Dashboard)
+// Supports per-platform verify tokens since FB/IG/WhatsApp may be separate apps
+const VERIFY_TOKENS = [
+  process.env.META_WEBHOOK_VERIFY_TOKEN,
+  process.env.FB_WEBHOOK_VERIFY_TOKEN,
+  process.env.IG_WEBHOOK_VERIFY_TOKEN,
+  process.env.WHATSAPP_VERIFY_TOKEN,
+].filter(Boolean) as string[];
+
+// Fallback if no tokens configured
+if (VERIFY_TOKENS.length === 0) {
+  VERIFY_TOKENS.push("cs_automation_verify_token");
+}
 
 /**
  * Meta Unified Webhook Handler
@@ -33,11 +44,18 @@ export async function POST(request: NextRequest) {
     // Get raw body for signature verification
     const rawBody = await request.text();
     const signature = request.headers.get("x-hub-signature-256") || "";
-    const appSecret = process.env.FACEBOOK_APP_SECRET || "";
 
-    // Verify signature (same for all Meta platforms)
-    if (appSecret && signature) {
-      const isValid = facebookAdapter.validateSignature(rawBody, signature, appSecret);
+    // Try all available app secrets for signature verification
+    // (FB and IG may be separate Meta apps with different secrets)
+    const appSecrets = [
+      process.env.FACEBOOK_APP_SECRET,
+      process.env.INSTAGRAM_APP_SECRET,
+    ].filter(Boolean) as string[];
+
+    if (appSecrets.length > 0 && signature) {
+      const isValid = appSecrets.some((secret) =>
+        facebookAdapter.validateSignature(rawBody, signature, secret)
+      );
       if (!isValid) {
         console.error("Invalid Meta webhook signature");
         return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
@@ -86,7 +104,7 @@ export async function GET(request: NextRequest) {
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+  if (mode === "subscribe" && token && VERIFY_TOKENS.includes(token)) {
     console.log("Meta webhook verified successfully");
     return new NextResponse(challenge, { status: 200 });
   }
