@@ -18,7 +18,51 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const channels = await metaOAuthService.getConnectedChannels(tenantId);
+    // Query channel_accounts directly from Supabase
+    const supabase = await createServiceClient();
+
+    // Resolve tenant ID (demo-tenant-id may not be a real UUID)
+    let resolvedTenantId = tenantId;
+    const { data: existingTenant } = await (supabase as any)
+      .from("tenants")
+      .select("id")
+      .eq("id", tenantId)
+      .maybeSingle();
+
+    if (!existingTenant) {
+      // Use the first available tenant
+      const { data: anyTenant } = await (supabase as any)
+        .from("tenants")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+      if (anyTenant) resolvedTenantId = anyTenant.id;
+    }
+
+    const { data: dbChannels, error } = await (supabase as any)
+      .from("channel_accounts")
+      .select("*")
+      .eq("tenant_id", resolvedTenantId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("DB channel fetch error:", error);
+      // Fallback to meta OAuth service
+      const channels = await metaOAuthService.getConnectedChannels(tenantId);
+      return NextResponse.json({ channels });
+    }
+
+    const channels = (dbChannels || []).map((ch: Record<string, unknown>) => ({
+      id: ch.id,
+      channelType: ch.channel_type,
+      accountName: ch.account_name,
+      accountId: ch.account_id,
+      isActive: ch.is_active,
+      webhookUrl: ch.webhook_url,
+      messageCount: 0,
+      lastActiveAt: "-",
+      createdAt: ch.created_at,
+    }));
 
     return NextResponse.json({ channels });
   } catch (error) {
@@ -35,14 +79,18 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json();
     const {
       tenantId,
       channelType,
-      sessionId,
+      accountName,
       accountId,
+      credentials,
+      // Meta OAuth fields
+      sessionId,
       pageAccessToken,
       systemUserAccessToken,
-    } = await request.json();
+    } = body;
 
     if (!tenantId || !channelType) {
       return NextResponse.json(
@@ -53,7 +101,120 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createServiceClient();
 
-    // Get OAuth session if sessionId provided
+    // Ensure tenant exists (auto-create default tenant if needed)
+    let resolvedTenantId = tenantId;
+    const { data: existingTenant } = await (supabase as any)
+      .from("tenants")
+      .select("id")
+      .eq("id", tenantId)
+      .maybeSingle();
+
+    if (!existingTenant) {
+      // Try to find any existing tenant
+      const { data: anyTenant } = await (supabase as any)
+        .from("tenants")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+
+      if (anyTenant) {
+        resolvedTenantId = anyTenant.id;
+      } else {
+        // Create a default tenant
+        const { data: newTenant, error: tenantError } = await (supabase as any)
+          .from("tenants")
+          .insert({
+            name: "CS Command Center",
+            name_en: "CS Command Center",
+            specialty: "general",
+            settings: {},
+            ai_config: { enabled: true, model: "gpt-4", confidence_threshold: 0.75 },
+          })
+          .select("id")
+          .single();
+
+        if (tenantError) {
+          console.error("Tenant creation error:", tenantError);
+          return NextResponse.json(
+            { error: "기본 거래처 생성 실패" },
+            { status: 500 }
+          );
+        }
+        resolvedTenantId = newTenant.id;
+      }
+    }
+
+    // ── Direct credential-based channels (LINE, KakaoTalk, WeChat) ──
+    const directChannelTypes = ["line", "kakao", "wechat"];
+    if (directChannelTypes.includes(channelType)) {
+      if (!accountName || !accountId) {
+        return NextResponse.json(
+          { error: "accountName and accountId are required" },
+          { status: 400 }
+        );
+      }
+
+      // Check for duplicate
+      const { data: existing } = await (supabase as any)
+        .from("channel_accounts")
+        .select("id")
+        .eq("tenant_id", resolvedTenantId)
+        .eq("channel_type", channelType)
+        .eq("account_id", accountId)
+        .maybeSingle();
+
+      if (existing) {
+        return NextResponse.json(
+          { error: "이미 등록된 채널입니다" },
+          { status: 409 }
+        );
+      }
+
+      const webhookBase = process.env.NEXT_PUBLIC_APP_URL || "https://csflow.vercel.app";
+      const webhookPaths: Record<string, string> = {
+        line: "/api/webhooks/line",
+        kakao: "/api/webhooks/kakao",
+        wechat: "/api/webhooks/wechat",
+      };
+
+      const { data: newChannel, error: insertError } = await (supabase as any)
+        .from("channel_accounts")
+        .insert({
+          tenant_id: resolvedTenantId,
+          channel_type: channelType,
+          account_name: accountName,
+          account_id: accountId,
+          credentials: credentials || {},
+          is_active: true,
+          webhook_url: `${webhookBase}${webhookPaths[channelType]}`,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("Channel insert error:", insertError);
+        return NextResponse.json(
+          { error: "채널 등록 실패: " + insertError.message },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        channel: {
+          id: newChannel.id,
+          channelType: newChannel.channel_type,
+          accountName: newChannel.account_name,
+          accountId: newChannel.account_id,
+          isActive: newChannel.is_active,
+          webhookUrl: newChannel.webhook_url,
+          messageCount: 0,
+          lastActiveAt: "방금 전",
+          createdAt: newChannel.created_at,
+        },
+      });
+    }
+
+    // ── Meta OAuth-based channels (Facebook, Instagram, WhatsApp) ──
     let accessToken = pageAccessToken || systemUserAccessToken;
 
     if (sessionId) {
@@ -80,7 +241,6 @@ export async function POST(request: NextRequest) {
 
     switch (channelType) {
       case "facebook": {
-        // Get page details
         const pages = await metaOAuthService.getFacebookPages(accessToken);
         const page = pages.find((p) => p.id === accountId);
 
@@ -96,7 +256,6 @@ export async function POST(request: NextRequest) {
           page
         );
 
-        // Subscribe to webhook
         await metaOAuthService.subscribeToWebhook(
           page.id,
           page.access_token,
@@ -106,7 +265,6 @@ export async function POST(request: NextRequest) {
       }
 
       case "instagram": {
-        // Get Instagram account details
         const igAccounts =
           await metaOAuthService.getInstagramAccounts(accessToken);
         const igAccount = igAccounts.find((a) => a.id === accountId);
@@ -118,7 +276,6 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Need page access token for Instagram
         const pages = await metaOAuthService.getFacebookPages(accessToken);
         const linkedPage = pages.find(
           (p) => p.instagram_business_account?.id === accountId
@@ -137,7 +294,6 @@ export async function POST(request: NextRequest) {
           linkedPage.access_token
         );
 
-        // Subscribe to webhook
         await metaOAuthService.subscribeToWebhook(
           linkedPage.id,
           linkedPage.access_token,
@@ -154,7 +310,6 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Get WhatsApp accounts
         const wabaAccounts =
           await metaOAuthService.getWhatsAppBusinessAccounts(accessToken);
         const waba = wabaAccounts.find((a) =>
@@ -245,21 +400,51 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const channelId = searchParams.get("channelId");
     const tenantId = searchParams.get("tenantId");
-    const channelType = searchParams.get("channelType") as
-      | "facebook"
-      | "instagram"
-      | "whatsapp";
+    const channelType = searchParams.get("channelType");
     const accountId = searchParams.get("accountId");
 
+    const supabase = await createServiceClient();
+
+    // Support deletion by channel UUID
+    if (channelId) {
+      const { error } = await (supabase as any)
+        .from("channel_accounts")
+        .delete()
+        .eq("id", channelId);
+
+      if (error) throw error;
+      return NextResponse.json({ success: true });
+    }
+
+    // Legacy: deletion by tenantId + channelType + accountId
     if (!tenantId || !channelType || !accountId) {
       return NextResponse.json(
-        { error: "tenantId, channelType, and accountId are required" },
+        { error: "channelId or (tenantId, channelType, accountId) required" },
         { status: 400 }
       );
     }
 
-    await metaOAuthService.disconnectChannel(tenantId, channelType, accountId);
+    // For Meta channels, use OAuth service
+    const metaTypes = ["facebook", "instagram", "whatsapp"];
+    if (metaTypes.includes(channelType)) {
+      await metaOAuthService.disconnectChannel(
+        tenantId,
+        channelType as "facebook" | "instagram" | "whatsapp",
+        accountId
+      );
+    } else {
+      // Direct deletion for LINE, KakaoTalk, WeChat
+      const { error } = await (supabase as any)
+        .from("channel_accounts")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("channel_type", channelType)
+        .eq("account_id", accountId);
+
+      if (error) throw error;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -262,6 +262,10 @@ export default function ChannelsPage() {
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountId, setNewAccountId] = useState("");
   const [newCredentials, setNewCredentials] = useState("");
+  const [newChannelSecret, setNewChannelSecret] = useState("");
+  const [newBotBasicId, setNewBotBasicId] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     fetchChannels().then(setChannels);
@@ -278,28 +282,82 @@ export default function ChannelsPage() {
     setChannels((prev) => prev.map((ch) => (ch.id === id ? { ...ch, isActive: checked } : ch)));
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    try {
+      await fetch(`/api/channels?channelId=${id}`, { method: "DELETE" });
+    } catch {
+      // Best-effort API call; remove from UI regardless
+    }
     setChannels((prev) => prev.filter((ch) => ch.id !== id));
   };
 
-  const handleAddChannel = () => {
+  const handleAddChannel = async () => {
     if (!newChannelType || !newAccountName || !newAccountId) return;
-    const newChannel: ConnectedChannel = {
-      id: `ch-${Date.now()}`,
-      channelType: newChannelType as ChannelType,
-      accountName: newAccountName,
-      accountId: newAccountId,
-      isActive: true,
-      messageCount: 0,
-      lastActiveAt: "방금 전",
-      createdAt: new Date().toISOString().split("T")[0],
-    };
-    setChannels((prev) => [...prev, newChannel]);
-    setDialogOpen(false);
-    setNewChannelType("");
-    setNewAccountName("");
-    setNewAccountId("");
-    setNewCredentials("");
+    setIsSubmitting(true);
+    setSubmitError("");
+
+    try {
+      // Build credentials based on channel type
+      const credentials: Record<string, string> = {};
+      if (newChannelType === "line") {
+        credentials.access_token = newCredentials;
+        credentials.channel_secret = newChannelSecret;
+        credentials.channel_id = newAccountId;
+        if (newBotBasicId) credentials.bot_basic_id = newBotBasicId;
+      } else if (newChannelType === "kakao") {
+        credentials.api_key = newCredentials;
+        if (newChannelSecret) credentials.admin_key = newChannelSecret;
+      } else if (newChannelType === "wechat") {
+        credentials.app_secret = newChannelSecret;
+        credentials.access_token = newCredentials;
+      } else {
+        // Meta channels – pass token directly
+        credentials.access_token = newCredentials;
+      }
+
+      const response = await fetch("/api/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: "demo-tenant-id",
+          channelType: newChannelType,
+          accountName: newAccountName,
+          accountId: newAccountId,
+          credentials,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "채널 등록 실패");
+      }
+
+      // Add to local state from API response
+      const ch = data.channel;
+      const newChannel: ConnectedChannel = {
+        id: ch.id,
+        channelType: ch.channelType as ChannelType,
+        accountName: ch.accountName,
+        accountId: ch.accountId,
+        isActive: ch.isActive ?? true,
+        messageCount: ch.messageCount ?? 0,
+        lastActiveAt: ch.lastActiveAt ?? "방금 전",
+        createdAt: ch.createdAt ?? new Date().toISOString().split("T")[0],
+      };
+      setChannels((prev) => [...prev, newChannel]);
+      setDialogOpen(false);
+      setNewChannelType("");
+      setNewAccountName("");
+      setNewAccountId("");
+      setNewCredentials("");
+      setNewChannelSecret("");
+      setNewBotBasicId("");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "채널 등록에 실패했습니다");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const summaryStats = [
@@ -348,7 +406,7 @@ export default function ChannelsPage() {
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label>채널 유형</Label>
-                <Select value={newChannelType} onValueChange={(v) => setNewChannelType(v as ChannelType)}>
+                <Select value={newChannelType} onValueChange={(v) => { setNewChannelType(v as ChannelType); setSubmitError(""); }}>
                   <SelectTrigger className="w-full rounded-lg">
                     <SelectValue placeholder="채널을 선택하세요" />
                   </SelectTrigger>
@@ -367,17 +425,77 @@ export default function ChannelsPage() {
                 <Input placeholder="예: 힐링안과 LINE" value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} className="rounded-lg" />
               </div>
               <div className="grid gap-2">
-                <Label>계정 ID</Label>
-                <Input placeholder="예: healing_eye_jp" value={newAccountId} onChange={(e) => setNewAccountId(e.target.value)} className="rounded-lg" />
+                <Label>{newChannelType === "line" ? "채널 ID (Channel ID)" : "계정 ID"}</Label>
+                <Input
+                  placeholder={newChannelType === "line" ? "예: 2008754781" : "예: healing_eye_jp"}
+                  value={newAccountId}
+                  onChange={(e) => setNewAccountId(e.target.value)}
+                  className="rounded-lg"
+                />
               </div>
+
+              {/* Channel Access Token */}
               <div className="grid gap-2">
-                <Label>인증 정보 (Credentials)</Label>
-                <Input type="password" placeholder="Access Token / API Key" value={newCredentials} onChange={(e) => setNewCredentials(e.target.value)} className="rounded-lg" />
+                <Label>
+                  {newChannelType === "line" ? "채널 액세스 토큰 (Channel Access Token)" :
+                   newChannelType === "kakao" ? "REST API 키" :
+                   newChannelType === "wechat" ? "앱 ID (App ID)" :
+                   "인증 정보 (Credentials)"}
+                </Label>
+                <Input
+                  type="password"
+                  placeholder={newChannelType === "line" ? "Channel Access Token" :
+                               newChannelType === "kakao" ? "REST API Key" :
+                               newChannelType === "wechat" ? "App ID" :
+                               "Access Token / API Key"}
+                  value={newCredentials}
+                  onChange={(e) => setNewCredentials(e.target.value)}
+                  className="rounded-lg"
+                />
               </div>
+
+              {/* Channel Secret (LINE, KakaoTalk, WeChat) */}
+              {(newChannelType === "line" || newChannelType === "kakao" || newChannelType === "wechat") && (
+                <div className="grid gap-2">
+                  <Label>
+                    {newChannelType === "line" ? "채널 시크릿 (Channel Secret)" :
+                     newChannelType === "kakao" ? "Admin 키 (선택)" :
+                     "앱 시크릿 (App Secret)"}
+                  </Label>
+                  <Input
+                    type="password"
+                    placeholder={newChannelType === "line" ? "Channel Secret" :
+                                 newChannelType === "kakao" ? "Admin Key (선택사항)" :
+                                 "App Secret"}
+                    value={newChannelSecret}
+                    onChange={(e) => setNewChannelSecret(e.target.value)}
+                    className="rounded-lg"
+                  />
+                </div>
+              )}
+
+              {/* Bot Basic ID (LINE only) */}
+              {newChannelType === "line" && (
+                <div className="grid gap-2">
+                  <Label>봇 Basic ID (선택)</Label>
+                  <Input
+                    placeholder="예: @246kdolz"
+                    value={newBotBasicId}
+                    onChange={(e) => setNewBotBasicId(e.target.value)}
+                    className="rounded-lg"
+                  />
+                </div>
+              )}
+
+              {submitError && (
+                <p className="text-sm text-destructive">{submitError}</p>
+              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-lg">취소</Button>
-              <Button onClick={handleAddChannel} disabled={!newChannelType || !newAccountName || !newAccountId} className="rounded-lg">채널 연결</Button>
+              <Button variant="outline" onClick={() => { setDialogOpen(false); setSubmitError(""); }} className="rounded-lg">취소</Button>
+              <Button onClick={handleAddChannel} disabled={!newChannelType || !newAccountName || !newAccountId || isSubmitting} className="rounded-lg">
+                {isSubmitting ? "등록 중..." : "채널 연결"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
