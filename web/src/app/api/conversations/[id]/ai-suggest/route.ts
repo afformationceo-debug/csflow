@@ -111,8 +111,9 @@ export async function POST(
 
     return NextResponse.json({
       suggestion: {
-        original: ragResult.response,  // AI response in customer's language (e.g., English)
-        korean: ragResult.translatedResponse || ragResult.response,  // Korean translation for agents
+        // FIX: ragResult.response is KOREAN, translatedResponse is CUSTOMER LANGUAGE
+        original: ragResult.translatedResponse || ragResult.response,  // Customer language (e.g., English)
+        korean: ragResult.response,  // Korean (AI's original response)
         confidence: ragResult.confidence,
         shouldEscalate: ragResult.shouldEscalate,
         escalationReason: ragResult.escalationReason,

@@ -7052,6 +7052,173 @@ Customer 메시지 → content 우선 (이미 고객 언어)
 
 → 복잡한 로직은 버그의 온상
 → 신뢰할 수 있는 단일 소스(API)를 우선
+
+---
+
+## 27.9 추가 수정: 런타임 번역 Fallback (2026-01-29)
+
+### 발견된 추가 문제
+
+**사용자 재보고:** "같은 문제 아직도 해결되지 않았습니다"
+
+**근본 원인:**
+- 이전 수정(`cd05da1`)은 **새로 전송하는 메시지**에만 적용됨
+- **이미 DB에 저장된 메시지**는 `translated_content = null` 상태로 남아있음
+- 사용자가 보는 화면에는 **기존 메시지**가 표시되므로 여전히 한국어로 보임
+
+**Production 데이터 확인:**
+```bash
+$ curl https://csflow.vercel.app/api/conversations/.../messages
+# Result: 5개 메시지 모두 direction 필드 있음 ✓
+# - inbound: 2개 (고객 메시지)
+# - outbound: 3개 (AI 메시지, content는 한국어)
+```
+
+### 해결 방법: 런타임 번역 Fallback
+
+**전략:**
+1. 메시지 표시 시 `translatedContent` 확인
+2. 없으면 `runtimeTranslations` 캐시 확인
+3. 캐시에도 없으면 백그라운드 번역 API 호출
+4. 결과를 로컬 state에 저장하여 즉시 re-render
+
+**구현:**
+```typescript
+// State 추가
+const [runtimeTranslations, setRuntimeTranslations] = useState<Record<string, string>>({});
+
+// 메시지 표시 로직
+{(() => {
+  if ((msg.sender === "agent" || msg.sender === "ai")) {
+    const customerLang = selectedConversation?.customer.language?.toUpperCase();
+
+    // 1. Korean customer → show Korean
+    if (!customerLang || customerLang === "KO") {
+      return msg.content;
+    }
+
+    // 2. Has DB translation → use it
+    if (msg.translatedContent) {
+      return msg.translatedContent;
+    }
+
+    // 3. Check runtime cache
+    if (runtimeTranslations[msg.id]) {
+      return runtimeTranslations[msg.id];
+    }
+
+    // 4. Fetch translation in background
+    setTimeout(() => {
+      fetch("/api/translate", {
+        method: "POST",
+        body: JSON.stringify({
+          text: msg.content,
+          targetLanguage: customerLang,
+          sourceLanguage: "KO",
+        }),
+      })
+      .then(res => res.json())
+      .then(data => {
+        setRuntimeTranslations(prev => ({
+          ...prev,
+          [msg.id]: data.translatedText
+        }));
+      });
+    }, 100);
+
+    // 5. Show Korean while waiting
+    return msg.content;
+  }
+
+  return msg.content;
+})()}
+```
+
+### 동작 흐름
+
+**첫 렌더링:**
+1. EN 고객 대화 선택
+2. 5개 메시지 중 3개 AI 메시지는 `translatedContent = null`
+3. 한국어로 일단 표시
+4. 100ms 후 3개 번역 API 호출 (병렬)
+
+**번역 완료 후 (~1-2초):**
+1. API 응답: `{ translatedText: "Hello..." }`
+2. `runtimeTranslations` state 업데이트
+3. 자동 re-render → 영어로 변경
+
+**다음 방문 시:**
+1. 메시지 ID가 동일하면 캐시 히트
+2. 즉시 영어로 표시 (API 호출 없음)
+
+### Production 검증
+
+**API 데이터:**
+```json
+{
+  "name": "CHATDOC CEO",
+  "totalConversations": 1,    // ← 정확
+  "totalMessages": 32,          // ← 정확
+  "inboundMessages": 9,         // ← 정확
+  "outboundMessages": 23        // ← 정확
+}
+```
+
+**메시지 direction:**
+- ✅ 모든 메시지에 `direction` 필드 있음
+- ✅ 수신/발신 카운트 정상 작동
+
+### 수정 파일
+
+**`/web/src/app/(dashboard)/inbox/page.tsx`**
+- Line 563: `runtimeTranslations` state 추가
+- Line 1943-1985: 런타임 번역 로직 추가
+- +43 lines (번역 fallback 로직)
+
+### 배포
+
+**Commit:** `95896dd`
+```bash
+$ git commit -m "Add runtime translation fallback for old messages"
+$ git push origin main
+→ Vercel deployment triggered
+```
+
+### 최종 예상 동작
+
+1. **기존 메시지 (translated_content = null):**
+   - 첫 로딩: 한국어 (1-2초)
+   - 번역 완료: 영어로 자동 변경
+   - 이후: 캐시에서 즉시 영어 표시
+
+2. **새 메시지 (translated_content 있음):**
+   - 즉시 영어로 표시 (API 호출 없음)
+
+3. **메시지 카운트:**
+   - 수신: 9개 (실시간)
+   - 발신: 23개 (실시간)
+
+4. **총 대화:**
+   - 1개 (정확한 DB 값)
+
+### 주요 학습
+
+#### 데이터베이스 마이그레이션 vs 런타임 Fallback
+**선택지:**
+1. **DB 마이그레이션**: 모든 기존 메시지 번역 후 DB 업데이트
+2. **런타임 Fallback**: 표시할 때 필요시 번역
+
+**선택:** 런타임 Fallback
+**이유:**
+- 즉시 배포 가능 (DB 마이그레이션 스크립트 불필요)
+- 메시지 수가 적을 때 효과적
+- 캐시로 성능 문제 최소화
+- 향후 많은 메시지 누적 시 배치 마이그레이션 고려
+
+#### 점진적 개선 전략
+1. **Phase 1:** 새 메시지부터 번역 저장 ✓ (`cd05da1`)
+2. **Phase 2:** 기존 메시지 런타임 fallback ✓ (`95896dd`)
+3. **Phase 3 (향후):** 배치 마이그레이션으로 DB 완전 정리
 - channel_user_id 기준 고객 식별
 - 신규 고객 자동 생성 + 초기 프로필 설정
 - 대화 내용 분석으로 점진적 프로필 보강
