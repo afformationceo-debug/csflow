@@ -174,3 +174,130 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+/**
+ * POST /api/team
+ * 새 팀원 추가
+ * Body: { name, email, role, tenant_ids }
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { name, email, role, tenant_ids } = body;
+
+    if (!name || !email) {
+      return NextResponse.json({ error: "name and email are required" }, { status: 400 });
+    }
+
+    const supabase = await createServiceClient();
+
+    const insertData: Record<string, unknown> = {
+      name,
+      email,
+      role: role || "agent",
+      tenant_ids: tenant_ids || [],
+      is_active: true,
+      last_login_at: null,
+    };
+
+    const { data, error } = await (supabase as any)
+      .from("users")
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("User creation error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ user: data }, { status: 201 });
+  } catch (error) {
+    console.error("POST /api/team error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH /api/team
+ * 팀원 정보 수정
+ * Body: { id, name?, email?, role?, tenant_ids?, is_active? }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, name, email, role, tenant_ids, is_active } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    const supabase = await createServiceClient();
+
+    const updateData: Record<string, unknown> = {};
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (role !== undefined) updateData.role = role;
+    if (tenant_ids !== undefined) updateData.tenant_ids = tenant_ids;
+    if (is_active !== undefined) updateData.is_active = is_active;
+
+    const { data, error } = await (supabase as any)
+      .from("users")
+      .update(updateData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("User update error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ user: data });
+  } catch (error) {
+    console.error("PATCH /api/team error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/team?id=xxx
+ * 팀원 삭제 (soft delete - is_active=false)
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    const supabase = await createServiceClient();
+
+    // Soft delete
+    const { error } = await (supabase as any)
+      .from("users")
+      .update({ is_active: false })
+      .eq("id", id);
+
+    if (error) {
+      console.error("User delete error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE /api/team error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

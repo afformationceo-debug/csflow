@@ -511,7 +511,8 @@ export default function TenantsPage() {
                     <SelectItem value="ko">한국어</SelectItem>
                     <SelectItem value="en">English</SelectItem>
                     <SelectItem value="ja">日本語</SelectItem>
-                    <SelectItem value="zh">中文</SelectItem>
+                    <SelectItem value="zh">中文 (中国)</SelectItem>
+                    <SelectItem value="zh-tw">中文 (台灣)</SelectItem>
                     <SelectItem value="vi">Tiếng Việt</SelectItem>
                     <SelectItem value="th">ไทย</SelectItem>
                   </SelectContent>
