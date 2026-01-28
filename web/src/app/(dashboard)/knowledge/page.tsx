@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,17 +69,7 @@ import {
   type KnowledgeDocumentItem,
 } from "@/hooks";
 
-// TODO: Get from auth context
-const TENANT_ID = "demo-tenant";
-
 const defaultCategories = ["FAQ", "시술정보", "가격정보", "안내사항", "예약"];
-
-const tenantOptions = [
-  { id: "healing-eye", name: "힐링안과" },
-  { id: "smile-dental", name: "스마일치과" },
-  { id: "beauty-clinic", name: "뷰티클리닉" },
-  { id: "seoul-ortho", name: "서울정형외과" },
-];
 
 const categoryColorMap: Record<string, { bg: string; text: string; dot: string }> = {
   FAQ: { bg: "bg-blue-500/10", text: "text-blue-600 dark:text-blue-400", dot: "bg-blue-500" },
@@ -97,145 +87,8 @@ type EmbeddingStatus = "embedded" | "pending" | "failed";
 
 type ViewMode = "grid" | "list";
 
-// Mock data for when API returns no results
-const mockDocuments: (KnowledgeDocumentItem & { tenant_name?: string; embedding_status?: EmbeddingStatus })[] = [
-  {
-    id: "mock-1",
-    title: "라식/라섹 수술 FAQ",
-    content: "Q: 라식과 라섹의 차이점은 무엇인가요?\nA: 라식은 각막 절편을 만들어 레이저로 교정하는 방법이고, 라섹은 각막 상피를 제거한 후 레이저로 교정합니다. 라식은 회복이 빠르고, 라섹은 각막이 얇은 경우에 적합합니다.\n\nQ: 수술 후 회복 기간은?\nA: 라식은 1-2일, 라섹은 3-5일 정도 소요됩니다.",
-    category: "FAQ",
-    tags: ["라식", "라섹", "시력교정"],
-    source_type: "manual",
-    source_id: null,
-    is_active: true,
-    version: 3,
-    created_at: "2026-01-15T09:00:00Z",
-    updated_at: "2026-01-26T14:30:00Z",
-    created_by: null,
-    chunk_count: 8,
-    tenant_name: "힐링안과",
-    embedding_status: "embedded",
-  },
-  {
-    id: "mock-2",
-    title: "임플란트 시술 안내",
-    content: "임플란트는 상실된 치아를 대체하기 위해 인공 치아근을 턱뼈에 심는 시술입니다. 시술 기간은 약 3-6개월이 소요되며, 뼈 이식이 필요한 경우 추가 기간이 필요합니다.",
-    category: "시술정보",
-    tags: ["임플란트", "치아"],
-    source_type: "manual",
-    source_id: null,
-    is_active: true,
-    version: 2,
-    created_at: "2026-01-10T10:00:00Z",
-    updated_at: "2026-01-25T11:20:00Z",
-    created_by: null,
-    chunk_count: 5,
-    tenant_name: "스마일치과",
-    embedding_status: "embedded",
-  },
-  {
-    id: "mock-3",
-    title: "보톡스/필러 가격표 (2026년)",
-    content: "보톡스 (이마): 150,000원\n보톡스 (눈가): 100,000원\n필러 (코): 300,000원\n필러 (턱): 350,000원\n패키지 (보톡스+필러): 400,000원부터",
-    category: "가격정보",
-    tags: ["보톡스", "필러", "가격"],
-    source_type: "manual",
-    source_id: null,
-    is_active: true,
-    version: 5,
-    created_at: "2026-01-05T08:00:00Z",
-    updated_at: "2026-01-27T09:15:00Z",
-    created_by: null,
-    chunk_count: 3,
-    tenant_name: "뷰티클리닉",
-    embedding_status: "embedded",
-  },
-  {
-    id: "mock-4",
-    title: "수술 전 주의사항",
-    content: "1. 수술 전날 밤 12시 이후 금식\n2. 콘택트렌즈 착용 중단 (소프트 1주일, 하드 2주일 전)\n3. 수술 당일 화장 금지\n4. 편한 복장으로 내원\n5. 보호자 동반 필수",
-    category: "안내사항",
-    tags: ["수술", "주의사항", "사전안내"],
-    source_type: "manual",
-    source_id: null,
-    is_active: true,
-    version: 1,
-    created_at: "2026-01-20T15:00:00Z",
-    updated_at: "2026-01-24T16:45:00Z",
-    created_by: null,
-    chunk_count: 4,
-    tenant_name: "힐링안과",
-    embedding_status: "pending",
-  },
-  {
-    id: "mock-5",
-    title: "무릎 관절 치료 프로그램",
-    content: "비수술 치료 프로그램:\n- 도수치료: 1회 50,000원\n- 체외충격파: 1회 30,000원\n- 프롤로 주사: 1회 100,000원\n- 줄기세포 치료: 1회 2,000,000원\n\n수술 치료:\n- 관절내시경: 2,000,000원~\n- 인공관절: 8,000,000원~",
-    category: "가격정보",
-    tags: ["무릎", "관절", "가격"],
-    source_type: "import",
-    source_id: null,
-    is_active: true,
-    version: 1,
-    created_at: "2026-01-18T11:00:00Z",
-    updated_at: "2026-01-23T10:00:00Z",
-    created_by: null,
-    chunk_count: 6,
-    tenant_name: "서울정형외과",
-    embedding_status: "embedded",
-  },
-  {
-    id: "mock-6",
-    title: "외국인 환자 예약 절차",
-    content: "1단계: 온라인 상담 (카카오톡/라인/위챗)\n2단계: 사전 검사 자료 송부\n3단계: 예약 확정 및 보증금 결제\n4단계: 입국 후 첫 내원\n5단계: 시술/수술 진행\n6단계: 경과 관찰 및 퇴원",
-    category: "안내사항",
-    tags: ["외국인", "예약", "절차"],
-    source_type: "escalation",
-    source_id: null,
-    is_active: true,
-    version: 2,
-    created_at: "2026-01-12T14:00:00Z",
-    updated_at: "2026-01-22T08:30:00Z",
-    created_by: null,
-    chunk_count: 5,
-    tenant_name: "힐링안과",
-    embedding_status: "embedded",
-  },
-  {
-    id: "mock-7",
-    title: "치아 미백 시술 정보",
-    content: "전문가 미백 (In-office whitening):\n- 소요시간: 약 1시간\n- 효과: 즉시 2-8톤 밝아짐\n- 비용: 300,000원\n\n자가 미백 (Home whitening):\n- 기간: 2-4주\n- 비용: 200,000원 (트레이 포함)",
-    category: "시술정보",
-    tags: ["미백", "치아미백"],
-    source_type: "manual",
-    source_id: null,
-    is_active: false,
-    version: 1,
-    created_at: "2026-01-08T09:00:00Z",
-    updated_at: "2026-01-21T17:00:00Z",
-    created_by: null,
-    chunk_count: 3,
-    tenant_name: "스마일치과",
-    embedding_status: "failed",
-  },
-  {
-    id: "mock-8",
-    title: "레이저 리프팅 FAQ",
-    content: "Q: 울쎄라와 써마지의 차이점?\nA: 울쎄라는 초음파, 써마지는 고주파를 이용합니다. 울쎄라는 깊은 층(SMAS)까지 작용하고, 써마지는 진피층에 작용합니다.\n\nQ: 시술 주기?\nA: 울쎄라 6개월-1년, 써마지 3-6개월 간격 추천",
-    category: "FAQ",
-    tags: ["울쎄라", "써마지", "리프팅"],
-    source_type: "manual",
-    source_id: null,
-    is_active: true,
-    version: 4,
-    created_at: "2026-01-03T13:00:00Z",
-    updated_at: "2026-01-20T15:00:00Z",
-    created_by: null,
-    chunk_count: 6,
-    tenant_name: "뷰티클리닉",
-    embedding_status: "embedded",
-  },
-];
+// Empty array - all data comes from DB
+const emptyDocuments: KnowledgeDocumentItem[] = [];
 
 // Animation variants
 const containerVariants = {
@@ -335,6 +188,8 @@ export default function KnowledgeBasePage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<KnowledgeDocumentItem | null>(null);
+  const [tenantOptions, setTenantOptions] = useState<{ id: string; name: string }[]>([]);
+  const [activeTenantId, setActiveTenantId] = useState<string>("");
   const [newDocument, setNewDocument] = useState({
     title: "",
     content: "",
@@ -343,6 +198,23 @@ export default function KnowledgeBasePage() {
     tenant: "",
   });
 
+  // Fetch tenants on mount
+  useEffect(() => {
+    fetch("/api/tenants")
+      .then((r) => r.json())
+      .then((data) => {
+        const tenants = (data.tenants || []).map((t: any) => ({
+          id: t.id,
+          name: t.display_name || t.name,
+        }));
+        setTenantOptions(tenants);
+        if (tenants.length > 0 && !activeTenantId) {
+          setActiveTenantId(tenants[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // React Query hooks
   const {
     data: apiDocuments,
@@ -350,13 +222,13 @@ export default function KnowledgeBasePage() {
     error: documentsError,
     refetch: refetchDocuments,
   } = useKnowledgeDocuments({
-    tenantId: TENANT_ID,
+    tenantId: activeTenantId || "none",
     category: selectedCategory,
     search: searchQuery || undefined,
   });
 
-  const { data: categories } = useKnowledgeCategories(TENANT_ID);
-  const { data: statistics, isLoading: statsLoading } = useKnowledgeStatistics(TENANT_ID);
+  const { data: categories } = useKnowledgeCategories(activeTenantId || "none");
+  const { data: statistics, isLoading: statsLoading } = useKnowledgeStatistics(activeTenantId || "none");
 
   const createMutation = useCreateKnowledgeDocument();
   const updateMutation = useUpdateKnowledgeDocument();
@@ -368,51 +240,20 @@ export default function KnowledgeBasePage() {
     new Set([...defaultCategories, ...(categories || [])])
   );
 
-  // Use mock data when API returns no results
+  // Use DB data only
   const documents = useMemo(() => {
-    if (apiDocuments && apiDocuments.length > 0) return apiDocuments;
-    // Filter mock data
-    let filtered = [...mockDocuments];
-    if (selectedCategory) {
-      filtered = filtered.filter((d) => d.category === selectedCategory);
-    }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (d) =>
-          d.title.toLowerCase().includes(q) ||
-          d.content.toLowerCase().includes(q) ||
-          d.tags?.some((t) => t.toLowerCase().includes(q))
-      );
-    }
-    if (selectedTenantFilter) {
-      filtered = filtered.filter((d) => (d as any).tenant_name === selectedTenantFilter);
-    }
-    return filtered;
-  }, [apiDocuments, selectedCategory, searchQuery, selectedTenantFilter]);
+    return apiDocuments || emptyDocuments;
+  }, [apiDocuments]);
 
-  // Compute stats from mock if API has no results
+  // Stats from DB only
   const stats = useMemo(() => {
-    if (statistics && statistics.totalDocuments > 0) {
-      return {
-        totalDocuments: statistics.totalDocuments,
-        totalChunks: statistics.totalChunks,
-        embeddingCoverage: statistics.activeDocuments > 0
-          ? Math.round((statistics.totalChunks > 0 ? (statistics.activeDocuments / statistics.totalDocuments) * 100 : 0))
-          : 0,
-        lastSync: "2026-01-27 14:30",
-      };
-    }
-    // Mock stats
-    const totalDocs = mockDocuments.length;
-    const totalChunks = mockDocuments.reduce((sum, d) => sum + (d.chunk_count || 0), 0);
-    const embeddedCount = mockDocuments.filter((d) => (d as any).embedding_status === "embedded").length;
-    const coverage = totalDocs > 0 ? Math.round((embeddedCount / totalDocs) * 100) : 0;
     return {
-      totalDocuments: totalDocs,
-      totalChunks: totalChunks,
-      embeddingCoverage: coverage,
-      lastSync: "2026-01-27 14:30",
+      totalDocuments: statistics?.totalDocuments || 0,
+      totalChunks: statistics?.totalChunks || 0,
+      embeddingCoverage: statistics && statistics.totalDocuments > 0
+        ? Math.round((statistics.activeDocuments / statistics.totalDocuments) * 100)
+        : 0,
+      lastSync: "-",
     };
   }, [statistics]);
 
@@ -424,7 +265,7 @@ export default function KnowledgeBasePage() {
 
     try {
       await createMutation.mutateAsync({
-        tenantId: newDocument.tenant || TENANT_ID,
+        tenantId: newDocument.tenant || activeTenantId,
         title: newDocument.title,
         content: newDocument.content,
         category: newDocument.category || undefined,
@@ -735,7 +576,7 @@ export default function KnowledgeBasePage() {
               <div className="mt-3 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 live-dot" />
                 <span className="text-[11px] text-muted-foreground">
-                  활성 문서 {statsLoading ? "--" : (statistics?.activeDocuments || mockDocuments.filter((d) => d.is_active).length)}개
+                  활성 문서 {statsLoading ? "--" : (statistics?.activeDocuments || 0)}개
                 </span>
               </div>
             </CardContent>

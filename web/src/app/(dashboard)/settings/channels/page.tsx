@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -73,21 +73,33 @@ interface ConnectedChannel {
   createdAt: string;
 }
 
-// Mock tenant ID - in production this would come from auth context
-const TENANT_ID = "demo-tenant-id";
-
 export default function ChannelsPage() {
   const queryClient = useQueryClient();
   const [connectingMeta, setConnectingMeta] = useState(false);
+  const [tenantId, setTenantId] = useState<string>("");
+
+  // Fetch first tenant ID on mount
+  useEffect(() => {
+    fetch("/api/tenants")
+      .then((r) => r.json())
+      .then((data) => {
+        const tenants = data.tenants || [];
+        if (tenants.length > 0) {
+          setTenantId(tenants[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch connected channels
   const { data: channelsData, isLoading } = useQuery({
-    queryKey: ["channels", TENANT_ID],
+    queryKey: ["channels", tenantId],
     queryFn: async () => {
-      const response = await fetch(`/api/channels?tenantId=${TENANT_ID}`);
+      const response = await fetch(`/api/channels?tenantId=${tenantId}`);
       if (!response.ok) throw new Error("Failed to fetch channels");
       return response.json();
     },
+    enabled: !!tenantId,
   });
 
   // Toggle channel active status
@@ -108,7 +120,7 @@ export default function ChannelsPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", TENANT_ID] });
+      queryClient.invalidateQueries({ queryKey: ["channels", tenantId] });
     },
   });
 
@@ -122,14 +134,14 @@ export default function ChannelsPage() {
       accountId: string;
     }) => {
       const response = await fetch(
-        `/api/channels?tenantId=${TENANT_ID}&channelType=${channelType}&accountId=${accountId}`,
+        `/api/channels?tenantId=${tenantId}&channelType=${channelType}&accountId=${accountId}`,
         { method: "DELETE" }
       );
       if (!response.ok) throw new Error("Failed to disconnect channel");
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", TENANT_ID] });
+      queryClient.invalidateQueries({ queryKey: ["channels", tenantId] });
     },
   });
 
@@ -140,7 +152,7 @@ export default function ChannelsPage() {
       const response = await fetch("/api/oauth/meta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId: TENANT_ID }),
+        body: JSON.stringify({ tenantId: tenantId }),
       });
 
       if (!response.ok) throw new Error("Failed to start OAuth");
