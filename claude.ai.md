@@ -825,3 +825,54 @@ ${context}
 - **서울성형외과** (성형외과 전문): "이상적인 외모 달성을..." → 코성형/윤곽/가슴성형 중심 답변
 
 ---
+---
+
+## Section 19 업데이트 (2026-01-28)
+
+### CSV 일괄 관리 시스템 구현 완료
+
+이번 업데이트에서는 지식베이스와 거래처 데이터를 CSV 파일로 일괄 관리할 수 있는 시스템을 구현했습니다.
+
+**주요 구현 내용**:
+
+1. **지식베이스 템플릿 확장** ✅
+   - 4개 전문 분야별 템플릿 (성형외과, 안과, 피부과, 치과)
+   - 각 50+ 질문으로 확장 (예약, 통역, 세금환급, 결제, 고민, 안내 등)
+
+2. **CSV 업로드/다운로드 API** ✅
+   - `/api/knowledge/bulk` (GET/POST)
+   - `/api/tenants/bulk` (GET/POST)
+   - 자동 임베딩 생성 (OpenAI text-embedding-3-small, 1536 dimensions)
+   - pgvector 형식 변환 (`[n1,n2,...]`)
+   - 에러 핸들링 및 통계 반환
+
+3. **지식베이스 페이지 UI** ✅
+   - CSV 다운로드 드롭다운 (지식베이스/거래처 선택)
+   - CSV 업로드 다이얼로그 (진행 상태 표시)
+   - 거래처별 필터링 드롭다운
+   - 활성 필터 배지 (X 버튼으로 제거)
+
+4. **RAG 벡터 임베딩 검증** ✅
+   - Supabase pgvector 스키마 정상
+   - IVFFlat 인덱스 생성 완료
+   - match_documents() 함수 정상
+   - Retriever 서비스 (Hybrid Search + RRF) 정상
+   - Embedding 서비스 (chunking + lazy init) 정상
+   - CSV 업로드 시 자동 임베딩 생성 테스트 완료
+
+**주요 버그 수정**:
+- `knowledge_embeddings` → `knowledge_chunks` 테이블명 수정
+- pgvector 형식 오류 수정 (JSON.stringify → array string)
+- tenant_id 누락 수정
+- TypeScript 타입 에러 전체 수정
+
+**배포 상태**:
+- ✅ GitHub 푸시 완료 (커밋: b82b6ca)
+- ⏳ Vercel 자동 배포 진행 중
+- 확인 URL: https://csflow.vercel.app/knowledge
+
+**검증 대기**:
+1. 지식베이스 페이지 400 에러 해결 확인
+2. CSV 업로드 → DB 저장 → 프론트 표시 확인
+3. LLM RAG 작동 확인
+
