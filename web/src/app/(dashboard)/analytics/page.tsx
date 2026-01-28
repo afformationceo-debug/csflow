@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -319,6 +319,45 @@ export default function AnalyticsPage() {
   // ─── Computed Values (guard empty arrays) ──────────────────────────────────
   const maxDailyConversations = dailyTrends.length > 0 ? Math.max(...dailyTrends.map((d) => d.conversations)) : 1;
   const maxResponseCount = responseTimeDistribution.length > 0 ? Math.max(...responseTimeDistribution.map((d) => d.count)) : 1;
+
+  // ─── Dynamic Insights ─────────────────────────────────────────────────────
+  const insights = useMemo(() => {
+    const totalConversations = kpiCards.find((k) => k.label === "총 대화")?.value ?? 0;
+    const aiRate = kpiCards.find((k) => k.label === "AI 처리율")?.value ?? 0;
+    const avgResponseTime = kpiCards.find((k) => k.label === "평균 응답 시간")?.value ?? 0;
+
+    // Find top channel
+    const topChannel = channelDistribution.length > 0
+      ? channelDistribution.reduce((a, b) => (a.count > b.count ? a : b))
+      : null;
+
+    // Find worst tenant
+    const worstTenant = tenantPerformance.length > 0
+      ? tenantPerformance.reduce((a, b) => (a.aiAccuracy < b.aiAccuracy ? a : b))
+      : null;
+
+    // Find top escalation reason
+    const topReason = escalationReasons.length > 0
+      ? escalationReasons.reduce((a, b) => (a.count > b.count ? a : b))
+      : null;
+    const totalEscalations = escalationReasons.reduce((sum, r) => sum + r.count, 0);
+
+    const good = totalConversations > 0
+      ? `총 ${totalConversations}건의 대화 중 AI 처리율 ${aiRate}%를 달성했습니다.${topChannel ? ` ${topChannel.channel} 채널이 ${topChannel.count}건으로 가장 많은 문의를 처리했습니다.` : ""}`
+      : "아직 분석할 데이터가 충분하지 않습니다. 대화가 쌓이면 성과 인사이트를 제공합니다.";
+
+    const improve = worstTenant && worstTenant.aiAccuracy < 90
+      ? `${worstTenant.tenant}의 AI 정확도가 ${worstTenant.aiAccuracy}%로 목표(90%) 미달입니다.${worstTenant.escalationRate ? ` 에스컬레이션율이 ${worstTenant.escalationRate}%로 지식베이스 보강이 필요합니다.` : ""}`
+      : avgResponseTime > 5
+        ? `평균 응답 시간이 ${avgResponseTime}분입니다. 목표(5분) 이내로 개선이 필요합니다.`
+        : "현재 주요 개선 사항이 발견되지 않았습니다. 계속 모니터링 중입니다.";
+
+    const action = topReason && totalEscalations > 0
+      ? `${topReason.reason} 관련 에스컬레이션이 ${Math.round((topReason.count / totalEscalations) * 100)}%를 차지합니다. 해당 분야 FAQ를 보강하면 자동화율 향상이 기대됩니다.`
+      : "에스컬레이션 데이터가 쌓이면 구체적인 개선 액션을 추천합니다.";
+
+    return { good, improve, action };
+  }, [kpiCards, channelDistribution, tenantPerformance, escalationReasons]);
 
   return (
     <div className="space-y-6">
@@ -998,9 +1037,7 @@ export default function AnalyticsPage() {
                     좋은 성과
                   </p>
                   <p className="text-[13px] leading-relaxed text-muted-foreground">
-                    LINE 채널 문의량이 전주 대비 <span className="font-semibold text-foreground">8.5%</span> 증가했습니다.
-                    일본 시장 마케팅 효과가 나타나고 있으며, AI 자동 해결율도 <span className="font-semibold text-foreground">82.3%</span>로
-                    목표치를 초과 달성했습니다.
+                    {insights.good}
                   </p>
                 </div>
               </div>
@@ -1021,9 +1058,7 @@ export default function AnalyticsPage() {
                     개선 필요
                   </p>
                   <p className="text-[13px] leading-relaxed text-muted-foreground">
-                    서울성형의 AI 정확도가 <span className="font-semibold text-foreground">85.3%</span>로 목표(90%) 미달입니다.
-                    에스컬레이션율이 <span className="font-semibold text-foreground">21.2%</span>로 가장 높아
-                    지식베이스 보강이 시급합니다.
+                    {insights.improve}
                   </p>
                 </div>
               </div>
@@ -1044,9 +1079,7 @@ export default function AnalyticsPage() {
                     추천 액션
                   </p>
                   <p className="text-[13px] leading-relaxed text-muted-foreground">
-                    가격 협상 관련 에스컬레이션이 <span className="font-semibold text-foreground">25%</span>를 차지합니다.
-                    가격 정책 FAQ를 보강하면 자동화율이 <span className="font-semibold text-foreground">5~8%</span>
-                    향상될 것으로 예상됩니다.
+                    {insights.action}
                   </p>
                 </div>
               </div>

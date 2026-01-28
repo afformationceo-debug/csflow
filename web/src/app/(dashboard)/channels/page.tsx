@@ -202,8 +202,7 @@ export default function ChannelsPage() {
           }
         }
       } catch {
-        // Fallback: use demo tenant
-        setSelectedTenantId("demo-tenant-id");
+        // No fallback — tenant list required
       }
     }
     loadTenants();
@@ -286,7 +285,7 @@ export default function ChannelsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenantId: selectedTenantId || "demo-tenant-id",
+          tenantId: selectedTenantId,
           channelType: newChannelType,
           accountName: newAccountName,
           accountId: newAccountId,

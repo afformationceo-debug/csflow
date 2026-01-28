@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -274,8 +274,18 @@ function MiniRing({ percentage, color, size = 44 }: { percentage: number; color:
 // ---------------------------------------------------------------------------
 export default function DashboardPage() {
   const [isLive] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState(new Date());
-  const greeting = useMemo(() => getGreeting(), []);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  // Initialize on client only to avoid hydration mismatch
+  useEffect(() => {
+    setLastUpdate(new Date());
+  }, []);
+  const [greeting, setGreeting] = useState({ text: "안녕하세요!", emoji: Sun as React.ElementType, subText: "로딩 중..." });
+
+  useEffect(() => {
+    setGreeting(getGreeting());
+  }, []);
+
   const GreetingIcon = greeting.emoji;
 
   // DB 데이터 상태
@@ -438,7 +448,7 @@ export default function DashboardPage() {
                 <span className={`h-2 w-2 rounded-full ${isLive ? "bg-emerald-400 live-dot" : "bg-gray-400"}`} />
                 {isLive ? "실시간" : "일시정지"}
                 <span>
-                  {lastUpdate.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                  {lastUpdate ? lastUpdate.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "--:--"}
                 </span>
               </div>
               <Button
