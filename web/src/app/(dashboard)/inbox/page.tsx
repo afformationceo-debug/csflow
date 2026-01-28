@@ -607,7 +607,13 @@ export default function InboxPage() {
   const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; role: string }[]>([]);
 
   // AI recommendation state (Issue 1)
-  const [aiSuggestion, setAiSuggestion] = useState<{ original: string; korean: string } | null>(null);
+  const [aiSuggestion, setAiSuggestion] = useState<{
+    original: string;
+    korean: string;
+    confidence?: number;
+    shouldEscalate?: boolean;
+    escalationReason?: string;
+  } | null>(null);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [ragLogs, setRagLogs] = useState<string[]>([]);
   const [ragSources, setRagSources] = useState<any[]>([]);
@@ -878,6 +884,7 @@ export default function InboxPage() {
           const createdAt = new Date(msg.created_at);
           const timeStr = `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
 
+          const metadata = msg.metadata || {};
           return {
             id: msg.id,
             sender: msg.sender_type as MessageType,
@@ -885,7 +892,8 @@ export default function InboxPage() {
             translatedContent: msg.translated_content || undefined,
             time: timeStr,
             language: msg.original_language || undefined,
-            confidence: msg.ai_confidence ? Math.round(msg.ai_confidence * 100) : undefined,
+            confidence: metadata.ai_confidence ? Math.round(metadata.ai_confidence * 100) : undefined,
+            sources: metadata.ai_sources || undefined,
           };
         });
 
@@ -921,6 +929,7 @@ export default function InboxPage() {
             if (newMsg) {
               const createdAt = new Date(newMsg.created_at);
               const timeStr = `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
+              const metadata = newMsg.metadata || {};
               const mappedMsg: Message = {
                 id: newMsg.id,
                 sender: newMsg.sender_type as MessageType,
@@ -928,7 +937,8 @@ export default function InboxPage() {
                 translatedContent: newMsg.translated_content || undefined,
                 time: timeStr,
                 language: newMsg.original_language || undefined,
-                confidence: newMsg.ai_confidence ? Math.round(newMsg.ai_confidence * 100) : undefined,
+                confidence: metadata.ai_confidence ? Math.round(metadata.ai_confidence * 100) : undefined,
+                sources: metadata.ai_sources || undefined,
               };
               // Add new message, skip if already present (optimistic or duplicate)
               setDbMessages((prev) => {
@@ -2145,9 +2155,11 @@ export default function InboxPage() {
                                     const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
                                     setDbMessages((prev) => [...prev, {
                                       id: `optimistic-${Date.now()}`,
-                                      sender: "agent" as MessageType,
+                                      sender: "ai" as MessageType,
                                       content,
                                       time: timeStr,
+                                      confidence: aiSuggestion.confidence ? Math.round(aiSuggestion.confidence * 100) : undefined,
+                                      sources: ragSources,
                                     }]);
                                     // Send via API
                                     fetch("/api/messages", {
@@ -2157,6 +2169,12 @@ export default function InboxPage() {
                                         conversationId: selectedConversation.id,
                                         content,
                                         targetLanguage,
+                                        senderType: "ai",
+                                        aiMetadata: {
+                                          confidence: aiSuggestion.confidence,
+                                          sources: ragSources,
+                                          logs: ragLogs,
+                                        },
                                       }),
                                     }).catch(err => console.error("Send AI suggestion failed:", err));
                                   }

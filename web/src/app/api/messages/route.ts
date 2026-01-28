@@ -68,6 +68,8 @@ export async function POST(request: NextRequest) {
       translateToCustomerLanguage = true,
       isInternalNote = false,
       targetLanguage,
+      senderType = "agent",
+      aiMetadata,
     } = body;
 
     // Validate required fields
@@ -192,16 +194,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 4. Save the agent message to the database
+    // 4. Save the agent/AI message to the database
+    const metadata: Record<string, unknown> = {};
+    if (aiMetadata) {
+      metadata.ai_confidence = aiMetadata.confidence;
+      metadata.ai_sources = aiMetadata.sources;
+      metadata.ai_logs = aiMetadata.logs;
+    }
+
     const insertData: Record<string, unknown> = {
       conversation_id: conversationId,
       direction: "outbound",
-      sender_type: "agent",
+      sender_type: senderType,
       content_type: contentType || "text",
       content: content,
       original_language: "KO",
       status: "pending",
-      metadata: {},
+      metadata,
     };
 
     if (mediaUrl) {
