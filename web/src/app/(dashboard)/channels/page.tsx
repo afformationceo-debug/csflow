@@ -296,6 +296,10 @@ export default function ChannelsPage() {
   };
 
   const handleAddChannel = async () => {
+    if (!selectedTenantId) {
+      setSubmitError("거래처를 먼저 선택해주세요.");
+      return;
+    }
     if (!newChannelType || !newAccountName || !newAccountId) return;
     setIsSubmitting(true);
     setSubmitError("");
@@ -422,6 +426,11 @@ export default function ChannelsPage() {
               <DialogTitle>새 채널 추가</DialogTitle>
               <DialogDescription>
                 연결할 메신저 채널 정보를 입력하세요.
+                {!selectedTenantId && (
+                  <span className="block mt-2 text-red-600 dark:text-red-400 font-medium">
+                    ⚠️ 먼저 상단에서 거래처를 선택해주세요.
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -514,7 +523,7 @@ export default function ChannelsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => { setDialogOpen(false); setSubmitError(""); }} className="rounded-lg">취소</Button>
-              <Button onClick={handleAddChannel} disabled={!newChannelType || !newAccountName || !newAccountId || isSubmitting} className="rounded-lg">
+              <Button onClick={handleAddChannel} disabled={!selectedTenantId || !newChannelType || !newAccountName || !newAccountId || isSubmitting} className="rounded-lg">
                 {isSubmitting ? "등록 중..." : "채널 연결"}
               </Button>
             </DialogFooter>
