@@ -2843,6 +2843,22 @@ export default function InboxPage() {
                   </div>
                 </div>
 
+                {/* Message Count - Real-time Inbound/Outbound */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2 rounded-lg bg-blue-500/5 border border-blue-500/10 text-center">
+                    <p className="text-[10px] text-muted-foreground">수신 메시지</p>
+                    <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                      {dbMessages.filter(m => m.direction === "inbound").length}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-green-500/5 border border-green-500/10 text-center">
+                    <p className="text-[10px] text-muted-foreground">발신 메시지</p>
+                    <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                      {dbMessages.filter(m => m.direction === "outbound").length}
+                    </p>
+                  </div>
+                </div>
+
                 <Separator />
 
                 {/* Connected Channels */}
