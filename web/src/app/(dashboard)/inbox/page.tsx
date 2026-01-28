@@ -595,6 +595,9 @@ export default function InboxPage() {
   const [detectedInterests, setDetectedInterests] = useState<string[]>([]);
   const [detectedConcerns, setDetectedConcerns] = useState<string[]>([]);
 
+  // Team members for assignment
+  const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; role: string }[]>([]);
+
   // AI recommendation state (Issue 1)
   const [aiSuggestion, setAiSuggestion] = useState<{ original: string; korean: string } | null>(null);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
@@ -690,6 +693,27 @@ export default function InboxPage() {
       }
     }
     loadHospitals();
+  }, []);
+
+  // ── Fetch team members for assignment ──
+  useEffect(() => {
+    async function loadTeamMembers() {
+      try {
+        const res = await fetch("/api/team");
+        if (!res.ok) return;
+        const data = await res.json();
+        const members = data.members || [];
+        const mapped = members.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          role: m.role,
+        }));
+        setTeamMembers(mapped);
+      } catch {
+        // leave empty
+      }
+    }
+    loadTeamMembers();
   }, []);
 
   // ── Fetch conversations from DB ──
@@ -2432,6 +2456,50 @@ export default function InboxPage() {
                             <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", config.bg, config.color)}>
                               {config.emoji} {config.label}
                             </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Agent Assignment */}
+                  <div className="mt-3">
+                    <label className="text-xs font-medium mb-1.5 flex items-center gap-1.5 text-muted-foreground">
+                      <User className="h-3.5 w-3.5" />
+                      담당자 배정
+                    </label>
+                    <Select
+                      value={selectedConversation?.assignee || ""}
+                      onValueChange={async (value) => {
+                        if (!selectedConversation?.id) return;
+                        // Update local state immediately (optimistic)
+                        setDbConversations(prev => prev.map(c => c.id === selectedConversation.id ? { ...c, assignee: value || undefined } : c));
+                        // Save to DB
+                        try {
+                          await fetch(`/api/conversations`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ id: selectedConversation.id, assigned_to: value || null }),
+                          });
+                        } catch (e) { console.error("Failed to assign agent:", e); }
+                      }}
+                    >
+                      <SelectTrigger className="w-full h-8 rounded-lg text-xs">
+                        <SelectValue placeholder="담당자 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">
+                          <span className="text-muted-foreground">미배정</span>
+                        </SelectItem>
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            <div className="flex items-center gap-2">
+                              <User className="h-3 w-3" />
+                              <span>{member.name}</span>
+                              <Badge variant="outline" className="text-[10px] h-4 px-1">
+                                {member.role === "admin" ? "관리자" : member.role === "manager" ? "매니저" : member.role === "coordinator" ? "코디" : "상담사"}
+                              </Badge>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>

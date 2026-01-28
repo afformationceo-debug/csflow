@@ -313,12 +313,41 @@ export default function TeamPage() {
     );
   };
 
-  const handleInvite = () => {
-    setInviteOpen(false);
-    setInviteName("");
-    setInviteEmail("");
-    setInviteRole("");
-    setInviteTenants([]);
+  const handleInvite = async () => {
+    if (!inviteName || !inviteEmail || !inviteRole) {
+      alert("이름, 이메일, 역할을 모두 입력해주세요.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: inviteName,
+          email: inviteEmail,
+          role: inviteRole,
+          tenant_ids: inviteTenants,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to register team member");
+      }
+
+      // Reload team data
+      await loadTeamData();
+
+      // Close dialog and reset form
+      setInviteOpen(false);
+      setInviteName("");
+      setInviteEmail("");
+      setInviteRole("");
+      setInviteTenants([]);
+    } catch (error) {
+      console.error("Team member registration error:", error);
+      alert("담당자 등록에 실패했습니다.");
+    }
   };
 
   return (
@@ -341,19 +370,19 @@ export default function TeamPage() {
           <DialogTrigger asChild>
             <Button className="rounded-xl shadow-sm gap-2">
               <Plus className="h-4 w-4" />
-              팀원 초대
+              담당자 등록
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <div className="flex items-center justify-center h-8 w-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 shadow-sm">
-                  <Mail className="h-4 w-4 text-white" />
+                  <Plus className="h-4 w-4 text-white" />
                 </div>
-                팀원 초대
+                담당자 등록
               </DialogTitle>
               <DialogDescription>
-                새로운 팀원을 초대하고 역할 및 거래처를 할당합니다.
+                새로운 담당자를 등록하고 역할 및 거래처를 할당합니다.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
