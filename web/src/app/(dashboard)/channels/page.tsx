@@ -176,6 +176,7 @@ interface Tenant {
 
 export default function ChannelsPage() {
   const [channels, setChannels] = useState<ConnectedChannel[]>([]);
+  const [isLoadingChannels, setIsLoadingChannels] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newChannelType, setNewChannelType] = useState<ChannelType | "">("");
   const [newAccountName, setNewAccountName] = useState("");
@@ -212,6 +213,7 @@ export default function ChannelsPage() {
   useEffect(() => {
     if (!selectedTenantId) return;
     async function loadChannels() {
+      setIsLoadingChannels(true);
       try {
         const response = await fetch(`/api/channels?tenantId=${selectedTenantId}`);
         if (!response.ok) throw new Error("API error");
@@ -232,6 +234,8 @@ export default function ChannelsPage() {
         }
       } catch {
         setChannels([]);
+      } finally {
+        setIsLoadingChannels(false);
       }
     }
     loadChannels();
@@ -509,7 +513,11 @@ export default function ChannelsPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{stat.title}</p>
-                  <p className="text-2xl font-bold tabular-nums tracking-tight">{stat.value}</p>
+                  {isLoadingChannels ? (
+                    <div className="h-8 w-12 rounded bg-muted/50 animate-pulse" />
+                  ) : (
+                    <p className="text-2xl font-bold tabular-nums tracking-tight">{stat.value}</p>
+                  )}
                   <p className="text-[11px] text-muted-foreground">{stat.subtitle}</p>
                 </div>
                 <div className="mt-3">
@@ -665,7 +673,20 @@ export default function ChannelsPage() {
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            {channels.length === 0 ? (
+            {isLoadingChannels ? (
+              <div className="space-y-3 py-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-muted/20 animate-pulse">
+                    <div className="h-10 w-10 rounded-xl bg-muted/50" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-32 rounded bg-muted/50" />
+                      <div className="h-3 w-24 rounded bg-muted/30" />
+                    </div>
+                    <div className="h-6 w-16 rounded-full bg-muted/50" />
+                  </div>
+                ))}
+              </div>
+            ) : channels.length === 0 ? (
               <div className="text-center py-12">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/50 mx-auto mb-3">
                   <Link2 className="h-6 w-6 text-muted-foreground" />

@@ -11,17 +11,34 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const supabase = await createServiceClient();
 
-    const profile = await serverCustomerService.getCustomerProfile(id);
+    // Get customer data directly
+    const { data: customer, error: custError } = await (supabase as any)
+      .from("customers")
+      .select("*")
+      .eq("id", id)
+      .single();
 
-    if (!profile) {
-      return NextResponse.json(
-        { error: "Customer not found" },
-        { status: 404 }
-      );
+    if (custError || !customer) {
+      // Fallback to service
+      const profile = await serverCustomerService.getCustomerProfile(id);
+      if (!profile) {
+        return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+      }
+      return NextResponse.json(profile);
     }
 
-    return NextResponse.json(profile);
+    // Count total conversations for this customer
+    const { count } = await (supabase as any)
+      .from("conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_id", id);
+
+    return NextResponse.json({
+      ...customer,
+      totalConversations: count || 0,
+    });
   } catch (error) {
     console.error("Failed to get customer profile:", error);
     return NextResponse.json(
@@ -55,7 +72,17 @@ export async function PATCH(
     }
 
     if (metadata !== undefined) {
-      updateData.metadata = metadata;
+      // Merge metadata instead of replacing
+      const { data: existing } = await (supabase as any)
+        .from("customers")
+        .select("metadata")
+        .eq("id", id)
+        .single();
+
+      updateData.metadata = {
+        ...(existing?.metadata || {}),
+        ...metadata,
+      };
     }
 
     const { data, error } = await (supabase as any)

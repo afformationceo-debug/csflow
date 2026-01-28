@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, type CompositionEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,12 @@ import {
   ChevronsUpDown,
   RefreshCw,
   Keyboard,
+  Trash2,
+  AlertTriangle,
+  Save,
+  Edit3,
+  Volume2,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -570,6 +576,25 @@ export default function InboxPage() {
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
+  // IME composition tracking (prevents Korean duplicate send)
+  const isComposingRef = useRef(false);
+
+  // Notification sound
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const lastNotifTimeRef = useRef(0);
+
+  // Delete dialog
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Memo editing
+  const [isEditingMemo, setIsEditingMemo] = useState(false);
+  const [memoText, setMemoText] = useState("");
+
+  // Auto-detected interests & concerns
+  const [detectedInterests, setDetectedInterests] = useState<string[]>([]);
+  const [detectedConcerns, setDetectedConcerns] = useState<string[]>([]);
+
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -760,15 +785,19 @@ export default function InboxPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
         () => {
-          // Refetch on any change
           fetchConversations();
         }
       )
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
-        () => {
+        (payload: any) => {
           fetchConversations();
+          // Play notification sound for inbound messages
+          const newMsg = payload?.new;
+          if (newMsg && newMsg.direction === "inbound") {
+            playNotificationSound();
+          }
         }
       )
       .subscribe();
@@ -834,8 +863,36 @@ export default function InboxPage() {
             table: "messages",
             filter: `conversation_id=eq.${selectedConversation.id}`,
           },
-          () => {
-            fetchMessages();
+          (payload: any) => {
+            const newMsg = payload?.new;
+            if (newMsg) {
+              const createdAt = new Date(newMsg.created_at);
+              const timeStr = `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
+              const mappedMsg: Message = {
+                id: newMsg.id,
+                sender: newMsg.sender_type as MessageType,
+                content: newMsg.content || "",
+                translatedContent: newMsg.translated_content || undefined,
+                time: timeStr,
+                language: newMsg.original_language || undefined,
+                confidence: newMsg.ai_confidence ? Math.round(newMsg.ai_confidence * 100) : undefined,
+              };
+              // Add new message, skip if already present (optimistic or duplicate)
+              setDbMessages((prev) => {
+                // Remove optimistic messages that match content
+                const filtered = prev.filter(m => {
+                  if (m.id.startsWith("optimistic-") && m.content === mappedMsg.content) return false;
+                  return true;
+                });
+                // Skip if already exists
+                if (filtered.some(m => m.id === mappedMsg.id)) return filtered;
+                return [...filtered, mappedMsg];
+              });
+              // Play sound for inbound
+              if (newMsg.direction === "inbound") {
+                playNotificationSound();
+              }
+            }
           }
         )
         .subscribe();
@@ -886,6 +943,88 @@ export default function InboxPage() {
       messagesEndRef.current.scrollIntoView({ behavior });
     }
   }, []);
+
+  // Notification sound function (cute/friendly chime)
+  const playNotificationSound = useCallback(() => {
+    const now = Date.now();
+    if (now - lastNotifTimeRef.current < 2000) return; // Throttle to 2s
+    lastNotifTimeRef.current = now;
+    try {
+      const ctx = audioContextRef.current || new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = ctx;
+      // Play a friendly two-tone chime
+      const playTone = (freq: number, start: number, dur: number, vol: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, ctx.currentTime + start);
+        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + dur);
+      };
+      playTone(830, 0, 0.15, 0.3);    // E5
+      playTone(1050, 0.12, 0.2, 0.25); // C6
+      playTone(1320, 0.25, 0.3, 0.2);  // E6
+    } catch {
+      // Audio not available
+    }
+  }, []);
+
+  // Auto-detect interests/concerns when messages change
+  useEffect(() => {
+    if (!selectedConversation || dbMessages.length === 0) return;
+    const customerId = (selectedConversation as any)?._customerId;
+    if (!customerId) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/customers/${customerId}/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: selectedConversation.id }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDetectedInterests(data.interests || []);
+          setDetectedConcerns(data.concerns || []);
+        }
+      } catch {
+        // Silently fail
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation?.id, dbMessages.length]);
+
+  // Load memo from customer metadata when conversation changes
+  useEffect(() => {
+    if (!selectedConversation) return;
+    const customerId = (selectedConversation as any)?._customerId;
+    if (!customerId) return;
+
+    async function loadCustomerMeta() {
+      try {
+        const res = await fetch(`/api/customers/${customerId}/profile`);
+        if (res.ok) {
+          const data = await res.json();
+          const meta = data.metadata || {};
+          setMemoText(meta.memo || "");
+          if (data.totalConversations) {
+            setDbCustomerProfile(prev => prev ? { ...prev, totalConversations: data.totalConversations } : prev);
+          }
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+    loadCustomerMeta();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation?.id]);
 
   // Auto-scroll on conversation select or new message
   useEffect(() => {
@@ -1842,7 +1981,11 @@ export default function InboxPage() {
                           "min-h-[72px] max-h-[150px] pr-20 resize-none rounded-xl transition-all text-sm",
                           isInternalNote && "border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/30 focus-visible:ring-amber-400"
                         )}
+                        onCompositionStart={() => { isComposingRef.current = true; }}
+                        onCompositionEnd={() => { isComposingRef.current = false; }}
                         onKeyDown={async (e) => {
+                          // Skip Enter during IME composition (prevents Korean duplicate send)
+                          if (isComposingRef.current) return;
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
                             if (messageInput.trim() && selectedConversation) {
@@ -1862,22 +2005,18 @@ export default function InboxPage() {
                               };
                               setDbMessages((prev) => [...prev, optimisticMsg]);
 
-                              // Send via API
+                              // Send via API (fire and forget for speed)
                               if (selectedConversation.id) {
-                                try {
-                                  await fetch("/api/messages", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({
-                                      conversationId: selectedConversation.id,
-                                      content,
-                                      isInternalNote: wasInternalNote,
-                                      targetLanguage: !wasInternalNote ? targetLanguage : undefined,
-                                    }),
-                                  });
-                                } catch (err) {
-                                  console.error("Send message failed:", err);
-                                }
+                                fetch("/api/messages", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    conversationId: selectedConversation.id,
+                                    content,
+                                    isInternalNote: wasInternalNote,
+                                    targetLanguage: !wasInternalNote ? targetLanguage : undefined,
+                                  }),
+                                }).catch(err => console.error("Send message failed:", err));
                               }
                             }
                           }
@@ -1926,7 +2065,7 @@ export default function InboxPage() {
                         "h-9 w-9 rounded-xl transition-all",
                         isInternalNote ? "bg-amber-500 hover:bg-amber-600" : "bg-primary hover:bg-primary/90"
                       )}
-                      onClick={async () => {
+                      onClick={() => {
                         if (messageInput.trim() && selectedConversation) {
                           const content = messageInput;
                           const wasInternalNote = isInternalNote;
@@ -1944,21 +2083,18 @@ export default function InboxPage() {
                           };
                           setDbMessages((prev) => [...prev, optimisticMsg]);
 
+                          // Fire and forget for speed
                           if (selectedConversation.id) {
-                            try {
-                              await fetch("/api/messages", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  conversationId: selectedConversation.id,
-                                  content,
-                                  isInternalNote: wasInternalNote,
-                                  targetLanguage: !wasInternalNote ? targetLanguage : undefined,
-                                }),
-                              });
-                            } catch (err) {
-                              console.error("Send message failed:", err);
-                            }
+                            fetch("/api/messages", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                conversationId: selectedConversation.id,
+                                content,
+                                isInternalNote: wasInternalNote,
+                                targetLanguage: !wasInternalNote ? targetLanguage : undefined,
+                              }),
+                            }).catch(err => console.error("Send message failed:", err));
                           }
                         }
                       }}
@@ -2292,11 +2428,17 @@ export default function InboxPage() {
 
                 <Separator />
 
-                {/* Quick Info */}
+                {/* Quick Info - total conversations from real count */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
                     <p className="text-[10px] text-muted-foreground">총 대화</p>
-                    <p className="text-sm font-semibold">{dbCustomerProfile.totalConversations}</p>
+                    <p className="text-sm font-semibold">
+                      {dbConversations.filter(c => {
+                        const cid = (c as any)._customerId;
+                        const selectedCid = (selectedConversation as any)?._customerId;
+                        return cid && selectedCid && cid === selectedCid;
+                      }).length || dbCustomerProfile.totalConversations}
+                    </p>
                   </div>
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
                     <p className="text-[10px] text-muted-foreground">첫 접촉</p>
@@ -2326,13 +2468,32 @@ export default function InboxPage() {
 
                 <Separator />
 
-                {/* Location */}
+                {/* Location - displayed in customer's language */}
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-medium flex items-center gap-1.5">
                     <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                     위치
                   </h4>
-                  <p className="text-xs text-muted-foreground">{dbCustomerProfile.city}{dbCustomerProfile.city ? ", " : ""}{dbCustomerProfile.country}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(() => {
+                      const lang = dbCustomerProfile.language?.toLowerCase() || "ko";
+                      const country = dbCustomerProfile.country;
+                      // Country name in customer's language
+                      const countryNames: Record<string, Record<string, string>> = {
+                        "일본": { ja: "日本", en: "Japan", zh: "日本", "zh-hans": "日本", th: "ญี่ปุ่น", vi: "Nhật Bản", ko: "일본" },
+                        "한국": { ja: "韓国", en: "South Korea", zh: "韓國", "zh-hans": "韩国", th: "เกาหลีใต้", vi: "Hàn Quốc", ko: "한국" },
+                        "중국": { ja: "中国", en: "China", zh: "中國", "zh-hans": "中国", th: "จีน", vi: "Trung Quốc", ko: "중국" },
+                        "대만": { ja: "台湾", en: "Taiwan", zh: "台灣", "zh-hans": "台湾", th: "ไต้หวัน", vi: "Đài Loan", ko: "대만" },
+                        "미국": { ja: "アメリカ", en: "United States", zh: "美國", "zh-hans": "美国", th: "สหรัฐอเมริกา", vi: "Hoa Kỳ", ko: "미국" },
+                        "베트남": { ja: "ベトナム", en: "Vietnam", zh: "越南", "zh-hans": "越南", th: "เวียดนาม", vi: "Việt Nam", ko: "베트남" },
+                        "태국": { ja: "タイ", en: "Thailand", zh: "泰國", "zh-hans": "泰国", th: "ไทย", vi: "Thái Lan", ko: "태국" },
+                        "몽골": { ja: "モンゴル", en: "Mongolia", zh: "蒙古", "zh-hans": "蒙古", th: "มองโกเลีย", vi: "Mông Cổ", ko: "몽골" },
+                      };
+                      const localName = countryNames[country]?.[lang] || country;
+                      const city = dbCustomerProfile.city;
+                      return `${city}${city ? ", " : ""}${localName}`;
+                    })()}
+                  </p>
                 </div>
 
                 <Separator />
@@ -2356,27 +2517,106 @@ export default function InboxPage() {
                   </>
                 )}
 
-                {/* Interests */}
+                {/* Interests - auto-detected from conversation */}
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-medium flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Sparkles className="h-3.5 w-3.5 text-violet-500" />
                     관심 시술
+                    {detectedInterests.length > 0 && (
+                      <Badge variant="secondary" className="text-[9px] h-4 rounded-md ml-auto">
+                        <Brain className="h-2.5 w-2.5 mr-0.5" />
+                        자동감지
+                      </Badge>
+                    )}
                   </h4>
                   <div className="flex flex-wrap gap-1">
-                    {dbCustomerProfile.interests.map((interest) => (
-                      <Badge key={interest} variant="outline" className="text-[10px] rounded-full">
+                    {detectedInterests.length > 0 ? detectedInterests.map((interest) => (
+                      <Badge key={interest} variant="outline" className="text-[10px] rounded-full border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300">
                         {interest}
                       </Badge>
-                    ))}
+                    )) : (
+                      <span className="text-[10px] text-muted-foreground">대화에서 시술 관련 내용이 감지되면 자동 표시됩니다</span>
+                    )}
                   </div>
                 </div>
 
                 <Separator />
 
-                {/* Notes */}
+                {/* Concerns - auto-detected from conversation */}
                 <div className="space-y-1.5">
-                  <h4 className="text-xs font-medium">메모</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{dbCustomerProfile.notes || "메모 없음"}</p>
+                  <h4 className="text-xs font-medium flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                    고민
+                    {detectedConcerns.length > 0 && (
+                      <Badge variant="secondary" className="text-[9px] h-4 rounded-md ml-auto">
+                        <Brain className="h-2.5 w-2.5 mr-0.5" />
+                        자동감지
+                      </Badge>
+                    )}
+                  </h4>
+                  <div className="flex flex-wrap gap-1">
+                    {detectedConcerns.length > 0 ? detectedConcerns.map((concern) => (
+                      <Badge key={concern} variant="outline" className="text-[10px] rounded-full border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300">
+                        {concern}
+                      </Badge>
+                    )) : (
+                      <span className="text-[10px] text-muted-foreground">대화에서 고객 고민이 감지되면 자동 표시됩니다</span>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Notes - editable memo with DB save */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-medium flex items-center gap-1.5">
+                      <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
+                      메모
+                    </h4>
+                    {!isEditingMemo ? (
+                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setIsEditingMemo(true)}>
+                        <Edit3 className="h-3 w-3" />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-green-600"
+                        onClick={async () => {
+                          const customerId = (selectedConversation as any)?._customerId;
+                          if (!customerId) return;
+                          setIsEditingMemo(false);
+                          setDbCustomerProfile(prev => prev ? { ...prev, notes: memoText } : prev);
+                          try {
+                            await fetch(`/api/customers/${customerId}/profile`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ metadata: { memo: memoText } }),
+                            });
+                          } catch (e) { console.error("Failed to save memo:", e); }
+                        }}
+                      >
+                        <Save className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  {isEditingMemo ? (
+                    <Textarea
+                      value={memoText}
+                      onChange={(e) => setMemoText(e.target.value)}
+                      placeholder="메모를 입력하세요..."
+                      className="min-h-[60px] text-xs resize-none rounded-lg"
+                      autoFocus
+                    />
+                  ) : (
+                    <p
+                      className="text-xs text-muted-foreground leading-relaxed cursor-pointer hover:text-foreground transition-colors min-h-[20px]"
+                      onClick={() => setIsEditingMemo(true)}
+                    >
+                      {memoText || dbCustomerProfile.notes || "클릭하여 메모를 작성하세요"}
+                    </p>
+                  )}
                 </div>
 
                 <Separator />
@@ -2395,6 +2635,65 @@ export default function InboxPage() {
                     <History className="h-3.5 w-3.5 mr-2" />
                     이전 대화 내역
                   </Button>
+
+                  <Separator className="my-2" />
+
+                  {/* Delete Conversation */}
+                  {!showDeleteDialog ? (
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start rounded-lg text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                      size="sm"
+                      onClick={() => setShowDeleteDialog(true)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-2" />
+                      대화 삭제하기
+                    </Button>
+                  ) : (
+                    <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 space-y-2">
+                      <p className="text-xs font-medium text-destructive">정말 이 대화를 삭제하시겠습니까?</p>
+                      <p className="text-[10px] text-muted-foreground">삭제된 대화와 메시지는 복구할 수 없습니다.</p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="flex-1 h-7 text-[11px]"
+                          disabled={isDeleting}
+                          onClick={async () => {
+                            if (!selectedConversation) return;
+                            setIsDeleting(true);
+                            try {
+                              const res = await fetch(`/api/conversations/${selectedConversation.id}`, {
+                                method: "DELETE",
+                              });
+                              if (res.ok) {
+                                // Remove from local state
+                                setDbConversations(prev => prev.filter(c => c.id !== selectedConversation.id));
+                                setSelectedConversation(null);
+                                setDbMessages([]);
+                                setDbCustomerProfile(null);
+                                setShowDeleteDialog(false);
+                              }
+                            } catch (err) {
+                              console.error("Delete failed:", err);
+                            } finally {
+                              setIsDeleting(false);
+                            }
+                          }}
+                        >
+                          {isDeleting ? "삭제 중..." : "확인, 삭제합니다"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-7 text-[11px]"
+                          onClick={() => setShowDeleteDialog(false)}
+                        >
+                          취소
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               )}
