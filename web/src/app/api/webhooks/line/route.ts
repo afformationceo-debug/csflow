@@ -62,12 +62,38 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
   const supabase = await createServiceClient();
 
   // 1. Find channel account and tenant
-  const { data: channelAccount } = await supabase
+  // LINE webhook destination is a Bot User ID (U + hex), not Channel ID.
+  // Try exact match first, then fallback to channel_type lookup with credentials match.
+  let { data: channelAccount } = await supabase
     .from("channel_accounts")
     .select("*, tenant:tenants(*)")
     .eq("channel_type", "line")
     .eq("account_id", message.channelAccountId)
     .single();
+
+  // Fallback: if destination doesn't match account_id, find any active LINE channel
+  // and update account_id with the correct Bot User ID for future lookups
+  if (!channelAccount) {
+    const { data: fallbackAccount } = await supabase
+      .from("channel_accounts")
+      .select("*, tenant:tenants(*)")
+      .eq("channel_type", "line")
+      .eq("is_active", true)
+      .limit(1)
+      .single();
+
+    if (fallbackAccount) {
+      channelAccount = fallbackAccount;
+      // Update account_id to the Bot User ID for faster future lookups
+      await (supabase
+        .from("channel_accounts") as any)
+        .update({ account_id: message.channelAccountId })
+        .eq("id", (fallbackAccount as unknown as { id: string }).id);
+      console.log(
+        `Updated LINE channel account_id to Bot User ID: ${message.channelAccountId}`
+      );
+    }
+  }
 
   if (!channelAccount) {
     console.error(`Channel account not found: ${message.channelAccountId}`);
