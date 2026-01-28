@@ -1,6 +1,6 @@
 # CS 자동화 플랫폼 - LLM/AI 기능 관리 문서
 
-> **최종 감사일**: 2026-01-27
+> **최종 감사일**: 2026-01-28
 > **목적**: LLM 관련 7개 핵심 기능의 구현 상태를 추적하고 관리하는 전용 문서
 
 ---
@@ -342,24 +342,121 @@ private async executeAction(action, context) {
 | DeepL (번역) | ✅ 설정됨 | `DEEPL_API_KEY` |
 | Upstash Redis (캐싱) | ✅ 설정됨 | `UPSTASH_REDIS_REST_URL/TOKEN` |
 | Upstash Vector (벡터검색) | ✅ 설정됨 | `UPSTASH_VECTOR_REST_URL/TOKEN` |
+| Facebook Messenger | ✅ 설정됨 | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FB_WEBHOOK_VERIFY_TOKEN` |
+| Instagram DM | ✅ 설정됨 | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `IG_WEBHOOK_VERIFY_TOKEN` |
+| WhatsApp Business | ✅ 설정됨 | `WHATSAPP_VERIFY_TOKEN`, `NEXT_PUBLIC_WA_CONFIG_ID` |
+| Meta OAuth | ✅ 설정됨 | `META_OAUTH_REDIRECT_URI`, `META_WEBHOOK_VERIFY_TOKEN` |
+| LINE Messaging API | ✅ 설정됨 | `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ID` |
+| Slack Notifications | ✅ 설정됨 | `SLACK_BOT_TOKEN` |
+| Sentry 에러 모니터링 | ✅ 설정됨 | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT` |
+
+---
+
+## 메신저 채널 연동 설정
+
+### Webhook URL (Vercel 프로덕션)
+
+| 채널 | Webhook URL | Verify Token |
+|------|------------|-------------|
+| LINE | `https://csflow.vercel.app/api/webhooks/line` | (LINE Channel Secret으로 서명 검증) |
+| Facebook Messenger | `https://csflow.vercel.app/api/webhooks/meta` | `hi` |
+| Instagram DM | `https://csflow.vercel.app/api/webhooks/meta` | `impakers-best` |
+| WhatsApp Business | `https://csflow.vercel.app/api/webhooks/meta` | `hello` |
+| KakaoTalk | `https://csflow.vercel.app/api/webhooks/kakao` | (향후 설정) |
+| WeChat | `https://csflow.vercel.app/api/webhooks/wechat` | (향후 설정) |
+
+### Meta 통합 Webhook 구조
+
+```
+모든 Meta 플랫폼 (FB, IG, WhatsApp) → /api/webhooks/meta
+  ├─ GET: Webhook 구독 검증 (hub.verify_token으로 검증)
+  │   └─ FB_WEBHOOK_VERIFY_TOKEN / IG_WEBHOOK_VERIFY_TOKEN / WHATSAPP_VERIFY_TOKEN 중 하나와 매칭
+  │
+  └─ POST: 메시지 수신 처리
+      ├─ x-hub-signature-256 헤더로 서명 검증 (FACEBOOK_APP_SECRET 또는 INSTAGRAM_APP_SECRET)
+      ├─ payload.object로 플랫폼 감지:
+      │   ├─ "page" → Facebook Messenger
+      │   ├─ "instagram" → Instagram DM
+      │   └─ "whatsapp_business_account" → WhatsApp Business
+      └─ 각 어댑터의 parseWebhook()으로 메시지 파싱 → processInboundMessage() 공통 처리
+```
+
+### 채널 연동 테스트 방법
+
+#### 1단계: Meta Developer App 설정
+각 플랫폼별 Meta App Dashboard에서:
+1. **Products** > **Webhooks** 추가
+2. **Callback URL**: `https://csflow.vercel.app/api/webhooks/meta`
+3. **Verify Token**: 각 플랫폼에 맞는 토큰 입력
+4. **구독 필드** 선택:
+   - Facebook: `messages`, `messaging_postbacks`
+   - Instagram: `messages`, `messaging_postbacks`
+   - WhatsApp: `messages`
+
+#### 2단계: 각 채널 테스트
+
+**Facebook Messenger 테스트:**
+1. Facebook App Dashboard > Messenger > 설정
+2. Webhook URL/Verify Token 등록 후 Subscribe
+3. 연결된 Facebook Page에 메시지 보내기
+4. Vercel 로그에서 webhook 수신 확인
+
+**Instagram DM 테스트:**
+1. Instagram App Dashboard > Instagram > 설정
+2. Webhook URL/Verify Token 등록 후 Subscribe
+3. Instagram 비즈니스 계정으로 DM 보내기
+4. Vercel 로그에서 webhook 수신 확인
+
+**WhatsApp Business 테스트:**
+1. Meta Business Suite > WhatsApp > 설정
+2. Webhook URL/Verify Token 등록
+3. WhatsApp Business 테스트 번호로 메시지 보내기
+4. Vercel 로그에서 webhook 수신 확인
+
+**LINE 테스트:**
+1. LINE Developers Console > Messaging API 채널
+2. Webhook URL: `https://csflow.vercel.app/api/webhooks/line`
+3. Webhook 활성화
+4. LINE 앱에서 봇에 메시지 보내기 (@246kdolz)
+5. Vercel 로그에서 webhook 수신 확인
+
+#### 3단계: Vercel 로그 확인
+```bash
+# Vercel CLI로 실시간 로그 모니터링
+npx vercel logs csflow.vercel.app --follow
+
+# 또는 Vercel Dashboard > Deployments > Functions 탭에서 확인
+```
+
+#### 4단계: Supabase에서 데이터 확인
+1. https://supabase.com/dashboard > SQL Editor
+2. 쿼리 실행:
+```sql
+-- 수신된 메시지 확인
+SELECT * FROM messages ORDER BY created_at DESC LIMIT 10;
+
+-- 생성된 대화 확인
+SELECT * FROM conversations ORDER BY created_at DESC LIMIT 10;
+
+-- 고객 정보 확인
+SELECT * FROM customers ORDER BY created_at DESC LIMIT 10;
+```
 
 ---
 
 ## Vercel 배포 설정
 
-### Root Directory 문제 해결
-- 프로젝트 루트에 `vercel.json` 생성하여 `web/` 서브디렉토리를 빌드 대상으로 지정
-- 또는 Vercel Dashboard > Settings > General > Root Directory를 `web`으로 설정
+### 프로덕션 환경
+- **URL**: https://csflow.vercel.app
+- **프로젝트**: csflow (prj_RdfmNnACP9EuB2cQexo7XLZWok58)
+- **팀**: afformationceo-4012s-projects
+- **GitHub**: afformationceo-debug/csflow
+- **Root Directory**: web
+- **Framework**: nextjs
 
-```json
-// /vercel.json
-{
-  "framework": "nextjs",
-  "buildCommand": "cd web && npm install && npm run build",
-  "outputDirectory": "web/.next",
-  "installCommand": "cd web && npm install"
-}
-```
+### 환경변수 설정 완료 (Vercel Dashboard + .env.local)
+- 총 33개 환경변수 설정됨 (AI/번역/캐싱/메신저/모니터링)
+- Meta 플랫폼 10개 변수 추가 (2026-01-28)
 
 ---
 
@@ -374,3 +471,8 @@ private async executeAction(action, context) {
 | 2026-01-27 | 기능 6 완료: rule-engine.ts에 CRM 액션 핸들러 3개 추가 |
 | 2026-01-27 | 7/7 LLM 기능 모두 구현 완료 |
 | 2026-01-27 | Vercel 배포 404 오류 수정: vercel.json 생성 + TypeScript 빌드 에러 수정 |
+| 2026-01-28 | 7/7 LLM 기능 재검증 - 전체 PASS 확인 |
+| 2026-01-28 | Meta 플랫폼 환경변수 설정 (FB/IG/WA App ID, Secret, Verify Token) |
+| 2026-01-28 | Meta 웹훅 핸들러 개선: 플랫폼별 개별 Verify Token 및 App Secret 지원 |
+| 2026-01-28 | Vercel 프로덕션 환경변수 10개 추가 등록 |
+| 2026-01-28 | 메신저 연동 테스트 가이드 작성 |

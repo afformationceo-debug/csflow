@@ -2020,10 +2020,37 @@ LINE_CHANNEL_SECRET=your-line-channel-secret
 # 3. 웹훅 URL 설정: https://your-domain.com/api/webhooks/line
 ```
 
-### 14.8 앱 URL 설정
+### 14.8 Meta Platform (Facebook, Instagram, WhatsApp) ✅ 설정 완료
+```bash
+# Facebook Messenger
+FACEBOOK_APP_ID=779249264859459
+FACEBOOK_APP_SECRET=45cef21e10d966a1e06a8af8c11509ad
+FB_WEBHOOK_VERIFY_TOKEN=hi
+
+# Instagram DM
+INSTAGRAM_APP_ID=1777471926473316
+INSTAGRAM_APP_SECRET=3316673a4fc563ae22f2fe2ee72dcf6d
+IG_WEBHOOK_VERIFY_TOKEN=impakers-best
+
+# WhatsApp Business
+WHATSAPP_VERIFY_TOKEN=hello
+NEXT_PUBLIC_WA_CONFIG_ID=1208932041106790
+
+# Meta 통합 Webhook + OAuth
+META_WEBHOOK_VERIFY_TOKEN=cs_automation_verify_token
+META_OAUTH_REDIRECT_URI=https://csflow.vercel.app/api/oauth/meta
+
+# 참고:
+# - FB/IG/WhatsApp 모두 /api/webhooks/meta 단일 엔드포인트로 수신
+# - 서명 검증에 FACEBOOK_APP_SECRET / INSTAGRAM_APP_SECRET 사용
+# - Webhook 구독 검증에 각 플랫폼별 VERIFY_TOKEN 사용
+# - Page Access Token은 OAuth 플로우를 통해 DB에 저장됨
+```
+
+### 14.9 앱 URL 설정
 ```bash
 NEXT_PUBLIC_APP_URL=http://localhost:3000  # 개발환경
-# NEXT_PUBLIC_APP_URL=https://your-domain.com  # 프로덕션
+# NEXT_PUBLIC_APP_URL=https://csflow.vercel.app  # 프로덕션
 
 # QStash 웹훅 콜백 URL에 사용됨
 ```
@@ -2042,15 +2069,21 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000  # 개발환경
 | **Anthropic API 키** | ✅ 완료 | Claude 사용 가능 |
 | **Upstash Redis** | ✅ 완료 | 캐싱/세션 관리용 |
 | **Upstash Vector** | ✅ 완료 | RAG 벡터 검색용 |
+| **LINE 채널 정보** | ✅ 완료 | Channel ID/Secret/Access Token 설정됨 |
+| **Facebook Messenger** | ✅ 완료 | App ID/Secret/Verify Token 설정됨 |
+| **Instagram DM** | ✅ 완료 | App ID/Secret/Verify Token 설정됨 |
+| **WhatsApp Business** | ✅ 완료 | Verify Token/Config ID 설정됨 |
+| **Slack 알림** | ✅ 완료 | Bot Token 설정됨 |
+| **Sentry 모니터링** | ✅ 완료 | DSN/Org/Project 설정됨 |
 
 ### 15.2 아직 필요한 항목
 
 | 항목 | 상세 | 우선순위 |
 |------|------|---------|
 | **자체 CRM API 문서** | 연동할 CRM의 API 스펙 | P1 |
-| **LINE 채널 정보** | Channel Access Token, Channel Secret | P1 |
-| **카카오 알림톡 정보** | 에스컬레이션 알림용 | P2 |
-| **Meta App 정보** | Meta Developer App ID, Secret | P2 |
+| **카카오 알림톡 정보** | 에스컬레이션 알림용 (현재 Slack 대체) | P2 |
+| **Meta Page Access Token** | OAuth 플로우로 각 페이지 토큰 획득 필요 | P1 |
+| **WeChat 채널 정보** | Official Account App ID/Secret | P3 |
 
 ### 15.3 데이터베이스 마이그레이션 (사용자 실행 필요)
 
