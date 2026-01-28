@@ -8,6 +8,42 @@ import { ChannelType } from "@/lib/supabase/types";
 export const dynamic = "force-dynamic";
 
 /**
+ * GET /api/messages?action=translate&text=...&targetLang=...
+ * Real-time translation preview via DeepL
+ */
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const action = searchParams.get("action");
+
+  if (action === "translate") {
+    const text = searchParams.get("text") || "";
+    const targetLang = (searchParams.get("targetLang") || "EN") as SupportedLanguage;
+
+    if (!text.trim()) {
+      return NextResponse.json({ translated: "" });
+    }
+
+    try {
+      const translation = await translationService.translateForCS(
+        text,
+        "to_customer",
+        targetLang
+      );
+      return NextResponse.json({
+        translated: translation.text,
+        sourceLang: "KO",
+        targetLang,
+      });
+    } catch (err) {
+      console.error("Translation preview error:", err);
+      return NextResponse.json({ translated: "", error: "Translation failed" });
+    }
+  }
+
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+}
+
+/**
  * POST /api/messages
  * Agent-initiated outbound message with optional DeepL translation.
  *
@@ -17,6 +53,8 @@ export const dynamic = "force-dynamic";
  *   - contentType?: string (default: "text")
  *   - mediaUrl?: string
  *   - translateToCustomerLanguage?: boolean (default: true)
+ *   - isInternalNote?: boolean (default: false) — saves as internal note, not sent to customer
+ *   - targetLanguage?: string — override customer language for translation
  */
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +66,8 @@ export async function POST(request: NextRequest) {
       contentType,
       mediaUrl,
       translateToCustomerLanguage = true,
+      isInternalNote = false,
+      targetLanguage,
     } = body;
 
     // Validate required fields
@@ -39,6 +79,38 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createServiceClient();
+
+    // ── Internal Note: save without sending to channel ──
+    if (isInternalNote) {
+      const noteData: Record<string, unknown> = {
+        conversation_id: conversationId,
+        direction: "outbound",
+        sender_type: "internal_note",
+        content_type: "text",
+        content: content,
+        original_language: "KO",
+        status: "sent",
+        metadata: { internal: true },
+      };
+
+      const { data: note, error: noteError } = await (supabase
+        .from("messages") as any)
+        .insert(noteData)
+        .select()
+        .single();
+
+      if (noteError) {
+        console.error("Failed to save internal note:", noteError);
+        return NextResponse.json(
+          { error: "Failed to save internal note" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ success: true, message: note });
+    }
+
+    // ── Regular outbound message ──
 
     // 1. Look up the conversation with customer and channel info
     const { data: conversation, error: convError } = await (supabase
@@ -77,9 +149,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Determine customer language
+    // 2. Determine target language (prefer explicit targetLanguage, fallback to customer language)
     const customerLanguage: SupportedLanguage =
-      (customer.language as SupportedLanguage) || "EN";
+      (targetLanguage as SupportedLanguage) || (customer.language as SupportedLanguage) || "EN";
 
     // 3. Translate if requested and customer language is not Korean
     let translatedContent: string | undefined;

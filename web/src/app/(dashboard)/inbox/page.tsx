@@ -538,6 +538,13 @@ export default function InboxPage() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [quickReplyMode, setQuickReplyMode] = useState(false);
 
+  // Translation preview state
+  const [autoTranslateEnabled, setAutoTranslateEnabled] = useState(true);
+  const [targetLanguage, setTargetLanguage] = useState("JA");
+  const [translationPreview, setTranslationPreview] = useState("");
+  const [isTranslating, setIsTranslating] = useState(false);
+  const translationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // DB state
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [dbConversations, setDbConversations] = useState<Conversation[]>([]);
@@ -566,6 +573,62 @@ export default function InboxPage() {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Translation language config
+  const translationLanguages = [
+    { code: "JA", label: "日本語", flag: "🇯🇵" },
+    { code: "EN", label: "English", flag: "🇺🇸" },
+    { code: "ZH", label: "繁體中文(台灣)", flag: "🇹🇼" },
+    { code: "ZH-HANS", label: "简体中文", flag: "🇨🇳" },
+    { code: "TH", label: "ภาษาไทย", flag: "🇹🇭" },
+    { code: "VI", label: "Tiếng Việt", flag: "🇻🇳" },
+    { code: "MN", label: "Монгол", flag: "🇲🇳" },
+    { code: "KO", label: "한국어", flag: "🇰🇷" },
+  ];
+
+  // Auto-set target language from customer's language when conversation changes
+  useEffect(() => {
+    if (selectedConversation?.customer?.language) {
+      const lang = selectedConversation.customer.language.toUpperCase();
+      const matched = translationLanguages.find(l => l.code === lang || l.code.startsWith(lang));
+      if (matched) setTargetLanguage(matched.code);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation?.id]);
+
+  // Debounced translation preview
+  useEffect(() => {
+    if (!autoTranslateEnabled || isInternalNote || !messageInput.trim() || targetLanguage === "KO") {
+      setTranslationPreview("");
+      return;
+    }
+
+    if (translationTimerRef.current) {
+      clearTimeout(translationTimerRef.current);
+    }
+
+    setIsTranslating(true);
+    translationTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/messages?action=translate&text=${encodeURIComponent(messageInput)}&targetLang=${targetLanguage}`
+        );
+        const data = await res.json();
+        if (data.translated) {
+          setTranslationPreview(data.translated);
+        }
+      } catch {
+        // Silently fail — preview is optional
+      } finally {
+        setIsTranslating(false);
+      }
+    }, 500);
+
+    return () => {
+      if (translationTimerRef.current) clearTimeout(translationTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageInput, targetLanguage, autoTranslateEnabled, isInternalNote]);
 
   // ── Fetch tenants (hospitals) from DB ──
   useEffect(() => {
@@ -1644,6 +1707,77 @@ export default function InboxPage() {
                     )}
                   </AnimatePresence>
 
+                  {/* Translation Preview */}
+                  {!isInternalNote && autoTranslateEnabled && translationPreview && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mb-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-950/30 overflow-hidden"
+                    >
+                      <div className="px-3 py-1.5 flex items-center gap-1.5 text-[10px] text-blue-600 dark:text-blue-400 border-b border-blue-100 dark:border-blue-900">
+                        <Languages className="h-3 w-3" />
+                        <span className="font-medium">
+                          {translationLanguages.find(l => l.code === targetLanguage)?.flag}{" "}
+                          {translationLanguages.find(l => l.code === targetLanguage)?.label}(으)로 번역됨
+                        </span>
+                        {isTranslating && (
+                          <RefreshCw className="h-2.5 w-2.5 animate-spin ml-1" />
+                        )}
+                      </div>
+                      <div className="px-3 py-2 text-sm text-foreground/80">
+                        {translationPreview}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Translation Toggle + Language Selector */}
+                  {!isInternalNote && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <Button
+                        variant={autoTranslateEnabled ? "secondary" : "ghost"}
+                        size="sm"
+                        className={cn(
+                          "h-6 text-[10px] rounded-lg transition-all",
+                          autoTranslateEnabled && "bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-950 dark:text-blue-300"
+                        )}
+                        onClick={() => setAutoTranslateEnabled(!autoTranslateEnabled)}
+                      >
+                        <Languages className="h-3 w-3 mr-1" />
+                        자동번역 {autoTranslateEnabled ? "ON" : "OFF"}
+                      </Button>
+                      <span className="text-[10px] text-muted-foreground">→</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-6 text-[10px] rounded-lg gap-1 px-2">
+                            {translationLanguages.find(l => l.code === targetLanguage)?.flag}{" "}
+                            {translationLanguages.find(l => l.code === targetLanguage)?.label}
+                            <ChevronDown className="h-2.5 w-2.5 opacity-50" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="min-w-[160px]">
+                          <DropdownMenuLabel className="text-[10px]">번역 언어 선택</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {translationLanguages.map((lang) => (
+                            <DropdownMenuItem
+                              key={lang.code}
+                              onClick={() => setTargetLanguage(lang.code)}
+                              className={cn(
+                                "text-xs gap-2",
+                                targetLanguage === lang.code && "bg-accent"
+                              )}
+                            >
+                              <span>{lang.flag}</span>
+                              <span>{lang.label}</span>
+                              {targetLanguage === lang.code && <Check className="h-3 w-3 ml-auto" />}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <span className="text-[10px] text-muted-foreground/60 ml-1">입력시 자동 번역됩니다</span>
+                    </div>
+                  )}
+
                   <div className="flex items-end gap-2">
                     <div className="flex-1 relative">
                       <Textarea
@@ -1660,6 +1794,7 @@ export default function InboxPage() {
                             if (messageInput.trim() && selectedConversation) {
                               const content = messageInput;
                               setMessageInput("");
+                              setTranslationPreview("");
                               // Send via API for DB conversations
                               if (selectedConversation.id) {
                                 try {
@@ -1669,6 +1804,8 @@ export default function InboxPage() {
                                     body: JSON.stringify({
                                       conversationId: selectedConversation.id,
                                       content,
+                                      isInternalNote,
+                                      targetLanguage: !isInternalNote ? targetLanguage : undefined,
                                     }),
                                   });
                                 } catch (err) {
@@ -1726,6 +1863,7 @@ export default function InboxPage() {
                         if (messageInput.trim() && selectedConversation) {
                           const content = messageInput;
                           setMessageInput("");
+                          setTranslationPreview("");
                           if (selectedConversation.id) {
                             try {
                               await fetch("/api/messages", {
@@ -1734,6 +1872,8 @@ export default function InboxPage() {
                                 body: JSON.stringify({
                                   conversationId: selectedConversation.id,
                                   content,
+                                  isInternalNote,
+                                  targetLanguage: !isInternalNote ? targetLanguage : undefined,
                                 }),
                               });
                             } catch (err) {
