@@ -104,6 +104,7 @@ import {
   Edit3,
   Volume2,
   Brain,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -149,6 +150,13 @@ interface Conversation {
 
 type MessageType = "customer" | "ai" | "agent" | "internal_note" | "system";
 
+interface RAGSource {
+  type: "system_prompt" | "knowledge_base" | "tenant_config" | "conversation_history" | "feedback_db";
+  name: string;
+  description?: string;
+  relevanceScore?: number;
+}
+
 interface Message {
   id: string;
   sender: MessageType;
@@ -157,7 +165,7 @@ interface Message {
   time: string;
   language?: string;
   confidence?: number;
-  sources?: string[];
+  sources?: RAGSource[];  // Updated type
   author?: string;
   mentions?: string[];
   isEdited?: boolean;
@@ -1846,15 +1854,49 @@ export default function InboxPage() {
                                     : "bg-primary text-primary-foreground rounded-tr-sm"
                                 )}>
                                   {msg.sender === "ai" && (
-                                    <div className="flex items-center gap-1.5 mb-1.5 text-[10px] text-violet-600 dark:text-violet-400">
-                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-500/10">
-                                        <Sparkles className="h-2.5 w-2.5" />
-                                        <span className="font-semibold">AI 어시스턴트</span>
+                                    <div className="flex flex-col gap-1.5 mb-2">
+                                      <div className="flex items-center gap-1.5 text-[10px] text-violet-600 dark:text-violet-400">
+                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-500/10">
+                                          <Sparkles className="h-2.5 w-2.5" />
+                                          <span className="font-semibold">AI 어시스턴트</span>
+                                        </div>
+                                        {msg.confidence && (
+                                          <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-violet-500/20 bg-violet-500/5 text-violet-600 dark:text-violet-400">
+                                            신뢰도 {msg.confidence}%
+                                          </Badge>
+                                        )}
                                       </div>
-                                      {msg.confidence && (
-                                        <Badge variant="outline" className="h-4 px-1.5 text-[9px] border-violet-500/20 bg-violet-500/5 text-violet-600 dark:text-violet-400">
-                                          신뢰도 {msg.confidence}%
-                                        </Badge>
+                                      {msg.sources && msg.sources.length > 0 && (
+                                        <details className="text-[9px] text-muted-foreground">
+                                          <summary className="cursor-pointer hover:text-violet-600 dark:hover:text-violet-400 transition-colors flex items-center gap-1">
+                                            <FileText className="h-2.5 w-2.5" />
+                                            RAG 소스 ({msg.sources.length}개)
+                                          </summary>
+                                          <div className="mt-1.5 space-y-1 pl-3 border-l-2 border-violet-500/20">
+                                            {msg.sources.map((source, idx) => (
+                                              <div key={idx} className="flex items-start gap-1.5">
+                                                <div className={cn(
+                                                  "mt-0.5 h-1.5 w-1.5 rounded-full shrink-0",
+                                                  source.type === "knowledge_base" ? "bg-amber-500" :
+                                                  source.type === "tenant_config" ? "bg-blue-500" :
+                                                  source.type === "conversation_history" ? "bg-green-500" :
+                                                  "bg-gray-500"
+                                                )} />
+                                                <div className="flex-1 min-w-0">
+                                                  <div className="font-medium text-foreground">{source.name}</div>
+                                                  {source.description && (
+                                                    <div className="text-[8px] text-muted-foreground truncate">{source.description}</div>
+                                                  )}
+                                                  {source.relevanceScore !== undefined && (
+                                                    <div className="text-[8px] text-violet-600 dark:text-violet-400">
+                                                      관련도: {Math.round(source.relevanceScore * 100)}%
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </details>
                                       )}
                                     </div>
                                   )}

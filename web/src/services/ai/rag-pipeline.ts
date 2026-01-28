@@ -18,12 +18,20 @@ export interface RAGInput {
   conversationHistory?: { role: "user" | "assistant"; content: string }[];
 }
 
+export interface RAGSource {
+  type: "system_prompt" | "knowledge_base" | "tenant_config" | "conversation_history" | "feedback_db";
+  name: string;
+  description?: string;
+  relevanceScore?: number;
+}
+
 export interface RAGOutput {
   response: string;
   translatedResponse?: string;
   confidence: number;
   model: LLMModel;
   retrievedDocuments: RetrievedDocument[];
+  sources: RAGSource[];  // NEW: Track which sources were used
   shouldEscalate: boolean;
   escalationReason?: string;
   processingTimeMs: number;
@@ -255,7 +263,46 @@ export const ragPipeline = {
       translatedResponse = translated.text;
     }
 
-    // 9. Log AI response for learning
+    // 9. Build sources list
+    const sources: RAGSource[] = [
+      {
+        type: "system_prompt",
+        name: "시스템 프롬프트",
+        description: `${tenant.name} 맞춤 AI 설정`,
+      },
+    ];
+
+    // Add tenant config
+    if (aiConfig) {
+      sources.push({
+        type: "tenant_config",
+        name: "거래처 설정",
+        description: `모델: ${selectedModel}, 신뢰도 임계값: ${(aiConfig as any).confidence_threshold || 0.75}`,
+      });
+    }
+
+    // Add retrieved documents
+    if (documents.length > 0) {
+      documents.forEach((doc, idx) => {
+        sources.push({
+          type: "knowledge_base",
+          name: doc.title || `문서 #${idx + 1}`,
+          description: doc.category,
+          relevanceScore: doc.score,
+        });
+      });
+    }
+
+    // Add conversation history if provided
+    if (input.conversationHistory && input.conversationHistory.length > 0) {
+      sources.push({
+        type: "conversation_history",
+        name: "대화 기록",
+        description: `${input.conversationHistory.length}개 이전 메시지`,
+      });
+    }
+
+    // 10. Log AI response for learning
     await this.logResponse({
       conversationId: input.conversationId,
       tenantId: input.tenantId,
@@ -274,6 +321,7 @@ export const ragPipeline = {
       confidence: llmResponse.confidence,
       model: llmResponse.model,
       retrievedDocuments: documents,
+      sources,  // NEW: Include sources
       shouldEscalate: !!escalationDecision,
       escalationReason: escalationDecision?.reason,
       processingTimeMs: Date.now() - startTime,
