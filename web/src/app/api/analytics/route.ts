@@ -343,15 +343,23 @@ export async function GET(request: NextRequest) {
     // 5. 채널별 분포
     // ═════════════════════════════════════════════════════════════════════════
 
+    // Get channel distribution via customer_channels → channel_accounts
     const { data: convChannels } = await (supabase as any)
       .from("conversations")
-      .select("id, channel_account_id, channel_accounts:channel_account_id(channel_type)")
+      .select(`
+        id,
+        customer:customers(
+          customer_channels(
+            channel_account:channel_accounts(channel_type)
+          )
+        )
+      `)
       .gte("created_at", startDate)
       .limit(500);
 
     const channelCounts: Record<string, number> = {};
     (convChannels || []).forEach((conv: any) => {
-      const type = conv.channel_accounts?.channel_type || "unknown";
+      const type = conv.customer?.customer_channels?.[0]?.channel_account?.channel_type || "unknown";
       channelCounts[type] = (channelCounts[type] || 0) + 1;
     });
 
