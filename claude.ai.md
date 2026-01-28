@@ -2365,5 +2365,187 @@ TypeScript Errors: 0
 2. ✅ 빌드 검증 통과
 3. ✅ CLAUDE.md 업데이트 (Section 14)
 4. ✅ claude.ai.md 업데이트 (Section 22)
-5. ⏳ Git commit 및 push
-6. ⏳ Vercel 자동 배포
+5. ✅ Git commit 및 push (`daec683`)
+6. ✅ Vercel 자동 배포
+
+---
+
+## 20. 번역 시스템 근본 수정 (2026-01-29)
+
+### 문제 상황 (사용자 3회 반복 보고)
+
+**CRITICAL:** 이전 수정들이 전혀 작동하지 않음
+
+1. **AI 메시지 언어 거꾸로**
+   - EN 고객 → 메인 텍스트: 한국어 (영어여야 함)
+   - "한국어 의미" 토글: 영어 (한국어여야 함)
+
+2. **총 대화 1로 고정**
+   - 항상 1로 표시됨
+   - 고객 관리 연동 안 됨
+
+3. **메시지 카운트 0**
+   - 수신/발신 모두 0으로 돌아감
+
+### 근본 원인 발견 (Production API 직접 확인)
+
+```bash
+$ curl https://csflow.vercel.app/api/conversations/.../messages | jq '.messages[-1]'
+{
+  "sender": null,              # ← sender_type 필드가 null
+  "content": "안녕하세요...",   # ← 한국어만 저장됨
+  "translatedContent": null,   # ← 번역이 없음!!!
+  "direction": "outbound"
+}
+```
+
+**문제의 핵심:**
+- `translateToCustomerLanguage` 파라미터가 **프론트엔드에서 전혀 전달되지 않음**
+- API는 번역을 시도하지 않음 → `translated_content` = null
+- UI는 `translatedContent`가 없으면 `content`(한국어)를 표시
+- → 영어 고객에게 한국어가 보임
+
+### 해결 방법
+
+#### Fix 1: 번역 파라미터 추가 (2곳)
+
+**위치 1: Enter 키 전송**
+```typescript
+// web/src/app/(dashboard)/inbox/page.tsx:2377
+body: JSON.stringify({
+  conversationId: selectedConversation.id,
+  content,
+  isInternalNote: wasInternalNote,
+  translateToCustomerLanguage: !wasInternalNote && autoTranslateEnabled, // ← NEW
+  targetLanguage: !wasInternalNote ? targetLanguage : undefined,
+}),
+```
+
+**위치 2: AI 제안 바로 전송**
+```typescript
+// web/src/app/(dashboard)/inbox/page.tsx:2181
+body: JSON.stringify({
+  conversationId: selectedConversation.id,
+  content,
+  translateToCustomerLanguage: autoTranslateEnabled, // ← NEW
+  targetLanguage,
+  senderType: "ai",
+  aiMetadata: { ... },
+}),
+```
+
+**변수명 수정:**
+- `autoTranslate` → `autoTranslateEnabled` (실제 state 이름과 일치)
+
+#### Fix 2: 총 대화 수 단순화
+
+**Before (복잡한 로컬 필터링):**
+```typescript
+{(() => {
+  const localCount = dbConversations.filter(c => {
+    const cid = (c as any)._customerId;
+    const selectedCid = (selectedConversation as any)?._customerId;
+    return cid && selectedCid && cid === selectedCid;
+  }).length;
+  return localCount > 0 ? localCount : dbCustomerProfile.totalConversations;
+})()}
+```
+
+**After (API 직접 사용):**
+```typescript
+{dbCustomerProfile.totalConversations || 0}
+```
+
+**근거:** API가 DB에서 정확히 카운트하므로 복잡한 로컬 로직 불필요
+
+#### Fix 3: 메시지 방향 확인
+
+**확인 결과: 이미 정상 작동 중**
+- Line 891: `sender_type` → `sender` 매핑 ✓
+- Line 937: Realtime에서도 매핑 ✓
+- Line 898, 944: `direction` 필드 매핑 ✓
+
+### 데이터 흐름 (수정 후)
+
+```
+[프론트엔드 입력] "안녕하세요"
+  ↓ translateToCustomerLanguage: true
+  ↓ targetLanguage: "EN"
+[POST /api/messages]
+  ↓ translationService.translateForCS(...)
+  ↓ DeepL API 호출
+[DB 저장]
+  - content: "안녕하세요" (한국어)
+  - translated_content: "Hello" (영어)
+  - sender_type: "agent" / "ai"
+
+[프론트엔드 표시]
+  ↓ EN 고객 대화
+  ↓ msg.translatedContent 존재
+  ↓ 메인: "Hello" ← 고객이 읽음
+  ↓ 토글: "안녕하세요" ← 참고용
+```
+
+### 수정 파일
+
+**1개 파일:**
+- `/web/src/app/(dashboard)/inbox/page.tsx`
+  - Line 2381: Enter 전송에 `translateToCustomerLanguage` 추가
+  - Line 2181: AI 전송에 `translateToCustomerLanguage` 추가
+  - Line 2864: 총 대화 수 로직 단순화
+  - +4 lines, -9 lines, Net: -5 lines
+
+### 빌드 검증
+
+```bash
+$ npm run build
+✓ Compiled successfully
+├ 30 pages
+├ 42 API routes
+└ 0 TypeScript errors
+```
+
+### 배포
+
+```bash
+$ git commit -m "Fix inbox translation and message display issues"
+[main cd05da1] (1 file changed, 4 insertions(+), 9 deletions(-))
+
+$ git push origin main
+→ Vercel auto-deployment triggered
+```
+
+### 예상 동작 (배포 후)
+
+1. **EN 고객에게 AI 메시지:**
+   - 메인: "Hello, thank you for..." (영어) ✓
+   - 토글: "안녕하세요, 리주란..." (한국어) ✓
+
+2. **총 대화:**
+   - API 카운트 직접 표시 (정확한 값)
+
+3. **메시지 카운트:**
+   - 수신: N개 (실시간)
+   - 발신: M개 (실시간)
+
+### 주요 학습
+
+#### 1. 데이터 흐름 완전 이해 필수
+- API 문서의 파라미터는 **정확히** 전달해야 함
+- Optional이어도 의미 있으면 **명시적으로** 전달
+
+#### 2. Production 데이터 확인
+- 가정하지 말고 **실제 API 응답 확인**
+- `curl` + `jq`로 빠른 검증
+
+#### 3. 사용자 좌절 대응
+- 같은 문제 반복 → **근본 원인 재분석**
+- 표면적 수정은 해결책 아님
+
+#### 4. 단순성
+- 복잡한 로컬 로직 < 신뢰할 수 있는 단일 소스 (API)
+
+### 문서 업데이트
+
+- ✅ CLAUDE.md Section 27 추가
+- ✅ claude.ai.md Section 20 추가 (이 섹션)
