@@ -1874,7 +1874,9 @@ export default function InboxPage() {
                                       <p className={cn(
                                         "text-xs leading-relaxed",
                                         msg.sender === "agent" ? "text-primary-foreground/80" : "text-muted-foreground"
-                                      )}>{msg.translatedContent}</p>
+                                      )}>
+                                        {msg.sender === "agent" ? msg.content : msg.translatedContent}
+                                      </p>
                                     </div>
                                   )}
                                   {/* Message actions on hover */}
