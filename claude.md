@@ -5597,6 +5597,11 @@ Modified:
 ### 22.9 배포 상태
 
 - ✅ 코드 수정 완료: `web/src/app/(dashboard)/inbox/page.tsx`
-- ⏳ Commit 대기 중
-- ⏳ Vercel 배포 대기 중
+- ✅ TypeScript 빌드 수정: `web/src/services/ai/rag-pipeline.ts`
+  - 2곳에 `sources: []` 필드 추가 (AI disabled, keyword escalation)
+  - `doc.score` → `doc.similarity` 수정 (relevanceScore)
+- ✅ 2개 Commit 푸시: `ec246f5`, `ad793c1`
+- ✅ GitHub 푸시 완료: `origin/main`
+- ✅ Vercel 자동 배포 시작됨
+- ✅ 빌드 검증 통과: Next.js 16.1.4 Turbopack, 0 errors
 

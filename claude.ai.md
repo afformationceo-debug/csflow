@@ -1103,5 +1103,8 @@ const processedInboundsByConvRef = useRef<Record<string, string>>({});
 
 ### 배포 상태
 ✅ 코드 수정 완료
-⏳ Commit 대기 중
+✅ TypeScript 빌드 수정 (sources 필드 추가)
+✅ 2개 Commit 푸시 (ec246f5, ad793c1)
+✅ Vercel 자동 배포 시작
+✅ 빌드 검증 통과 (0 errors)
 
