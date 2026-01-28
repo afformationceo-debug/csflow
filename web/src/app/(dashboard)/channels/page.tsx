@@ -62,6 +62,8 @@ interface ConnectedChannel {
   messageCount: number;
   lastActiveAt: string;
   createdAt: string;
+  tenantId?: string;
+  tenantName?: string;
 }
 
 // ── Constants ──
@@ -175,7 +177,7 @@ interface Tenant {
 }
 
 export default function ChannelsPage() {
-  const [channels, setChannels] = useState<ConnectedChannel[]>([]);
+  const [allChannels, setAllChannels] = useState<ConnectedChannel[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newChannelType, setNewChannelType] = useState<ChannelType | "">("");
@@ -188,45 +190,43 @@ export default function ChannelsPage() {
   const [submitError, setSubmitError] = useState("");
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
+  const [tenantFilter, setTenantFilter] = useState<string>("all");
 
-  // Fetch tenants AND channels together on mount
+  // Fetch tenants AND all channels together on mount
   useEffect(() => {
     async function loadTenantsAndChannels() {
       setIsLoadingChannels(true);
       try {
+        // Load tenants
         const res = await fetch("/api/tenants");
-        if (!res.ok) {
-          setIsLoadingChannels(false);
-          return;
+        if (res.ok) {
+          const data = await res.json();
+          const list: Tenant[] = data.tenants || [];
+          setTenants(list);
+          if (list.length > 0) {
+            setSelectedTenantId(list[0].id);
+          }
         }
-        const data = await res.json();
-        const list: Tenant[] = data.tenants || [];
-        setTenants(list);
-        if (list.length > 0) {
-          const firstTenantId = list[0].id;
-          setSelectedTenantId(firstTenantId);
-          // Immediately fetch channels for first tenant
-          try {
-            const chRes = await fetch(`/api/channels?tenantId=${firstTenantId}`);
-            if (chRes.ok) {
-              const chData = await chRes.json();
-              if (chData.channels && chData.channels.length > 0) {
-                setChannels(chData.channels.map((ch: Record<string, unknown>) => ({
-                  id: ch.id as string,
-                  channelType: ch.channelType as ChannelType,
-                  accountName: ch.accountName as string,
-                  accountId: ch.accountId as string,
-                  isActive: ch.isActive as boolean,
-                  messageCount: (ch.messageCount as number) ?? 0,
-                  lastActiveAt: (ch.lastActiveAt as string) ?? "-",
-                  createdAt: ch.createdAt as string,
-                })));
-              } else {
-                setChannels([]);
-              }
-            }
-          } catch {
-            setChannels([]);
+
+        // Load ALL channels (no tenant filter)
+        const chRes = await fetch("/api/channels");
+        if (chRes.ok) {
+          const chData = await chRes.json();
+          if (chData.channels && chData.channels.length > 0) {
+            setAllChannels(chData.channels.map((ch: Record<string, unknown>) => ({
+              id: ch.id as string,
+              channelType: ch.channelType as ChannelType,
+              accountName: ch.accountName as string,
+              accountId: ch.accountId as string,
+              isActive: ch.isActive as boolean,
+              messageCount: (ch.messageCount as number) ?? 0,
+              lastActiveAt: (ch.lastActiveAt as string) ?? "-",
+              createdAt: ch.createdAt as string,
+              tenantId: ch.tenantId as string | undefined,
+              tenantName: ch.tenantName as string | undefined,
+            })));
+          } else {
+            setAllChannels([]);
           }
         }
       } catch {
@@ -238,42 +238,10 @@ export default function ChannelsPage() {
     loadTenantsAndChannels();
   }, []);
 
-  // Fetch channels when tenant changes (after initial load)
-  const isInitialLoadRef = useRef(true);
-  useEffect(() => {
-    if (isInitialLoadRef.current) {
-      isInitialLoadRef.current = false;
-      return; // Skip first run — handled by loadTenantsAndChannels
-    }
-    if (!selectedTenantId) return;
-    async function loadChannels() {
-      setIsLoadingChannels(true);
-      try {
-        const response = await fetch(`/api/channels?tenantId=${selectedTenantId}`);
-        if (!response.ok) throw new Error("API error");
-        const data = await response.json();
-        if (data.channels && data.channels.length > 0) {
-          setChannels(data.channels.map((ch: Record<string, unknown>) => ({
-            id: ch.id as string,
-            channelType: ch.channelType as ChannelType,
-            accountName: ch.accountName as string,
-            accountId: ch.accountId as string,
-            isActive: ch.isActive as boolean,
-            messageCount: (ch.messageCount as number) ?? 0,
-            lastActiveAt: (ch.lastActiveAt as string) ?? "-",
-            createdAt: ch.createdAt as string,
-          })));
-        } else {
-          setChannels([]);
-        }
-      } catch {
-        setChannels([]);
-      } finally {
-        setIsLoadingChannels(false);
-      }
-    }
-    loadChannels();
-  }, [selectedTenantId]);
+  // Filter channels based on selected tenant filter
+  const channels = tenantFilter === "all"
+    ? allChannels
+    : allChannels.filter(ch => ch.tenantId === tenantFilter);
 
   // 통계
   const totalChannels = channels.length;
@@ -283,7 +251,7 @@ export default function ChannelsPage() {
   const maxMessages = Math.max(...channels.map((c) => c.messageCount), 1);
 
   const handleToggle = (id: string, checked: boolean) => {
-    setChannels((prev) => prev.map((ch) => (ch.id === id ? { ...ch, isActive: checked } : ch)));
+    setAllChannels((prev) => prev.map((ch) => (ch.id === id ? { ...ch, isActive: checked } : ch)));
   };
 
   const handleDelete = async (id: string) => {
@@ -292,7 +260,7 @@ export default function ChannelsPage() {
     } catch {
       // Best-effort API call; remove from UI regardless
     }
-    setChannels((prev) => prev.filter((ch) => ch.id !== id));
+    setAllChannels((prev) => prev.filter((ch) => ch.id !== id));
   };
 
   const handleAddChannel = async () => {
@@ -352,8 +320,10 @@ export default function ChannelsPage() {
         messageCount: ch.messageCount ?? 0,
         lastActiveAt: ch.lastActiveAt ?? "방금 전",
         createdAt: ch.createdAt ?? new Date().toISOString().split("T")[0],
+        tenantId: selectedTenantId,
+        tenantName: tenants.find(t => t.id === selectedTenantId)?.name || "Unknown",
       };
-      setChannels((prev) => [...prev, newChannel]);
+      setAllChannels((prev) => [...prev, newChannel]);
       setDialogOpen(false);
       setNewChannelType("");
       setNewAccountName("");
@@ -381,7 +351,7 @@ export default function ChannelsPage() {
   }, {} as Record<string, number>);
 
   return (
-    <div className="space-y-6 animate-in-up">
+    <div className="space-y-6">
       {/* ── 페이지 헤더 ── */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
@@ -398,13 +368,14 @@ export default function ChannelsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* 거래처 선택 */}
+          {/* 거래처 필터 */}
           {tenants.length > 0 && (
-            <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
+            <Select value={tenantFilter} onValueChange={setTenantFilter}>
               <SelectTrigger className="w-[200px] rounded-xl">
-                <SelectValue placeholder="거래처 선택" />
+                <SelectValue placeholder="전체 거래처" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">전체 거래처</SelectItem>
                 {tenants.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
@@ -533,14 +504,9 @@ export default function ChannelsPage() {
       </div>
 
       {/* ── 요약 통계 ── */}
-      <motion.div
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {summaryStats.map((stat, index) => (
-          <motion.div key={stat.title} variants={itemVariants}>
+          <div key={stat.title}>
             <Card className={`relative overflow-hidden border-0 shadow-sm bg-gradient-to-br ${stat.gradientFrom} ${stat.gradientTo} card-3d`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
@@ -573,16 +539,12 @@ export default function ChannelsPage() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         ))}
-      </motion.div>
+      </div>
 
       {/* ── 새 채널 연결 섹션 ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.4, ease: smoothEase }}
-      >
+      <div>
         <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
@@ -666,14 +628,10 @@ export default function ChannelsPage() {
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
 
       {/* ── 연결된 채널 목록 ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.4, ease: smoothEase }}
-      >
+      <div>
         <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -785,6 +743,11 @@ export default function ChannelsPage() {
                               {CHANNEL_LABELS[channel.channelType]}
                             </span>
                             <span className="font-medium text-[13px] truncate">{channel.accountName}</span>
+                            {channel.tenantName && (
+                              <Badge variant="outline" className="text-[10px] h-[18px] px-1.5 font-medium rounded-full">
+                                {channel.tenantName}
+                              </Badge>
+                            )}
                             {channel.isActive ? (
                               <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 text-[10px] h-[18px] px-1.5 font-semibold border-0 rounded-full">
                                 <span className="live-dot mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -846,7 +809,7 @@ export default function ChannelsPage() {
             )}
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }

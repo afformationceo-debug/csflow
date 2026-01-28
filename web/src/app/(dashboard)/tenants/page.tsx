@@ -488,7 +488,7 @@ export default function TenantsPage() {
   // --- Render ---
 
   return (
-    <div className="space-y-6 animate-in-up">
+    <div className="space-y-6">
       {/* Page Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
@@ -698,14 +698,9 @@ export default function TenantsPage() {
       </div>
 
       {/* Summary Stats */}
-      <motion.div
-        className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 stagger-children"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         {summaryStats.map((stat) => (
-          <motion.div key={stat.title} variants={itemVariants} whileHover={cardHover}>
+          <div key={stat.title}>
             <Card className={`border-0 shadow-sm bg-gradient-to-br ${stat.gradient} card-3d overflow-hidden rounded-2xl backdrop-blur-sm bg-card/80`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
@@ -726,9 +721,9 @@ export default function TenantsPage() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         ))}
-      </motion.div>
+      </div>
 
       {/* Search Bar */}
       <div className="relative">
@@ -743,11 +738,7 @@ export default function TenantsPage() {
 
       {/* Loading State */}
       {isLoading && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="grid gap-3 md:grid-cols-2"
-        >
+        <div className="grid gap-3 md:grid-cols-2">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="border-0 shadow-sm rounded-2xl backdrop-blur-sm bg-card/80">
               <CardContent className="p-5">
@@ -777,29 +768,17 @@ export default function TenantsPage() {
               </CardContent>
             </Card>
           ))}
-        </motion.div>
+        </div>
       )}
 
       {/* Tenant List */}
-      {!isLoading && <AnimatePresence mode="popLayout">
-        <motion.div
-          className="grid gap-3 md:grid-cols-2"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
+      {!isLoading && <div className="grid gap-3 md:grid-cols-2">
           {filteredTenants.map((tenant) => {
             const specialtyInfo = SPECIALTY_MAP[tenant.specialty] || SPECIALTY_MAP.general;
             const SpecialtyIcon = specialtyInfo.icon;
 
             return (
-              <motion.div
-                key={tenant.id}
-                variants={itemVariants}
-                exit={{ opacity: 0, scale: 0.95 }}
-                layout
-                whileHover={cardHover}
-              >
+              <div key={tenant.id}>
                 <Card
                   className={`border-0 shadow-sm bg-gradient-to-br ${specialtyInfo.gradient} card-3d overflow-hidden group rounded-2xl backdrop-blur-sm bg-card/80`}
                 >
@@ -1006,18 +985,14 @@ export default function TenantsPage() {
                     </div>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </div>
             );
           })}
-        </motion.div>
-      </AnimatePresence>}
+        </div>}
 
       {/* Empty State */}
       {!isLoading && filteredTenants.length === 0 && tenants.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
+        <div>
           <Card className="border-0 shadow-sm rounded-2xl backdrop-blur-sm bg-card/80">
             <CardContent className="py-12 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mx-auto mb-4">
@@ -1029,14 +1004,11 @@ export default function TenantsPage() {
               </p>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       )}
 
       {!isLoading && tenants.length === 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <div>
           <Card className="border-0 shadow-sm bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl backdrop-blur-sm bg-card/80">
             <CardContent className="py-14 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 mx-auto mb-4">
@@ -1052,7 +1024,7 @@ export default function TenantsPage() {
               </Button>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       )}
 
       {/* AI Config Dialog */}

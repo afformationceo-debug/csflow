@@ -4,52 +4,30 @@ import { createServiceClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 
 /**
- * Get connected channels for a tenant
+ * Get connected channels for a tenant (or all channels if tenantId not provided)
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const tenantId = searchParams.get("tenantId");
 
-    if (!tenantId) {
-      return NextResponse.json(
-        { error: "tenantId is required" },
-        { status: 400 }
-      );
-    }
-
     // Query channel_accounts directly from Supabase
     const supabase = await createServiceClient();
 
-    // Resolve tenant ID (demo-tenant-id may not be a real UUID)
-    let resolvedTenantId = tenantId;
-    const { data: existingTenant } = await (supabase as any)
-      .from("tenants")
-      .select("id")
-      .eq("id", tenantId)
-      .maybeSingle();
+    let query = (supabase as any)
+      .from("channel_accounts")
+      .select("*, tenant:tenants(id, name, specialty)");
 
-    if (!existingTenant) {
-      // Use the first available tenant
-      const { data: anyTenant } = await (supabase as any)
-        .from("tenants")
-        .select("id")
-        .limit(1)
-        .maybeSingle();
-      if (anyTenant) resolvedTenantId = anyTenant.id;
+    // Optional tenant filter
+    if (tenantId) {
+      query = query.eq("tenant_id", tenantId);
     }
 
-    const { data: dbChannels, error } = await (supabase as any)
-      .from("channel_accounts")
-      .select("*")
-      .eq("tenant_id", resolvedTenantId)
-      .order("created_at", { ascending: false });
+    const { data: dbChannels, error } = await query.order("created_at", { ascending: false });
 
     if (error) {
       console.error("DB channel fetch error:", error);
-      // Fallback to meta OAuth service
-      const channels = await metaOAuthService.getConnectedChannels(tenantId);
-      return NextResponse.json({ channels });
+      return NextResponse.json({ channels: [] }, { status: 200 });
     }
 
     // Count conversations per channel account via customer_channels join
@@ -61,23 +39,26 @@ export async function GET(request: NextRequest) {
       // Get customer_channels for these channel accounts
       const { data: customerChannels } = await (supabase as any)
         .from("customer_channels")
-        .select("id, channel_account_id")
+        .select("id, channel_account_id, customer_id")
         .in("channel_account_id", channelIds);
 
       if (customerChannels && customerChannels.length > 0) {
-        const customerChannelIds = customerChannels.map((cc: any) => cc.id);
-
         // Map customer_channel_id -> channel_account_id
         const ccToChannelMap: Record<string, string> = {};
         for (const cc of customerChannels) {
           ccToChannelMap[cc.id] = cc.channel_account_id;
         }
 
+        // Get tenant IDs for filtering conversations
+        const tenantIds = tenantId
+          ? [tenantId]
+          : [...new Set((dbChannels || []).map((ch: Record<string, unknown>) => ch.tenant_id as string))];
+
         // Count conversations that have messages from these customer channels
         const { data: conversations } = await (supabase as any)
           .from("conversations")
           .select("id, customer_id, last_message_at, tenant_id")
-          .eq("tenant_id", resolvedTenantId);
+          .in("tenant_id", tenantIds);
 
         if (conversations) {
           // Count conversations per tenant (which maps to channels for that tenant)
@@ -135,6 +116,8 @@ export async function GET(request: NextRequest) {
         else lastActiveDisplay = `${Math.floor(mins / 1440)}일 전`;
       }
 
+      const tenant = ch.tenant as Record<string, unknown> | null;
+
       return {
         id: chId,
         channelType: ch.channel_type,
@@ -145,6 +128,8 @@ export async function GET(request: NextRequest) {
         messageCount: convCountMap[chId] || 0,
         lastActiveAt: lastActiveDisplay,
         createdAt: ch.created_at,
+        tenantId: ch.tenant_id,
+        tenantName: tenant?.name || "Unknown",
       };
     });
 
