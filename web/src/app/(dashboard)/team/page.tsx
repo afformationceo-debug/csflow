@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -43,7 +42,23 @@ import {
   CheckCircle2,
   XCircle,
   Zap,
+  Building2,
+  ChevronsUpDown,
+  Check,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { motion } from "framer-motion";
 
 // --- Types ---
@@ -63,6 +78,12 @@ interface TeamMember {
     avgResponseTime: string;
     satisfaction: string;
   };
+}
+
+interface Tenant {
+  id: string;
+  name: string;
+  specialty?: string;
 }
 
 // --- Data is now fetched from /api/team ---
@@ -236,6 +257,106 @@ function PermissionIcon({ allowed }: { allowed: boolean }) {
   );
 }
 
+// --- Tenant Multi-Select Component ---
+function TenantMultiSelect({
+  selected,
+  onSelect,
+  tenants,
+}: {
+  selected: string[];
+  onSelect: (ids: string[]) => void;
+  tenants: Tenant[];
+}) {
+  const [open, setOpen] = useState(false);
+  const allSelected = selected.length === 0;
+
+  const handleSelectTenant = (tenantId: string) => {
+    if (selected.includes(tenantId)) {
+      onSelect(selected.filter((id) => id !== tenantId));
+    } else {
+      onSelect([...selected, tenantId]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    onSelect([]);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between h-10 rounded-xl font-normal"
+        >
+          <div className="flex items-center gap-2 truncate">
+            <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">
+              {allSelected
+                ? "전체 거래처"
+                : selected.length === 1
+                ? tenants.find((t) => t.id === selected[0])?.name || "1개 거래처"
+                : `${selected.length}개 거래처`}
+            </span>
+          </div>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="거래처 검색..." className="h-9" />
+          <CommandList>
+            <CommandEmpty>검색 결과가 없습니다</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                onSelect={handleSelectAll}
+                className="cursor-pointer"
+              >
+                <div
+                  className={`mr-2 flex h-4 w-4 items-center justify-center rounded border border-primary ${
+                    allSelected ? "bg-primary text-primary-foreground" : "opacity-50"
+                  }`}
+                >
+                  {allSelected && <Check className="h-3 w-3" />}
+                </div>
+                <span className="font-medium">전체 거래처</span>
+              </CommandItem>
+              {tenants.map((tenant) => {
+                const isSelected = selected.includes(tenant.id);
+                return (
+                  <CommandItem
+                    key={tenant.id}
+                    onSelect={() => handleSelectTenant(tenant.id)}
+                    className="cursor-pointer"
+                  >
+                    <div
+                      className={`mr-2 flex h-4 w-4 items-center justify-center rounded border border-primary ${
+                        isSelected ? "bg-primary text-primary-foreground" : "opacity-50"
+                      }`}
+                    >
+                      {isSelected && <Check className="h-3 w-3" />}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span>{tenant.name}</span>
+                      {tenant.specialty && (
+                        <span className="text-xs text-muted-foreground">
+                          ({tenant.specialty})
+                        </span>
+                      )}
+                    </div>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // --- Main Component ---
 export default function TeamPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -244,22 +365,34 @@ export default function TeamPage() {
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("");
-  const [inviteTenants, setInviteTenants] = useState<string[]>([]);
+  const [inviteTenants, setInviteTenants] = useState<string[]>([]); // Changed to tenant IDs
 
   // --- Real data state ---
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [allTenants, setAllTenants] = useState<string[]>([]);
+  const [allTenants, setAllTenants] = useState<Tenant[]>([]); // Changed to Tenant objects
   const [isLoading, setIsLoading] = useState(true);
 
   const loadTeamData = useCallback(async () => {
     try {
-      const res = await fetch("/api/team");
-      const data = await res.json();
-      if (data.members) {
-        setTeamMembers(data.members);
+      const [teamRes, tenantsRes] = await Promise.all([
+        fetch("/api/team"),
+        fetch("/api/tenants"),
+      ]);
+
+      const teamData = await teamRes.json();
+      const tenantsData = await tenantsRes.json();
+
+      if (teamData.members) {
+        setTeamMembers(teamData.members);
       }
-      if (data.tenants) {
-        setAllTenants(data.tenants);
+      if (tenantsData.tenants) {
+        // Convert to Tenant[] with id, name, specialty
+        const tenantObjects: Tenant[] = tenantsData.tenants.map((t: any) => ({
+          id: t.id,
+          name: t.name || t.display_name || "Unknown",
+          specialty: t.specialty,
+        }));
+        setAllTenants(tenantObjects);
       }
     } catch (error) {
       console.error("Failed to load team data:", error);
@@ -306,12 +439,6 @@ export default function TeamPage() {
     const matchesRole = roleFilter === "all" || member.role === roleFilter;
     return matchesSearch && matchesRole;
   });
-
-  const handleTenantToggle = (tenant: string) => {
-    setInviteTenants((prev) =>
-      prev.includes(tenant) ? prev.filter((t) => t !== tenant) : [...prev, tenant]
-    );
-  };
 
   const handleInvite = async () => {
     if (!inviteName || !inviteEmail || !inviteRole) {
@@ -462,23 +589,14 @@ export default function TeamPage() {
                 <Label className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
                   거래처 할당
                 </Label>
-                <div className="rounded-xl bg-muted/50 p-3 space-y-3">
-                  {allTenants.map((tenant) => (
-                    <div key={tenant} className="flex items-center gap-2">
-                      <Checkbox
-                        id={`tenant-${tenant}`}
-                        checked={inviteTenants.includes(tenant)}
-                        onCheckedChange={() => handleTenantToggle(tenant)}
-                      />
-                      <Label
-                        htmlFor={`tenant-${tenant}`}
-                        className="text-sm font-normal cursor-pointer"
-                      >
-                        {tenant}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
+                <TenantMultiSelect
+                  selected={inviteTenants}
+                  onSelect={setInviteTenants}
+                  tenants={allTenants}
+                />
+                <p className="text-xs text-muted-foreground">
+                  전체를 선택하면 모든 거래처에 접근 가능합니다
+                </p>
               </div>
             </div>
             <DialogFooter>

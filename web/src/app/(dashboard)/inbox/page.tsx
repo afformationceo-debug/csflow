@@ -792,7 +792,7 @@ export default function InboxPage() {
               customer?.tags?.includes("first_booking") ? "first_booking" :
               "prospect") as ConsultationTag,
             customerTags: customer?.tags || [],
-            assignee: undefined,
+            assignee: conv.assigned_agent?.name || undefined,
             sentimentScore: undefined,
             _dbId: conv.id,
             _customerId: customer?.id,
