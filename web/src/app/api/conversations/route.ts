@@ -30,9 +30,6 @@ export async function GET(request: NextRequest) {
               tenant:tenants(*)
             )
           )
-        ),
-        assigned_agent:users!assigned_to(
-          id, name, email
         )
       `)
       .order("last_message_at", { ascending: false, nullsFirst: false })
