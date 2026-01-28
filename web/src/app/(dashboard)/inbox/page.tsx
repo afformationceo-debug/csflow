@@ -595,6 +595,10 @@ export default function InboxPage() {
   const [detectedInterests, setDetectedInterests] = useState<string[]>([]);
   const [detectedConcerns, setDetectedConcerns] = useState<string[]>([]);
 
+  // AI recommendation state (Issue 1)
+  const [aiSuggestion, setAiSuggestion] = useState<{ original: string; korean: string } | null>(null);
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -802,8 +806,15 @@ export default function InboxPage() {
       )
       .subscribe();
 
+    // Polling fallback: refresh conversations every 5 seconds
+    // This ensures updates even if Supabase Realtime is not configured
+    const pollInterval = setInterval(() => {
+      fetchConversations();
+    }, 5000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -853,15 +864,18 @@ export default function InboxPage() {
     // Real-time message subscription for current conversation
     if (selectedConversation) {
       const supabase = createClient();
+      const conversationId = selectedConversation.id;
+      let lastKnownCount = 0;
+
       const channel = (supabase as any)
-        .channel(`messages:${selectedConversation.id}`)
+        .channel(`messages:${conversationId}`)
         .on(
           "postgres_changes",
           {
             event: "INSERT",
             schema: "public",
             table: "messages",
-            filter: `conversation_id=eq.${selectedConversation.id}`,
+            filter: `conversation_id=eq.${conversationId}`,
           },
           (payload: any) => {
             const newMsg = payload?.new;
@@ -879,12 +893,10 @@ export default function InboxPage() {
               };
               // Add new message, skip if already present (optimistic or duplicate)
               setDbMessages((prev) => {
-                // Remove optimistic messages that match content
                 const filtered = prev.filter(m => {
                   if (m.id.startsWith("optimistic-") && m.content === mappedMsg.content) return false;
                   return true;
                 });
-                // Skip if already exists
                 if (filtered.some(m => m.id === mappedMsg.id)) return filtered;
                 return [...filtered, mappedMsg];
               });
@@ -897,8 +909,53 @@ export default function InboxPage() {
         )
         .subscribe();
 
+      // Polling fallback for messages: check every 3 seconds
+      const pollMessages = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/conversations/${conversationId}/messages`);
+          if (!res.ok) return;
+          const data = await res.json();
+          const rawMessages = data.messages || [];
+          // Only update if message count changed
+          if (rawMessages.length !== lastKnownCount) {
+            lastKnownCount = rawMessages.length;
+            const mapped: Message[] = rawMessages.map((msg: any) => {
+              const createdAt = new Date(msg.created_at);
+              const timeStr = `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
+              return {
+                id: msg.id,
+                sender: msg.sender_type as MessageType,
+                content: msg.content || "",
+                translatedContent: msg.translated_content || undefined,
+                time: timeStr,
+                language: msg.original_language || undefined,
+                confidence: msg.ai_confidence ? Math.round(msg.ai_confidence * 100) : undefined,
+              };
+            });
+            setDbMessages((prev) => {
+              // Keep optimistic messages that aren't in DB yet
+              const optimistic = prev.filter(m => m.id.startsWith("optimistic-") && !mapped.some(dm => dm.content === m.content));
+              return [...mapped, ...optimistic];
+            });
+            // Play notification sound if newest message is inbound and new
+            if (rawMessages.length > 0) {
+              const newest = rawMessages[rawMessages.length - 1];
+              if (newest.direction === "inbound") {
+                const msgAge = Date.now() - new Date(newest.created_at).getTime();
+                if (msgAge < 5000) {
+                  playNotificationSound();
+                }
+              }
+            }
+          }
+        } catch {
+          // Silently fail — polling is best-effort
+        }
+      }, 3000);
+
       return () => {
         supabase.removeChannel(channel);
+        clearInterval(pollMessages);
       };
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -973,6 +1030,47 @@ export default function InboxPage() {
       // Audio not available
     }
   }, []);
+
+  // Generate AI suggestion when new inbound message arrives and AI auto-mode is ON
+  const lastInboundIdRef = useRef<string>("");
+  useEffect(() => {
+    if (!aiAutoResponseEnabled || !selectedConversation) return;
+    // Find the latest inbound message
+    const inboundMsgs = dbMessages.filter(m => m.sender === "customer");
+    if (inboundMsgs.length === 0) return;
+    const latestInbound = inboundMsgs[inboundMsgs.length - 1];
+    // Only trigger if this is a new inbound message we haven't seen
+    if (latestInbound.id === lastInboundIdRef.current) return;
+    lastInboundIdRef.current = latestInbound.id;
+    // Don't generate for optimistic messages
+    if (latestInbound.id.startsWith("optimistic-")) return;
+
+    setIsAiGenerating(true);
+    setAiSuggestion(null);
+    fetch(`/api/conversations/${selectedConversation.id}/ai-suggest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.suggestion) {
+          setAiSuggestion(data.suggestion);
+        }
+      })
+      .catch(() => {
+        // Silently fail
+      })
+      .finally(() => {
+        setIsAiGenerating(false);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbMessages.length, aiAutoResponseEnabled, selectedConversation?.id]);
+
+  // Clear AI suggestion when conversation changes
+  useEffect(() => {
+    setAiSuggestion(null);
+    lastInboundIdRef.current = "";
+  }, [selectedConversation?.id]);
 
   // Auto-detect interests/concerns when messages change
   useEffect(() => {
@@ -1900,6 +1998,112 @@ export default function InboxPage() {
                     )}
                   </AnimatePresence>
 
+                  {/* AI Recommendation Preview */}
+                  <AnimatePresence>
+                    {aiAutoResponseEnabled && !isInternalNote && (isAiGenerating || aiSuggestion) && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mb-2 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/30 overflow-hidden"
+                      >
+                        <div className="px-3 py-1.5 flex items-center gap-1.5 text-[10px] text-violet-600 dark:text-violet-400 border-b border-violet-100 dark:border-violet-900">
+                          <Sparkles className="h-3 w-3" />
+                          <span className="font-medium">AI 추천 응답</span>
+                          {isAiGenerating && (
+                            <RefreshCw className="h-2.5 w-2.5 animate-spin ml-1" />
+                          )}
+                          {aiSuggestion && (
+                            <div className="ml-auto flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 text-[10px] px-2 rounded-md text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                                onClick={() => {
+                                  if (aiSuggestion) {
+                                    setMessageInput(aiSuggestion.original);
+                                    setAiSuggestion(null);
+                                  }
+                                }}
+                              >
+                                <Edit3 className="h-2.5 w-2.5 mr-0.5" />
+                                입력란에 넣기
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 text-[10px] px-2 rounded-md text-green-600 hover:text-green-700 dark:text-green-400"
+                                onClick={() => {
+                                  if (aiSuggestion && selectedConversation) {
+                                    const content = aiSuggestion.original;
+                                    setAiSuggestion(null);
+                                    // Optimistic UI
+                                    const now = new Date();
+                                    const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+                                    setDbMessages((prev) => [...prev, {
+                                      id: `optimistic-${Date.now()}`,
+                                      sender: "agent" as MessageType,
+                                      content,
+                                      time: timeStr,
+                                    }]);
+                                    // Send via API
+                                    fetch("/api/messages", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        conversationId: selectedConversation.id,
+                                        content,
+                                        targetLanguage,
+                                      }),
+                                    }).catch(err => console.error("Send AI suggestion failed:", err));
+                                  }
+                                }}
+                              >
+                                <Send className="h-2.5 w-2.5 mr-0.5" />
+                                바로 전송
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 text-[10px] px-1.5 rounded-md text-muted-foreground"
+                                onClick={() => setAiSuggestion(null)}
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        {isAiGenerating ? (
+                          <div className="px-3 py-3 text-sm text-violet-600/70 dark:text-violet-400/70 flex items-center gap-2">
+                            <div className="flex gap-1">
+                              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                            </div>
+                            AI가 추천 응답을 생성하고 있습니다...
+                          </div>
+                        ) : aiSuggestion && (
+                          <div className="px-3 py-2 space-y-1.5">
+                            <div>
+                              <div className="flex items-center gap-1 text-[9px] text-violet-500 mb-0.5">
+                                <Globe className="h-2.5 w-2.5" />
+                                고객 언어 ({selectedConversation?.customer.language?.toUpperCase()})
+                              </div>
+                              <p className="text-sm text-foreground">{aiSuggestion.original}</p>
+                            </div>
+                            <div className="pt-1.5 border-t border-violet-100 dark:border-violet-900">
+                              <div className="flex items-center gap-1 text-[9px] text-muted-foreground mb-0.5">
+                                <Languages className="h-2.5 w-2.5" />
+                                한국어 의미
+                              </div>
+                              <p className="text-xs text-muted-foreground">{aiSuggestion.korean}</p>
+                            </div>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   {/* Translation Preview */}
                   {!isInternalNote && autoTranslateEnabled && translationPreview && (
                     <motion.div
@@ -2575,14 +2779,15 @@ export default function InboxPage() {
                       메모
                     </h4>
                     {!isEditingMemo ? (
-                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setIsEditingMemo(true)}>
-                        <Edit3 className="h-3 w-3" />
+                      <Button variant="ghost" size="sm" className="h-5 text-[10px] px-2" onClick={() => setIsEditingMemo(true)}>
+                        <Edit3 className="h-3 w-3 mr-0.5" />
+                        편집
                       </Button>
                     ) : (
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-green-600"
+                        size="sm"
+                        className="h-5 text-[10px] px-2 text-green-600 hover:text-green-700"
                         onClick={async () => {
                           const customerId = (selectedConversation as any)?._customerId;
                           if (!customerId) return;
@@ -2597,7 +2802,8 @@ export default function InboxPage() {
                           } catch (e) { console.error("Failed to save memo:", e); }
                         }}
                       >
-                        <Save className="h-3 w-3" />
+                        <Save className="h-3 w-3 mr-0.5" />
+                        저장
                       </Button>
                     )}
                   </div>
@@ -2605,9 +2811,25 @@ export default function InboxPage() {
                     <Textarea
                       value={memoText}
                       onChange={(e) => setMemoText(e.target.value)}
-                      placeholder="메모를 입력하세요..."
+                      placeholder="메모를 입력하세요... (Enter로 저장)"
                       className="min-h-[60px] text-xs resize-none rounded-lg"
                       autoFocus
+                      onKeyDown={async (e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          const customerId = (selectedConversation as any)?._customerId;
+                          if (!customerId) return;
+                          setIsEditingMemo(false);
+                          setDbCustomerProfile(prev => prev ? { ...prev, notes: memoText } : prev);
+                          try {
+                            await fetch(`/api/customers/${customerId}/profile`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ metadata: { memo: memoText } }),
+                            });
+                          } catch (e2) { console.error("Failed to save memo:", e2); }
+                        }
+                      }}
                     />
                   ) : (
                     <p

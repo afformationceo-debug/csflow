@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -189,28 +189,62 @@ export default function ChannelsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
 
-  // Fetch tenants
+  // Fetch tenants AND channels together on mount
   useEffect(() => {
-    async function loadTenants() {
+    async function loadTenantsAndChannels() {
+      setIsLoadingChannels(true);
       try {
         const res = await fetch("/api/tenants");
-        if (res.ok) {
-          const data = await res.json();
-          const list: Tenant[] = data.tenants || [];
-          setTenants(list);
-          if (list.length > 0) {
-            setSelectedTenantId(list[0].id);
+        if (!res.ok) {
+          setIsLoadingChannels(false);
+          return;
+        }
+        const data = await res.json();
+        const list: Tenant[] = data.tenants || [];
+        setTenants(list);
+        if (list.length > 0) {
+          const firstTenantId = list[0].id;
+          setSelectedTenantId(firstTenantId);
+          // Immediately fetch channels for first tenant
+          try {
+            const chRes = await fetch(`/api/channels?tenantId=${firstTenantId}`);
+            if (chRes.ok) {
+              const chData = await chRes.json();
+              if (chData.channels && chData.channels.length > 0) {
+                setChannels(chData.channels.map((ch: Record<string, unknown>) => ({
+                  id: ch.id as string,
+                  channelType: ch.channelType as ChannelType,
+                  accountName: ch.accountName as string,
+                  accountId: ch.accountId as string,
+                  isActive: ch.isActive as boolean,
+                  messageCount: (ch.messageCount as number) ?? 0,
+                  lastActiveAt: (ch.lastActiveAt as string) ?? "-",
+                  createdAt: ch.createdAt as string,
+                })));
+              } else {
+                setChannels([]);
+              }
+            }
+          } catch {
+            setChannels([]);
           }
         }
       } catch {
-        // No fallback — tenant list required
+        // No fallback
+      } finally {
+        setIsLoadingChannels(false);
       }
     }
-    loadTenants();
+    loadTenantsAndChannels();
   }, []);
 
-  // Fetch channels when tenant changes
+  // Fetch channels when tenant changes (after initial load)
+  const isInitialLoadRef = useRef(true);
   useEffect(() => {
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      return; // Skip first run — handled by loadTenantsAndChannels
+    }
     if (!selectedTenantId) return;
     async function loadChannels() {
       setIsLoadingChannels(true);
@@ -641,9 +675,13 @@ export default function ChannelsPage() {
                 <div>
                   <CardTitle className="text-[15px] flex items-center gap-2">
                     연결된 채널
-                    <Badge variant="secondary" className="text-[11px] font-semibold tabular-nums h-5 px-1.5 rounded-full">
-                      {channels.length}
-                    </Badge>
+                    {isLoadingChannels ? (
+                      <span className="h-5 w-6 rounded-full bg-muted animate-pulse inline-block" />
+                    ) : (
+                      <Badge variant="secondary" className="text-[11px] font-semibold tabular-nums h-5 px-1.5 rounded-full">
+                        {channels.length}
+                      </Badge>
+                    )}
                   </CardTitle>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     현재 연결된 메신저 채널 목록입니다
