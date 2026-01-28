@@ -2178,6 +2178,7 @@ export default function InboxPage() {
                                       body: JSON.stringify({
                                         conversationId: selectedConversation.id,
                                         content,
+                                        translateToCustomerLanguage: autoTranslateEnabled, // FIX: Enable translation
                                         targetLanguage,
                                         senderType: "ai",
                                         aiMetadata: {
@@ -2377,6 +2378,7 @@ export default function InboxPage() {
                                     conversationId: selectedConversation.id,
                                     content,
                                     isInternalNote: wasInternalNote,
+                                    translateToCustomerLanguage: !wasInternalNote && autoTranslateEnabled, // FIX: Enable translation
                                     targetLanguage: !wasInternalNote ? targetLanguage : undefined,
                                   }),
                                 }).catch(err => console.error("Send message failed:", err));
@@ -2855,19 +2857,12 @@ export default function InboxPage() {
 
                 <Separator />
 
-                {/* Quick Info - total conversations from real count */}
+                {/* Quick Info - total conversations from API */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
                     <p className="text-[10px] text-muted-foreground">총 대화</p>
                     <p className="text-sm font-semibold">
-                      {(() => {
-                        const localCount = dbConversations.filter(c => {
-                          const cid = (c as any)._customerId;
-                          const selectedCid = (selectedConversation as any)?._customerId;
-                          return cid && selectedCid && cid === selectedCid;
-                        }).length;
-                        return localCount > 0 ? localCount : dbCustomerProfile.totalConversations;
-                      })()}
+                      {dbCustomerProfile.totalConversations || 0}
                     </p>
                   </div>
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
