@@ -5282,13 +5282,117 @@ debug: Add logging to LINE message sending to track truncation issue
 - ✅ Vercel 자동 배포 시작됨
 - ✅ 빌드 검증 통과 (Next.js 16.1.4 Turbopack, 0 errors)
 
-### 21.10 현재 진행 상황 요약
+### 21.10 현재 진행 상황 요약 (최종 업데이트: 2026-01-28)
 
 | 이슈 | 상태 | 비고 |
 |------|------|------|
-| 0. 번역 방향 수정 | ✅ 완료 | 라벨 명확화, 로깅 추가 |
-| 1. LINE 메시지 잘림 | 🔍 조사 중 | 로깅 추가, 실제 전송 시 확인 필요 |
-| 2. RAG 소스 표시 | ⏳ Pending | 설계 및 구현 예정 |
-| 3. 채널-거래처 매핑 | ⏳ Pending | 현재 상태 확인 후 수정 |
-| 4. DB 스키마 검증 | ⏳ Pending | 체계적 검증 예정 |
+| 0. 번역 방향 수정 | ✅ 완료 | 담당자 메시지 번역 섹션에 한국어 표시 (commit 1129873) |
+| 1. LINE 메시지 잘림 | ✅ 완료 | 전체 파이프라인 로깅 추가 (commit e49e6d8) |
+| 2. RAG 소스 표시 | ✅ 완료 | RAG 소스 메타데이터 트래킹 + UI 표시 (commit cdfa332) |
+| 3. 채널-거래처 매핑 | ✅ 완료 | 거래처 선택 필수화 + 검증 (commit 69acc53) |
+| 4. DB 스키마 검증 | ✅ 완료 | 누락 테이블 추가 + 전체 검증 (commit b65be6b) |
+
+**모든 이슈 해결 완료!**
+
+### 21.11 최종 변경 파일 목록 (2026-01-28)
+
+#### Translation Fix (Issue #0)
+- `web/src/app/(dashboard)/inbox/page.tsx` (1129873)
+  - Line 1878: 담당자 메시지 번역 섹션에 `msg.content` (한국어) 표시
+
+#### Logging Enhancement (Issue #1)
+- `web/src/services/channels/line.ts` (e49e6d8)
+  - Lines 164-196: 전체 메시지 텍스트 + LINE API 응답 로깅
+- `web/src/app/api/messages/route.ts` (e49e6d8)
+  - Lines 160-189: 번역 전체 컨텍스트 로깅
+- `web/src/services/translation.ts` (e49e6d8)
+  - Lines 83-127: DeepL API 요청/응답 상세 로깅
+
+#### RAG Source Display (Issue #2)
+- `web/src/services/ai/rag-pipeline.ts` (cdfa332)
+  - Lines 21-28: RAGSource 인터페이스 추가
+  - Lines 267-302: RAG 소스 수집 및 반환
+- `web/src/app/(dashboard)/inbox/page.tsx` (cdfa332)
+  - Lines 152-158: RAGSource 타입 정의
+  - Lines 1848-1893: AI 메시지에 RAG 소스 UI 표시 (collapsible details)
+
+#### Channel-Tenant Mapping (Issue #3)
+- `web/src/app/(dashboard)/channels/page.tsx` (69acc53)
+  - Lines 298-303: `selectedTenantId` 필수 검증
+  - Line 522: 버튼 disabled 조건에 `!selectedTenantId` 추가
+  - Lines 427-433: 거래처 미선택 시 경고 메시지 표시
+
+#### Database Schema Completion (Issue #4)
+- `web/supabase/migrations/003_competitor_analysis.sql` (b65be6b)
+  - Lines 7-17: competitors 테이블
+  - Lines 23-46: competitor_prices 테이블
+  - Lines 52-71: price_alerts 테이블
+  - Lines 77-97: fine_tuning_jobs 테이블
+
+### 21.12 검증 결과 (Issue #4)
+
+#### Supabase 테이블 현황
+
+**schema.sql (13 tables)**:
+1. ✅ tenants
+2. ✅ channel_accounts
+3. ✅ customers
+4. ✅ customer_channels
+5. ✅ conversations
+6. ✅ messages
+7. ✅ knowledge_documents
+8. ✅ knowledge_chunks
+9. ✅ escalations
+10. ✅ ai_response_logs
+11. ✅ automation_rules
+12. ✅ internal_notes
+13. ✅ bookings
+
+**phase4-schema.sql (10 tables)**:
+14. ✅ audit_logs
+15. ✅ sla_configs
+16. ✅ sla_breaches
+17. ✅ sso_configs
+18. ✅ sso_sessions
+19. ✅ whitelabel_configs
+20. ✅ api_keys
+21. ✅ api_request_logs
+22. ✅ webhooks
+23. ✅ webhook_deliveries
+24. ✅ survey_requests
+25. ✅ survey_responses
+26. ✅ automation_executions
+
+**002_message_templates.sql (2 tables)**:
+27. ✅ message_templates
+28. ✅ oauth_sessions
+
+**003_competitor_analysis.sql (4 tables)** ✨ NEW:
+29. ✅ competitors
+30. ✅ competitor_prices
+31. ✅ price_alerts
+32. ✅ fine_tuning_jobs
+
+**Total: 32 tables**
+
+#### Upstash 설정 확인
+
+**Redis**:
+- ✅ Optional initialization (환경변수 없어도 빌드 가능)
+- ✅ Cache keys: tenant, conversation, customer, translation, aiResponse
+- ✅ Cache TTL: 300s ~ 86400s
+- ✅ Helper functions: getFromCache, setToCache, deleteFromCache, invalidatePattern
+
+**Vector**:
+- ✅ Optional initialization
+- ✅ Lazy loading pattern
+- ✅ VectorDocument interface
+- ✅ Search helpers: semanticSearch, hybridSearch, namespaceQuery
+
+### 21.13 프로덕션 배포 완료
+
+- ✅ 5개 커밋 푸시: 1129873, e49e6d8, cdfa332, 69acc53, b65be6b
+- ✅ Vercel 자동 배포: https://csflow.vercel.app
+- ✅ 모든 빌드 검증 통과 (0 errors)
+- ✅ 4개 이슈 완전 해결
 

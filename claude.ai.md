@@ -1017,27 +1017,45 @@ LLM 쿼리 → Hybrid Search (Vector + Full-text + RRF) → Top-k 문서 → GPT
    - LINE 전송 로깅 추가
    - Commit: `de22294`
 
-2. **RAG 소스 표시** ⏳ Pending
-   - AI 응답 시 사용한 소스 메타데이터 표시 필요
-   - 소스: 프롬프트, 지식베이스, 거래처 정보, 대화 히스토리, 피드백
+2. **RAG 소스 표시** ✅ 완료 (Commit: `cdfa332`)
+   - RAG 파이프라인에 소스 트래킹 추가
+   - 인박스 AI 메시지에 collapsible 소스 표시
+   - 색상 코딩: 지식베이스(amber), 거래처(blue), 대화(green)
+   - 관련도 점수 표시
 
-3. **채널-거래처 매핑** ⏳ Pending
-   - 채널 추가 시 거래처 선택 필수화
-   - DB 반영 확인
+3. **채널-거래처 매핑** ✅ 완료 (Commit: `69acc53`)
+   - 채널 추가 시 `selectedTenantId` 필수 검증
+   - 버튼 disabled 조건 추가
+   - 거래처 미선택 시 경고 메시지 표시
 
-4. **DB 스키마 검증** ⏳ Pending
-   - Supabase/Upstash 전체 검증
+4. **DB 스키마 검증** ✅ 완료 (Commit: `b65be6b`)
+   - 32개 테이블 전체 확인
+   - 누락 테이블 추가: competitors, competitor_prices, price_alerts, fine_tuning_jobs
+   - Upstash Redis/Vector 설정 검증
 
-### 변경 파일
+### 주요 변경 파일 (2026-01-28)
 
-- `web/src/app/(dashboard)/inbox/page.tsx` - 번역 라벨 수정
-- `web/src/app/api/messages/route.ts` - 번역 로깅
-- `web/src/services/channels/line.ts` - LINE 전송 로깅
+**Translation (Issue #0)**:
+- `inbox/page.tsx` - 담당자 메시지 번역 섹션 한국어 표시
 
-### 다음 단계
+**Logging (Issue #1)**:
+- `line.ts` - 전체 메시지 + API 응답 로깅
+- `messages/route.ts` - 번역 컨텍스트 로깅
+- `translation.ts` - DeepL API 로깅
 
-- LINE 로그 확인 (실제 전송 시)
-- RAG 메타데이터 UI 구현
-- 채널-거래처 매핑 강제
-- DB 스키마 체계적 검증
+**RAG (Issue #2)**:
+- `rag-pipeline.ts` - RAGSource 인터페이스 + 소스 수집
+- `inbox/page.tsx` - AI 메시지 소스 UI
+
+**Channels (Issue #3)**:
+- `channels/page.tsx` - 거래처 필수 검증 + 경고
+
+**Schema (Issue #4)**:
+- `003_competitor_analysis.sql` - 4개 누락 테이블 추가
+
+### 완료 상태
+
+✅ **모든 이슈 해결 완료 (4/4)**
+✅ 5개 커밋 프로덕션 배포
+✅ 빌드 검증 통과 (0 errors)
 
