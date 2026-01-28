@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
+// 30초 캐시 허용 (클라이언트 + CDN)
+export const revalidate = 30;
 
 // ─── Channel Config ──────────────────────────────────────────────────────────
 
@@ -577,7 +578,7 @@ export async function GET(request: NextRequest) {
     // 응답 반환
     // ═════════════════════════════════════════════════════════════════════════
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       period,
       kpiCards,
       channelDistribution,
@@ -587,6 +588,14 @@ export async function GET(request: NextRequest) {
       escalationReasons,
       responseTimeDistribution,
     });
+
+    // ✅ 캐시 헤더 추가 - 30초 캐싱 (브라우저 + CDN)
+    response.headers.set(
+      "Cache-Control",
+      "public, s-maxage=30, stale-while-revalidate=60"
+    );
+
+    return response;
   } catch (error) {
     console.error("GET /api/analytics error:", error);
     return NextResponse.json(

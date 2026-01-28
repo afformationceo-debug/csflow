@@ -2492,7 +2492,7 @@ export default function InboxPage() {
                         <SelectValue placeholder="담당자 선택" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">
+                        <SelectItem value="unassigned">
                           <span className="text-muted-foreground">미배정</span>
                         </SelectItem>
                         {teamMembers.map((member) => (

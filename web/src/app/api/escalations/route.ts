@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
+// 30초 캐시 허용 (클라이언트 + CDN)
+export const revalidate = 30;
 
 // Priority mapping: DB uses "urgent", page uses "critical"
 function mapPriorityFromDB(dbPriority: string): string {

@@ -516,3 +516,312 @@ SELECT * FROM customers ORDER BY created_at DESC LIMIT 10;
 | 2026-01-28 | 채널 등록 DB 영속화: POST /api/channels → Supabase channel_accounts 직접 저장 |
 | 2026-01-28 | LINE 채널 등록 완료 (@246kdolz, ID:2008754781) - Supabase DB 확인 |
 | 2026-01-28 | 신뢰도 계산 공식 문서화: avgSimilarity×0.6+0.4 (실제 llm.ts 구현 기준) |
+| 2026-01-28 | RAG 데이터 소스 분석: Supabase pgvector 확인, Upstash Vector 미사용 |
+| 2026-01-28 | CSV 마이그레이션 도구 구현: 거래처 + 지식베이스, 벡터 임베딩 자동 생성 |
+| 2026-01-28 | LLM 프롬프트 업그레이드: 4단계 상담 전략 (120줄 전문 상담사 프롬프트) |
+| 2026-01-28 | AI 자동응답 지속성 구현: 대화 전환 유지, 전송 시 삭제, 신규 메시지 재생성 |
+| 2026-01-28 | 빌드, 푸시, 배포 완료 (commit 3d3a239) |
+
+---
+
+## RAG 최적화 및 프롬프트 업그레이드 (2026-01-28)
+
+### RAG 데이터 소스 현황
+
+**실제 사용 중인 데이터베이스:**
+- ✅ **Supabase pgvector**: 메인 벡터 저장소 (`knowledge_chunks` 테이블, VECTOR(1536))
+- ✅ **PostgreSQL Full-text**: 풀텍스트 검색 (`knowledge_documents` 테이블)
+- ✅ **Hybrid Search**: Supabase RPC `match_documents()` 함수 (RRF 알고리즘)
+- ⚠️ **Upstash Vector**: 서비스 구현됨 but RAG 파이프라인 미연결
+
+**필수 사전 적재 데이터:**
+1. `tenants` (P0): 거래처 정보, AI 설정 → CSV 마이그레이션
+2. `knowledge_documents` (P0): 지식베이스 문서 → CSV 마이그레이션
+3. `knowledge_chunks` (P0): 벡터 임베딩 → 자동 생성
+4. `channel_accounts` (P0): 채널 정보 → UI 수동 등록
+5. `users` (P1): 담당자 계정 → UI 수동 등록
+
+### CSV 마이그레이션 도구
+
+**사용법:**
+```bash
+# 거래처 마이그레이션
+npm run migrate:csv -- --type tenants --file tenants.csv
+
+# 지식베이스 마이그레이션 (벡터 임베딩 자동)
+npm run migrate:csv -- --type knowledge --file knowledge.csv
+```
+
+**거래처 CSV 형식 (tenants.csv):**
+```csv
+name,name_en,specialty,default_language,system_prompt,model,confidence_threshold,escalation_keywords
+"힐링안과","Healing Eye Clinic","ophthalmology","ja","당신은 힐링안과의 전문 상담사입니다...","gpt-4","0.75","환불,취소,소송"
+```
+
+**지식베이스 CSV 형식 (knowledge.csv):**
+```csv
+tenant_name,title,content,category,tags
+"힐링안과","라식 수술 기본 안내","라식 수술은 각막을 레이저로 절삭하여 시력을 교정하는 수술입니다...","시술안내","라식,수술,시력교정"
+```
+
+**주요 기능:**
+- ✅ 텍스트 청킹 (500자 기준)
+- ✅ OpenAI 임베딩 생성 (text-embedding-3-small, 1536 dim)
+- ✅ Supabase pgvector 저장
+- ✅ Rate Limiting (100ms 대기)
+- ✅ 에러 핸들링 (개별 문서 실패 시에도 계속)
+
+**파일 위치:** `/web/scripts/migrate-csv.ts` (350줄)
+
+### LLM 프롬프트 업그레이드
+
+**Before (12줄):** 일반 정보 안내 어시스턴트
+
+**After (120줄):** 4단계 전문 상담사
+
+**4단계 상담 전략:**
+```
+1단계: 라포 형성 & 니즈 파악
+  - 고객 감정 읽기 (불안, 기대, 망설임)
+  - 개방형 질문으로 진짜 니즈 발굴
+  - 상황 파악 (예산, 회복 기간, 라이프스타일)
+
+2단계: 맞춤 솔루션 제시
+  - 참고 자료 기반 최적 옵션 제안
+  - 장점 + 주의사항 투명 공개
+  - 가격 부담 시 할부/대안 시술 제안
+
+3단계: 다음 액션 유도 (자연스러운 CTA)
+  - 상담 예약 권유
+  - 추가 정보 제공 (Before/After 사진)
+  - 즉시 결정 유도 (단, 압박 금지)
+
+4단계: 예약 후 사후 관리
+  - 예약 확정 시: 사전 준비 사항 안내
+  - 시술 후: 회복 경과 확인
+  - 만족도 조사: 리뷰 요청
+```
+
+**8가지 대화 예시:**
+1. 초기 문의 응대 (가격 문의 → 니즈 파악)
+2. 불안 해소 (부작용 걱정 → 안전성 강조)
+3. 예약 전환 (망설임 → 무료 검사 제안)
+4. 예약 확정 후 (준비 사항 안내)
+5. 가격 흥정 시 (이벤트/할부 제안)
+6. 경쟁사 비교 시 (차별화 포인트 강조)
+7. 부정적 리뷰 언급 시 (투명성 + 재시술 보증)
+8. 긴급 상황 (통증/출혈 → 즉시 병원 연락)
+
+**톤 앤 매너:**
+- ✅ 따뜻하고 친근하지만 전문성 있는 톤
+- ✅ 고객의 언어로 설명 (전문 용어 최소화)
+- ✅ VIP처럼 느끼게 하는 세심한 배려
+- ❌ "잘 모르겠습니다" 금지
+- ❌ 의료 진단/처방 금지
+- ❌ 과도한 압박 영업 금지
+
+**거래처별 프롬프트:**
+- `tenants.ai_config.system_prompt` (병원별 맞춤 프롬프트) 최우선
+- `getDefaultSystemPrompt()` (기본 프롬프트) 폴백
+- 적용 위치: `/web/src/services/ai/llm.ts` Line 140-145
+
+### AI 자동응답 지속성 구현
+
+**요구사항:**
+1. ✅ 대화 전환 시 유지 (다른 대화로 이동해도 AI 응답 유지)
+2. ✅ 전송 시 삭제 (Enter/버튼 클릭 시 AI 응답 초기화)
+3. ✅ 신규 메시지 시 재생성 (고객 메시지 수신 시 새 AI 응답 생성)
+
+**구현 위치:** `/web/src/app/(dashboard)/inbox/page.tsx`
+
+**변경 1: 대화 전환 시 유지 (Line 1094-1097)**
+```typescript
+// Before: setAiSuggestion(null); ❌
+// After: aiSuggestion 유지, ref만 초기화 ✅
+useEffect(() => {
+  lastInboundIdRef.current = "";
+}, [selectedConversation?.id]);
+```
+
+**변경 2+3: 전송 시 삭제 (Line 2226, 2305)**
+```typescript
+// Enter 키 전송 시
+setAiSuggestion(null); // ✅ NEW
+
+// 버튼 클릭 전송 시
+setAiSuggestion(null); // ✅ NEW
+```
+
+**기존 로직 활용: 신규 메시지 재생성 (Line 1120-1160)**
+- 마지막 인바운드 메시지 ID 추적
+- 새 메시지 감지 시 `generateAISuggestion()` 자동 호출
+
+### 배포 결과
+
+**빌드:** ✅ 성공 (2.1s, 0 errors, 30 pages, 42 API routes)
+**커밋:** 3d3a239 "Major AI improvements..."
+**푸시:** ✅ GitHub main 브랜치
+**배포:** ✅ https://csflow.vercel.app
+
+**변경 파일:**
+- `/web/scripts/migrate-csv.ts` (350줄 신규)
+- `/web/scripts/example-tenants.csv` (신규)
+- `/web/scripts/example-knowledge.csv` (신규)
+- `/web/package.json` (migrate:csv 스크립트 추가)
+- `/web/src/services/ai/llm.ts` (프롬프트 업그레이드)
+- `/web/src/app/(dashboard)/inbox/page.tsx` (AI 지속성)
+
+**총 변경량:** 7 files, 450 insertions(+), 15 deletions(-)
+
+---
+
+## 거래처별 프롬프트 시스템 및 CSV 예시
+
+### CSV 예시 파일 (2026-01-28)
+
+#### 1. 거래처 CSV (`/web/scripts/example-tenants.csv`)
+
+**컬럼 구조:**
+```csv
+name,name_en,specialty,default_language,system_prompt,model,confidence_threshold,escalation_keywords
+```
+
+**컬럼 설명:**
+- `name`: 거래처 이름 (한국어) — 예: "힐링안과"
+- `name_en`: 영문 이름 — 예: "Healing Eye Clinic"
+- `specialty`: 전문 분야 — ophthalmology, dermatology, plastic_surgery, dentistry, general
+- `default_language`: 기본 언어 — ja, ko, zh, en, vi, th 등
+- `system_prompt`: **거래처별 맞춤 AI 프롬프트** (최대 5000자)
+- `model`: 사용 LLM — gpt-4, gpt-4-turbo, claude-3-sonnet, claude-3-opus
+- `confidence_threshold`: 신뢰도 임계값 — 0.75 (75%), 0.85 (85%) 등
+- `escalation_keywords`: 에스컬레이션 키워드 — 쉼표 구분 (예: "환불,취소,소송")
+
+**예시 데이터 (힐링안과):**
+```csv
+"힐링안과","Healing Eye Clinic","ophthalmology","ja","당신은 힐링안과의 전문 상담사입니다. 고객의 눈 건강과 시력 교정 수술(라식, 라섹, 스마일라식)에 대해 친절하고 전문적으로 상담합니다. 항상 안전을 최우선으로 하며, 고객의 상황에 맞는 최적의 솔루션을 제안합니다.","gpt-4","0.75","환불,취소,소송"
+```
+
+**업로드 방법:**
+1. CSV 파일 준비 (UTF-8 인코딩)
+2. 지식베이스 페이지 (`/knowledge`) → "CSV 업로드" 버튼
+3. 타입 선택: "거래처"
+4. 파일 선택 후 업로드
+5. API: `POST /api/knowledge/migrate` (type: "tenants")
+
+#### 2. 지식베이스 CSV (`/web/scripts/example-knowledge.csv`)
+
+**컬럼 구조:**
+```csv
+tenant_name,title,content,category,tags
+```
+
+**컬럼 설명:**
+- `tenant_name`: 거래처 이름 (CSV의 name과 일치) — 예: "힐링안과"
+- `title`: 지식 제목 — 예: "라식 수술 비용 안내"
+- `content`: 지식 내용 (최대 10,000자, 자동 청킹됨)
+- `category`: 카테고리 — 가격정보, 시술정보, 회복정보, 수술준비 등
+- `tags`: 태그 (쉼표 구분) — 예: "라식,라섹,스마일라식,비용,할부"
+
+**예시 데이터 (힐링안과 - 라식 비용):**
+```csv
+"힐링안과","라식 수술 비용 안내","힐링안과의 라식 수술 비용은 양안 기준 150만원부터 시작됩니다. 수술 방법에 따라 차이가 있으며, 라식은 150만원, 라섹은 180만원, 스마일라식은 250만원입니다. 정확한 비용은 정밀 검사 후 결정되며, 3개월 무이자 할부도 가능합니다. 수술 비용에는 1년간 무료 사후관리가 포함되어 있습니다.","가격정보","라식,라섹,스마일라식,비용,할부"
+```
+
+**자동 처리 과정:**
+1. CSV 업로드 → `tenant_name`으로 거래처 ID 조회
+2. `knowledge_documents` 테이블에 문서 INSERT
+3. `content`를 500자 단위로 자동 청킹 (sentence-based)
+4. OpenAI `text-embedding-3-small`로 임베딩 생성 (1536차원)
+5. `knowledge_chunks` 테이블에 청크 + 임베딩 저장
+6. pgvector 인덱스 자동 업데이트 → RAG 검색 가능
+
+**업로드 방법:**
+1. **먼저 거래처 CSV를 업로드하여 거래처 생성** (중요!)
+2. 지식베이스 CSV 준비 (tenant_name이 기존 거래처와 일치해야 함)
+3. 지식베이스 페이지 → "CSV 업로드" 버튼
+4. 타입 선택: "지식베이스"
+5. 파일 선택 후 업로드
+6. API: `POST /api/knowledge/migrate` (type: "knowledge")
+
+### 거래처별 프롬프트 라우팅 시스템
+
+**구현 위치:**
+- RAG 파이프라인: `/web/src/services/ai/rag-pipeline.ts` (Line 220)
+- LLM 서비스: `/web/src/services/ai/llm.ts` (Line 70-97)
+
+**동작 원리:**
+
+1. **거래처 설정 조회** (rag-pipeline.ts:147-155)
+```typescript
+const { data: tenant } = await supabase
+  .from("tenants")
+  .select("*")
+  .eq("id", input.tenantId)
+  .single();
+
+const aiConfig = tenant.ai_config; // { system_prompt, model, confidence_threshold, ... }
+```
+
+2. **LLM 서비스로 전달** (rag-pipeline.ts:215-222)
+```typescript
+const llmResponse = await llmService.generate(
+  queryForRetrieval,
+  documents,
+  {
+    model: selectedModel,
+    tenantConfig: tenant.ai_config, // ✅ 거래처별 설정 전달
+  }
+);
+```
+
+3. **프롬프트 빌드** (llm.ts:70-97)
+```typescript
+function buildSystemPrompt(
+  tenantConfig: Tenant["ai_config"],
+  context: string
+): string {
+  const config = tenantConfig as {
+    system_prompt?: string;
+    hospital_name?: string;
+    specialty?: string;
+  };
+
+  // ✅ 거래처별 프롬프트 우선, 없으면 기본 프롬프트
+  const basePrompt = config?.system_prompt || getDefaultSystemPrompt();
+
+  return `${basePrompt}
+
+## 병원 정보
+- 병원명: ${config?.hospital_name || "정보 없음"}
+- 전문 분야: ${config?.specialty || "정보 없음"}
+
+## 참고 자료
+${context}
+
+## 응답 가이드라인
+1. 반드시 참고 자료에 기반하여 답변하세요.
+2. 확실하지 않은 정보는 "담당자에게 확인 후 안내드리겠습니다"라고 말하세요.
+3. 의료적 조언은 직접 제공하지 말고, 상담 예약을 권유하세요.
+4. 친절하고 전문적인 톤을 유지하세요.
+5. 가격 정보는 정확한 경우에만 안내하세요.`;
+}
+```
+
+**프롬프트 구성 레이어:**
+1. **기본/거래처별 프롬프트** — `config?.system_prompt || getDefaultSystemPrompt()`
+2. **병원 정보** — 병원명, 전문 분야
+3. **RAG 컨텍스트** — 벡터 검색으로 조회한 관련 문서
+4. **응답 가이드라인** — 안전 규칙, 톤 앤 매너
+
+**검증 방법:**
+1. 거래처 A, B를 서로 다른 프롬프트로 생성
+2. 각 거래처의 대화에서 AI 응답 확인
+3. `ai_response_logs` 테이블에서 `query`, `response`, `model` 확인
+4. 서로 다른 프롬프트가 적용되었는지 응답 스타일로 검증
+
+**예시:**
+- **힐링안과** (안과 전문): "고객의 눈 건강을 최우선으로..." → 라식/라섹/백내장 중심 답변
+- **청담봄온의원** (피부과 전문): "피부 타입과 고민을 이해하고..." → 보톡스/필러/레이저 중심 답변
+- **서울성형외과** (성형외과 전문): "이상적인 외모 달성을..." → 코성형/윤곽/가슴성형 중심 답변
+
+---

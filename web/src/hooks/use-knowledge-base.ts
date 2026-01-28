@@ -68,7 +68,7 @@ export function useKnowledgeDocuments(filters: KnowledgeDocumentFilters) {
       let query = (supabase.from("knowledge_documents") as any)
         .select(`
           *,
-          embeddings:knowledge_embeddings(count)
+          embeddings:knowledge_chunks(count)
         `)
         .eq("tenant_id", filters.tenantId)
         .order("updated_at", { ascending: false });

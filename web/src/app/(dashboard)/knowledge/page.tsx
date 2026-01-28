@@ -38,6 +38,7 @@ import {
   Edit,
   Trash2,
   Upload,
+  Download,
   Brain,
   Tag,
   RefreshCw,
@@ -197,6 +198,10 @@ export default function KnowledgeBasePage() {
     tags: "",
     tenant: "",
   });
+  const [isCsvUploadDialogOpen, setIsCsvUploadDialogOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvType, setCsvType] = useState<"tenants" | "knowledge">("knowledge");
+  const [isUploading, setIsUploading] = useState(false);
 
   // Fetch tenants on mount
   useEffect(() => {
@@ -222,7 +227,7 @@ export default function KnowledgeBasePage() {
     error: documentsError,
     refetch: refetchDocuments,
   } = useKnowledgeDocuments({
-    tenantId: activeTenantId || "none",
+    tenantId: selectedTenantFilter || activeTenantId || "none",
     category: selectedCategory,
     search: searchQuery || undefined,
   });
@@ -344,6 +349,93 @@ export default function KnowledgeBasePage() {
     setIsDeleteDialogOpen(true);
   };
 
+  const handleCsvDownload = async (type: "knowledge" | "tenants") => {
+    try {
+      const url = type === "knowledge"
+        ? `/api/knowledge/bulk${selectedTenantFilter ? `?tenantId=${selectedTenantFilter}` : ""}`
+        : "/api/tenants/bulk";
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error("다운로드 실패");
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = type === "knowledge"
+        ? `knowledge-${selectedTenantFilter || "all"}-${Date.now()}.csv`
+        : `tenants-${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+
+      toast.success(`✅ CSV 템플릿 다운로드 완료`);
+    } catch (error: any) {
+      toast.error(error.message || "다운로드에 실패했습니다");
+    }
+  };
+
+  const handleCsvUpload = async () => {
+    if (!csvFile) {
+      toast.error("CSV 파일을 선택해주세요");
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", csvFile);
+
+      const url = csvType === "knowledge" ? "/api/knowledge/bulk" : "/api/tenants/bulk";
+
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "업로드 실패");
+      }
+
+      if (csvType === "knowledge") {
+        toast.success(
+          `✅ 지식베이스 업로드 완료\n문서: ${result.successCount}개\n임베딩: ${result.embeddingCount}개`
+        );
+      } else {
+        toast.success(
+          `✅ 거래처 업로드 완료\n성공: ${result.successCount}개`
+        );
+      }
+
+      if (result.errors && result.errors.length > 0) {
+        toast.warning(`⚠️ 일부 항목 실패 (${result.errorCount}개)`);
+      }
+
+      setIsCsvUploadDialogOpen(false);
+      setCsvFile(null);
+      refetchDocuments();
+
+      // Refetch tenants if we uploaded tenants
+      if (csvType === "tenants") {
+        fetch("/api/tenants")
+          .then((r) => r.json())
+          .then((data) => setTenantOptions(data))
+          .catch(console.error);
+      }
+    } catch (error: any) {
+      toast.error(error.message || "CSV 업로드에 실패했습니다");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   function getSourceBadge(sourceType: string) {
     switch (sourceType) {
       case "manual":
@@ -396,10 +488,121 @@ export default function KnowledgeBasePage() {
           >
             <RefreshCw className={`h-4 w-4 ${documentsLoading ? "animate-spin" : ""}`} />
           </Button>
-          <Button variant="outline" className="gap-2 rounded-xl border-0 shadow-sm bg-card">
-            <Upload className="h-4 w-4" />
-            일괄 업로드
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 rounded-xl border-0 shadow-sm bg-card">
+                <Download className="h-4 w-4" />
+                CSV 다운로드
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => handleCsvDownload("knowledge")}>
+                <FileText className="h-4 w-4 mr-2" />
+                지식베이스 CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleCsvDownload("tenants")}>
+                <Building2 className="h-4 w-4 mr-2" />
+                거래처 CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Dialog open={isCsvUploadDialogOpen} onOpenChange={setIsCsvUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="gap-2 rounded-xl border-0 shadow-sm bg-card">
+                <Upload className="h-4 w-4" />
+                CSV 업로드
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[520px] rounded-2xl border-0 shadow-lg">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-lg">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary/10">
+                    <Upload className="h-4 w-4 text-primary" />
+                  </div>
+                  CSV 일괄 업로드
+                </DialogTitle>
+                <DialogDescription className="text-muted-foreground">
+                  거래처 정보 또는 지식베이스 문서를 CSV 파일로 일괄 업로드합니다. 지식베이스 업로드 시 자동으로 벡터 임베딩이 생성됩니다.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    업로드 유형 *
+                  </Label>
+                  <Select value={csvType} onValueChange={(v) => setCsvType(v as "tenants" | "knowledge")}>
+                    <SelectTrigger className="rounded-xl border-0 bg-muted/50">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="knowledge">지식베이스 (Knowledge)</SelectItem>
+                      <SelectItem value="tenants">거래처 (Tenants)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    CSV 파일 *
+                  </Label>
+                  <div className="flex flex-col gap-2">
+                    <Input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                      className="rounded-xl border-0 bg-muted/50 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                    />
+                    {csvFile && (
+                      <div className="text-xs text-muted-foreground flex items-center gap-2 px-3">
+                        <FileText className="h-3 w-3" />
+                        {csvFile.name} ({(csvFile.size / 1024).toFixed(1)} KB)
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs space-y-1.5">
+                  <div className="font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    CSV 형식 안내
+                  </div>
+                  {csvType === "knowledge" ? (
+                    <div className="text-muted-foreground space-y-0.5">
+                      <div>• 컬럼: tenant_name, title, content, category, tags</div>
+                      <div>• 예시: &quot;힐링안과&quot;,&quot;라식 수술&quot;,&quot;라식은...&quot;,&quot;시술안내&quot;,&quot;라식,수술&quot;</div>
+                    </div>
+                  ) : (
+                    <div className="text-muted-foreground space-y-0.5">
+                      <div>• 컬럼: name, name_en, specialty, default_language, system_prompt</div>
+                      <div>• 예시: &quot;힐링안과&quot;,&quot;Healing Eye&quot;,&quot;ophthalmology&quot;,&quot;ja&quot;,&quot;[프롬프트]&quot;</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCsvUploadDialogOpen(false)} className="rounded-xl">
+                  취소
+                </Button>
+                <Button
+                  onClick={handleCsvUpload}
+                  disabled={!csvFile || isUploading}
+                  className="rounded-xl gap-2"
+                >
+                  {isUploading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      업로드 중...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      업로드
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2 rounded-xl shadow-sm">
@@ -693,6 +896,41 @@ export default function KnowledgeBasePage() {
               )}
             </div>
 
+            {/* Tenant Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2 rounded-xl border-0 bg-muted/50 min-w-[140px] justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <span>{tenantOptions.find((t) => t.id === selectedTenantFilter)?.name || "전체 거래처"}</span>
+                  </div>
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 rounded-xl border-0 shadow-lg">
+                <DropdownMenuItem
+                  onClick={() => setSelectedTenantFilter(undefined)}
+                  className="rounded-lg"
+                >
+                  <CircleDot className="mr-2 h-4 w-4 text-muted-foreground" />
+                  전체 거래처
+                </DropdownMenuItem>
+                {tenantOptions.map((tenant) => (
+                  <DropdownMenuItem
+                    key={tenant.id}
+                    onClick={() => setSelectedTenantFilter(tenant.id)}
+                    className="rounded-lg"
+                  >
+                    <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
+                    {tenant.name}
+                    {selectedTenantFilter === tenant.id && (
+                      <Check className="ml-auto h-4 w-4 text-primary" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* Category Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -765,6 +1003,17 @@ export default function KnowledgeBasePage() {
               className="flex items-center gap-2 mt-3 pt-3 border-t border-border/50"
             >
               <span className="text-[11px] font-medium text-muted-foreground">필터:</span>
+              {selectedTenantFilter && (
+                <Badge
+                  variant="secondary"
+                  className="gap-1 rounded-full border-0 text-[11px] cursor-pointer bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                  onClick={() => setSelectedTenantFilter(undefined)}
+                >
+                  <Building2 className="h-3 w-3" />
+                  {tenantOptions.find((t) => t.id === selectedTenantFilter)?.name}
+                  <X className="h-3 w-3" />
+                </Badge>
+              )}
               {selectedCategory && (
                 <Badge
                   variant="secondary"

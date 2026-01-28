@@ -10,16 +10,19 @@ export function QueryProvider({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // 5 minutes stale time
-            staleTime: 5 * 60 * 1000,
-            // 10 minutes cache time
-            gcTime: 10 * 60 * 1000,
-            // Retry failed requests 3 times
-            retry: 3,
-            // Refetch on window focus
-            refetchOnWindowFocus: true,
-            // Refetch on reconnect
+            // ✅ 즉시 캐시 사용 (30분 유지)
+            staleTime: 30 * 60 * 1000,
+            // 1시간 캐시 유지
+            gcTime: 60 * 60 * 1000,
+            // Retry 빠르게 (1번만)
+            retry: 1,
+            retryDelay: 500,
+            // Window focus시 refetch 비활성화 (속도 우선)
+            refetchOnWindowFocus: false,
+            // Reconnect시만 refetch
             refetchOnReconnect: true,
+            // ✅ 초기 데이터 표시 우선
+            placeholderData: (previousData) => previousData,
           },
         },
       })
