@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     // 1. Fetch tenants
     const { data: tenants, error: tenantError } = await (supabase as any)
       .from("tenants")
-      .select("id, name, name_en, display_name, specialty, logo_url, settings, ai_config, is_active, created_at")
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (tenantError) {

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
           id, status, priority, last_message_at, last_message_preview, tenant_id,
           customer:customers(id, name, country, language, profile_image_url, email, phone, tags),
           channel_accounts:channel_accounts(id, channel_type, account_name, tenant_id),
-          tenant:tenants(id, name, display_name, specialty)
+          tenant:tenants(*)
         )
       `)
       .order("created_at", { ascending: false })

@@ -84,12 +84,16 @@ async function handler(request: NextRequest) {
     }
 
     const tenantData = tenant as unknown as {
-      display_name: string;
+      name: string;
+      display_name?: string;
+      name_en?: string;
       settings: {
         slack_webhook_url?: string;
         notification_phones?: string[];
       };
     };
+    // Normalize display name across schema variations
+    const tenantDisplayName = tenantData.display_name || tenantData.name_en || tenantData.name || "알 수 없는 거래처";
 
     const settings = tenantData.settings;
 
@@ -126,7 +130,7 @@ async function handler(request: NextRequest) {
 
     const notificationText = `${priorityEmoji} 새 에스컬레이션 발생
 
-거래처: ${tenantData.display_name}
+거래처: ${tenantDisplayName}
 고객: ${conversation.customer.name || "알 수 없음"} (${conversation.customer.country || "국가 미상"})
 사유: ${data.reason}
 우선순위: ${data.priority.toUpperCase()}
@@ -138,7 +142,7 @@ async function handler(request: NextRequest) {
     await slackNotificationService.sendEscalationNotification(
       {
         escalationId: data.escalationId,
-        tenantName: tenantData.display_name,
+        tenantName: tenantDisplayName,
         customerName: conversation.customer.name || "알 수 없음",
         customerCountry: conversation.customer.country || "미상",
         priority: data.priority,

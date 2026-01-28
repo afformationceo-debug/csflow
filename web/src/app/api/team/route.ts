@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     // 2. tenants 테이블에서 전체 거래처 목록 조회
     const { data: tenants, error: tenantsError } = await (supabase as any)
       .from("tenants")
-      .select("id, name, display_name")
+      .select("*")
       .order("name", { ascending: true });
 
     // tenantId -> name 맵 생성

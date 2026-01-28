@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
             channel_username,
             channel_account:channel_accounts(
               id, channel_type, account_name, tenant_id,
-              tenant:tenants(id, name, display_name, specialty)
+              tenant:tenants(*)
             )
           )
         )
