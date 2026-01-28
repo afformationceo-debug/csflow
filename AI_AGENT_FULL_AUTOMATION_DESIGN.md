@@ -367,7 +367,36 @@ interface SupervisorAgent {
       case "wait_for_user":
         // 고객 응답 대기 (비동기 워크플로우)
         return await this.waitForUserResponse(context, step.timeout);
+
+      case "wait_approval":
+        // 사람 승인 대기 (해외환자유치 예약용)
+        return await this.waitForApproval(step.approvalId, step.timeout);
     }
+  }
+
+  private async waitForApproval(approvalId: string, timeout: number = 86400000): Promise<StepResult> {
+    // 승인 대기 (기본 24시간 타임아웃)
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      const { data: approval } = await supabase
+        .from("booking_approvals")
+        .select("status")
+        .eq("id", approvalId)
+        .single();
+
+      if (approval?.status === "approved") {
+        return { success: true, data: { approved: true } };
+      } else if (approval?.status === "rejected") {
+        return { success: false, error: "Booking rejected by staff" };
+      }
+
+      // 10초마다 폴링
+      await new Promise(resolve => setTimeout(resolve, 10000));
+    }
+
+    // 타임아웃
+    return { success: false, error: "Approval timeout" };
   }
 }
 ```
@@ -440,32 +469,83 @@ const bookingWorkflow: WorkflowDefinition = {
       output: "selectedDate",
     },
     {
-      // Step 8: CRM에 예약 생성 (idempotency key 사용)
+      // Step 8: 대기 예약 생성 (CRM 등록 전 임시 저장)
+      type: "action",
+      action: {
+        type: "create_pending_booking",
+        data: {
+          customerId: "${customer.id}",
+          date: "${selectedDate}",
+          status: "pending_approval",
+          workflowId: "${workflow.id}"
+        }
+      },
+      output: "pendingBooking",
+    },
+    {
+      // Step 9: 담당자에게 승인 요청 알림 전송 (카톡 알림톡 + Slack)
+      type: "parallel",
+      steps: [
+        {
+          type: "action",
+          action: {
+            type: "send_kakao_alimtalk",
+            template: "booking_approval_request",
+            recipient: "${hospital.staff_phone}",
+            data: {
+              customerName: "${customer.name}",
+              bookingDate: "${selectedDate}",
+              approvalLink: "https://admin.csflow.com/approvals/${pendingBooking.id}"
+            }
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "send_slack_notification",
+            channel: "#booking-approvals",
+            message: "🔔 새로운 예약 승인 요청\n고객: ${customer.name}\n날짜: ${selectedDate}\n승인: ${pendingBooking.approvalLink}"
+          }
+        }
+      ]
+    },
+    {
+      // Step 10: 사람 승인 대기 (24시간 타임아웃)
+      type: "wait_approval",
+      approvalId: "${pendingBooking.id}",
+      timeout: 86400000, // 24시간
+      output: "approvalResult",
+    },
+    {
+      // Step 11: CRM에 예약 생성 (승인 후에만 실행)
       type: "call_agent",
       agentId: "booking",
       input: {
         action: "create",
         date: "${selectedDate}",
         customerId: "${customer.id}",
-        idempotencyKey: "${workflow.id}"
+        idempotencyKey: "${workflow.id}",
+        pendingBookingId: "${pendingBooking.id}"
       },
       output: "crmBooking",
       fallback: {
         // CRM 실패 시 에스컬레이션
-        stepIndex: 10,
+        stepIndex: 13,
       },
     },
     {
-      // Step 9: 로컬 DB에 예약 저장 (트랜잭션)
+      // Step 12: 로컬 DB에 예약 저장 (트랜잭션)
       type: "action",
       action: {
-        type: "create_local_booking",
+        type: "update_booking_status",
+        bookingId: "${pendingBooking.id}",
+        status: "confirmed",
         crmBookingId: "${crmBooking.id}",
         data: "${crmBooking}"
       },
     },
     {
-      // Step 10: 확인 메시지 전송
+      // Step 13: 고객에게 확인 메시지 전송
       type: "action",
       action: {
         type: "send_message",
@@ -473,7 +553,7 @@ const bookingWorkflow: WorkflowDefinition = {
       },
     },
     {
-      // Step 11: (Fallback) CRM 실패 시 에스컬레이션 생성
+      // Step 14: (Fallback) CRM 실패 시 에스컬레이션 생성
       type: "action",
       action: {
         type: "create_escalation",
