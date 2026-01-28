@@ -161,6 +161,14 @@ export class LineAdapter implements ChannelAdapter {
 
     const lineMessage = this.convertToLineMessage(message);
 
+    console.log("[LINE] Sending message:", {
+      channelUserId: message.channelUserId,
+      contentType: message.contentType,
+      textLength: message.text?.length || 0,
+      textPreview: message.text?.substring(0, 100) || "",
+      lineMessagePreview: JSON.stringify(lineMessage).substring(0, 200),
+    });
+
     try {
       const response = await fetch(`${this.baseUrl}/message/push`, {
         method: "POST",
