@@ -283,6 +283,9 @@ export default function DashboardPage() {
   const [recentConversations, setRecentConversations] = useState<Conversation[]>([]);
   const [channelStats, setChannelStats] = useState<ChannelStat[]>([]);
   const [hospitalAccuracy, setHospitalAccuracy] = useState<HospitalAccuracy[]>([]);
+  const [teamCount, setTeamCount] = useState(0);
+  const [csatScore, setCsatScore] = useState("0.0");
+  const [aiInsight, setAiInsight] = useState("AI가 데이터를 분석하고 있어요. 문의가 쌓이면 인사이트를 제공합니다.");
   const [isLoading, setIsLoading] = useState(true);
 
   // DB에서 대시보드 데이터 로드
@@ -341,6 +344,22 @@ export default function DashboardPage() {
           autoResolved: s.conversations.resolved || 0,
         }))
       );
+
+      // 팀원 수
+      setTeamCount(data.teamCount || (data.tenants || []).length || 0);
+
+      // CSAT (아직 실제 조사 데이터 없으면 0.0 표시)
+      setCsatScore(data.csatScore ? String(data.csatScore) : "0.0");
+
+      // AI 인사이트 생성
+      const convToday = s.conversations.today || 0;
+      const aiPct = s.ai.autoResponseRate || 0;
+      const escPending = s.escalations.pending || 0;
+      if (convToday > 0 || escPending > 0) {
+        setAiInsight(
+          `오늘 신규 문의 ${convToday}건, AI 자동 처리율 ${aiPct}%, 미처리 에스컬레이션 ${escPending}건입니다. ${escPending > 0 ? "에스컬레이션 처리를 확인해주세요." : "모든 문의가 순조롭게 처리되고 있어요."}`
+        );
+      }
 
       setLastUpdate(new Date());
     } catch (err) {
@@ -495,7 +514,7 @@ export default function DashboardPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-violet-700 dark:text-violet-300">AI 인사이트</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  오늘 LINE 채널의 일본어 문의가 전일 대비 23% 증가했어요. 힐링안과 라식 관련 FAQ를 업데이트하면 AI 처리율을 더 높일 수 있어요.
+                  {aiInsight}
                 </p>
               </div>
               <Button variant="ghost" size="sm" className="text-xs text-violet-600 hover:text-violet-700 shrink-0">
@@ -726,14 +745,14 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium">활성 채널</p>
-                <p className="text-2xl font-bold tabular-nums">6</p>
+                <p className="text-2xl font-bold tabular-nums">{channelStats.length || 0}</p>
               </div>
               <div className="ml-auto flex -space-x-1">
-                {["#06C755", "#25D366", "#FEE500", "#E4405F", "#1877F2", "#7C3AED"].map((color, i) => (
+                {channelStats.map((ch, i) => (
                   <div
                     key={i}
                     className="h-3 w-3 rounded-full border-2 border-card"
-                    style={{ backgroundColor: color }}
+                    style={{ backgroundColor: ch.color }}
                   />
                 ))}
               </div>
@@ -753,9 +772,9 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium">활성 담당자</p>
-                <p className="text-2xl font-bold tabular-nums">4<span className="text-sm font-normal text-muted-foreground">/6</span></p>
+                <p className="text-2xl font-bold tabular-nums">{teamCount}<span className="text-sm font-normal text-muted-foreground">명</span></p>
               </div>
-              <Badge variant="secondary" className="ml-auto text-[10px]">온라인</Badge>
+              <Badge variant="secondary" className="ml-auto text-[10px]">팀</Badge>
             </CardContent>
           </Card>
         </motion.div>
@@ -772,11 +791,11 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium">고객 만족도</p>
-                <p className="text-2xl font-bold tabular-nums">4.7<span className="text-sm font-normal text-muted-foreground">/5.0</span></p>
+                <p className="text-2xl font-bold tabular-nums">{csatScore}<span className="text-sm font-normal text-muted-foreground">/5.0</span></p>
               </div>
               <div className="ml-auto flex items-center gap-1">
-                <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
-                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">+0.2</span>
+                <Activity className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-muted-foreground">데이터 수집 중</span>
               </div>
             </CardContent>
           </Card>

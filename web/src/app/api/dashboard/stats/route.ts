@@ -132,6 +132,12 @@ export async function GET(request: NextRequest) {
       .from("tenants")
       .select("id, name, name_en, specialty");
 
+    // 9. 팀원 수
+    const { count: teamCount } = await (supabase as any)
+      .from("users")
+      .select("*", { count: "exact", head: true })
+      .eq("is_active", true);
+
     return NextResponse.json({
       stats: {
         conversations: {
@@ -164,6 +170,7 @@ export async function GET(request: NextRequest) {
       channelAccounts: channelAccounts || [],
       recentConversations: recentConversations || [],
       tenants: tenants || [],
+      teamCount: teamCount || 0,
     });
   } catch (error) {
     console.error("GET /api/dashboard/stats error:", error);
