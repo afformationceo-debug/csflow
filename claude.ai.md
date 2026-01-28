@@ -1565,3 +1565,130 @@ getOrCreateCustomer(channel_account_id, channel_user_id)
 - 신규 고객 자동 생성
 - 대화 분석으로 점진적 보강
 
+---
+
+## 19. 배포 에러 수정 (2026-01-29) ✅
+
+### Issue
+Vercel 배포 시 빌드 에러 발생:
+```
+Module not found: Can't resolve '@/components/ui/table'
+```
+
+### Root Cause
+1. **shadcn/ui table 컴포넌트 누락**: 고객 관리 페이지가 import하는 table 컴포넌트가 프로젝트에 설치되지 않음
+2. **TypeScript 타입 에러 2건**:
+   - Framer Motion `ease` prop 타입 불일치 (`number[]` vs `Easing`)
+   - Message 인터페이스에 `direction` 필드 누락 (실시간 메시지 카운트 기능 필요)
+
+### Fix Applied
+
+#### 1. Table Component Installation
+```bash
+npx shadcn@latest add table
+```
+- Created: `/web/src/components/ui/table.tsx`
+- Exports: Table, TableHeader, TableBody, TableRow, TableCell, TableHead, TableFooter, TableCaption
+
+#### 2. Framer Motion Type Fix
+**File:** `/web/src/app/(dashboard)/customers/page.tsx` (line 117)
+
+```typescript
+// Before
+const smoothEase = [0.22, 1, 0.36, 1];
+
+// After
+const smoothEase = [0.22, 1, 0.36, 1] as const;
+```
+
+**Reason:** `as const` creates readonly tuple `[0.22, 1, 0.36, 1]` instead of `number[]`, matching Framer Motion's Easing type requirements.
+
+#### 3. Message Interface Update
+**File:** `/web/src/app/(dashboard)/inbox/page.tsx` (lines 160-173)
+
+```typescript
+interface Message {
+  id: string;
+  sender: MessageType;
+  content: string;
+  translatedContent?: string;
+  time: string;
+  language?: string;
+  confidence?: number;
+  sources?: RAGSource[];
+  author?: string;
+  mentions?: string[];
+  isEdited?: boolean;
+  reactions?: { emoji: string; count: number }[];
+  direction?: "inbound" | "outbound";  // ← ADDED
+}
+```
+
+**Reason:** Real-time message count feature (commit `7a2ea1b`) filters by `m.direction === "inbound"` but interface didn't have this field.
+
+### Build Result
+```
+✓ Compiled successfully in 2.4s
+✓ Generating static pages (31/31) in 289.7ms
+
+Route (app)
+- 31 pages rendered
+- 48 API routes
+- 0 TypeScript errors
+```
+
+### Database Schema Verification
+**Customers Table:** Already defined in `/supabase/migrations/001_initial_schema.sql` (lines 60-75)
+
+```sql
+CREATE TABLE customers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    name VARCHAR(200),
+    phone VARCHAR(50),
+    email VARCHAR(255),
+    country VARCHAR(100),
+    language VARCHAR(10) DEFAULT 'ko',
+    profile_image_url TEXT,
+    tags TEXT[] DEFAULT '{}',           -- consultation:/customer:/type: prefixes
+    metadata JSONB DEFAULT '{}',        -- interested_procedures, concerns, memo, booking_status
+    crm_customer_id VARCHAR(500),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Customer Channels:** Also defined, links customers to messaging channels (LINE, KakaoTalk, etc.)
+
+**Migration Status:** Schema exists in migration files but needs to be applied to production Supabase instance via SQL Editor.
+
+### Commit & Deploy
+```bash
+git commit -m "Fix deployment errors: add table component and TypeScript type fixes
+
+- Install shadcn/ui table component (missing dependency)
+- Fix Framer Motion type error: smoothEase array with 'as const'
+- Add direction field to Message interface for inbound/outbound filtering
+- All TypeScript build errors resolved (0 errors)
+
+Related: Customer management page and inbox real-time message count
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+```
+
+**Commit:** `67b9bcc`
+**Pushed:** ✅ GitHub main branch
+**Deploy:** ✅ Vercel auto-deployment triggered
+
+### Files Changed
+1. `/web/src/components/ui/table.tsx` - Created (118 lines)
+2. `/web/src/app/(dashboard)/customers/page.tsx` - Fixed smoothEase type (1 line)
+3. `/web/src/app/(dashboard)/inbox/page.tsx` - Added direction field (1 line)
+
+### Verification Needed
+1. ✅ Build passes with 0 errors
+2. ⏳ Vercel deployment completes
+3. ⏳ Customer management page (`/customers`) renders correctly
+4. ⏳ Real-time message count works in inbox
+5. ⏳ Database migrations applied to production Supabase
+
