@@ -823,7 +823,8 @@ export default function InboxPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
-        () => {
+        (payload: any) => {
+          console.log("[Realtime] Conversations change:", payload.eventType);
           fetchConversations();
         }
       )
@@ -831,6 +832,7 @@ export default function InboxPage() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         (payload: any) => {
+          console.log("[Realtime] New message:", payload.new?.direction);
           fetchConversations();
           // Play notification sound for inbound messages
           const newMsg = payload?.new;
@@ -839,13 +841,15 @@ export default function InboxPage() {
           }
         }
       )
-      .subscribe();
+      .subscribe((status: string) => {
+        console.log("[Realtime] Subscription status:", status);
+      });
 
-    // Polling fallback: refresh conversations every 5 seconds
+    // Polling fallback: refresh conversations every 2 seconds
     // This ensures updates even if Supabase Realtime is not configured
     const pollInterval = setInterval(() => {
       fetchConversations();
-    }, 5000);
+    }, 2000);
 
     return () => {
       supabase.removeChannel(channel);
@@ -942,10 +946,13 @@ export default function InboxPage() {
             }
           }
         )
-        .subscribe();
+        .subscribe((status: string) => {
+          console.log("[Realtime] Messages subscription status:", status);
+        });
 
-      // Polling fallback for messages: check every 3 seconds
+      // Polling fallback for messages: check every 2 seconds (faster than before)
       const pollMessages = setInterval(async () => {
+        console.log("[Polling] Checking for new messages...");
         try {
           const res = await fetch(`/api/conversations/${conversationId}/messages`);
           if (!res.ok) return;
@@ -986,7 +993,7 @@ export default function InboxPage() {
         } catch {
           // Silently fail — polling is best-effort
         }
-      }, 3000);
+      }, 2000);
 
       return () => {
         supabase.removeChannel(channel);
