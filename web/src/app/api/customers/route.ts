@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     const customerIds = customers?.map((c: any) => c.id) || [];
     const { data: conversationData } = await (supabase as any)
       .from("conversations")
-      .select("customer_id, created_at, last_message_at")
+      .select("id, customer_id, created_at, last_message_at")
       .in("customer_id", customerIds);
 
     // Fetch message counts for each customer

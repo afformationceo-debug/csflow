@@ -1962,3 +1962,196 @@ TypeScript Errors: 0
 4. ✅ claude.ai.md 업데이트 완료 (Section 20)
 5. ⏳ Git commit 및 push 대기
 6. ⏳ Vercel 자동 배포 대기
+
+---
+
+## 21. 인박스/고객관리 추가 버그 수정 (2026-01-29) ✅
+
+### 문제 배경
+사용자 제보로 3가지 추가 버그 발견:
+1. **AI 메시지 주석이 실제 내용에 포함** (심각) - "// 고객: 원문 표시" 텍스트가 메시지에 실제로 표시됨
+2. **번역 텍스트 색상 가독성 문제** - 흰색 텍스트가 보이지 않음
+3. **고객 관리 페이지 실시간 연동 안됨** - 수치나 정보가 업데이트 안됨
+4. **Supabase 마이그레이션 파일 정리** - phase4-schema.sql을 supabase 폴더로 이동 필요
+
+### 수정 사항
+
+#### 1. AI 메시지 주석이 실제 내용에 포함되는 문제 수정 (심각한 버그)
+
+**문제 재현:**
+스크린샷에서 확인된 것처럼 AI 자동응답 메시지에 "// 고객: 원문 표시" 텍스트가 실제로 표시됨
+
+**근본 원인:**
+`/web/src/app/(dashboard)/inbox/page.tsx` (lines 1944-1948) - JSX 코드 내에 주석이 잘못 들어가 실제 텍스트로 렌더링됨
+
+```typescript
+// BEFORE (WRONG):
+<p className="text-sm leading-relaxed">
+  {(msg.sender === "agent" || msg.sender === "ai") && msg.translatedContent
+    ? msg.translatedContent  // AI/에이전트: 번역본 (고객 언어) 표시
+    : msg.content}  // 고객: 원문 표시
+</p>
+
+// AFTER (CORRECT):
+<p className="text-sm leading-relaxed">
+  {(msg.sender === "agent" || msg.sender === "ai") && msg.translatedContent
+    ? msg.translatedContent
+    : msg.content}
+</p>
+```
+
+**문제 원인 상세:**
+- JSX 중괄호 `{}` 안에서 `//` 주석은 실제 텍스트로 렌더링됨
+- 올바른 JSX 주석 방식은 `{/* 주석 */}` 또는 중괄호 밖에서 `//` 사용
+- 조건부 연산자 끝에 붙은 주석이 렌더링 결과에 포함되어 화면에 표시됨
+
+#### 2. 번역 텍스트 색상 가독성 수정
+
+**문제 재현:**
+번역 토글 시 원문(한국어)이 흰색으로 표시되어 파란 배경에서 보이지 않음
+
+**근본 원인:**
+`text-primary-foreground/70` 색상이 파란색 메시지 배경에서 대비가 낮아 가독성이 떨어짐
+
+**수정 위치** (`/web/src/app/(dashboard)/inbox/page.tsx` lines 1955-1965):
+
+```typescript
+// BEFORE (WRONG):
+<div className={cn(
+  "flex items-center gap-1 text-[9px] mb-0.5",
+  (msg.sender === "agent" || msg.sender === "ai") ? "text-primary-foreground/70" : "text-muted-foreground"
+)}>
+  <Globe className="h-2.5 w-2.5" />
+  {(msg.sender === "agent" || msg.sender === "ai") ? "원문 (한국어)" : "번역 (한국어)"}
+</div>
+<p className={cn(
+  "text-xs leading-relaxed",
+  (msg.sender === "agent" || msg.sender === "ai") ? "text-primary-foreground/80" : "text-muted-foreground"
+)}>
+  {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
+</p>
+
+// AFTER (CORRECT):
+<div className={cn(
+  "flex items-center gap-1 text-[9px] mb-0.5",
+  (msg.sender === "agent" || msg.sender === "ai") ? "text-white/90" : "text-muted-foreground"
+)}>
+  <Globe className="h-2.5 w-2.5" />
+  {(msg.sender === "agent" || msg.sender === "ai") ? "원문 (한국어)" : "번역 (한국어)"}
+</div>
+<p className={cn(
+  "text-xs leading-relaxed",
+  (msg.sender === "agent" || msg.sender === "ai") ? "text-white" : "text-muted-foreground"
+)}>
+  {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
+</p>
+```
+
+**수정 원리:**
+- 에이전트/AI 메시지 배경색은 파란색 (`bg-primary`)
+- 파란 배경에서는 `text-white` 계열이 가장 가독성이 좋음
+- 라벨: `text-white/90` (약간 투명)
+- 본문: `text-white` (완전 불투명)
+
+#### 3. 고객 관리 페이지 실시간 연동 수정
+
+**문제 재현:**
+고객 관리 페이지(`/customers`)에서 메시지 수, 대화 통계 등이 실시간으로 업데이트되지 않음
+
+**근본 원인:**
+`/web/src/app/api/customers/route.ts` (line 54-56) - conversations 조회 시 `id` 필드를 select하지 않아 메시지 데이터 조회 실패
+
+```typescript
+// BEFORE (WRONG):
+const { data: conversationData } = await (supabase as any)
+  .from("conversations")
+  .select("customer_id, created_at, last_message_at")  // ❌ id 필드 누락
+  .in("customer_id", customerIds);
+
+// Fetch message counts for each customer
+const conversationIds = conversationData?.map((c: any) => c.id) || [];  // ❌ c.id가 undefined
+
+// AFTER (CORRECT):
+const { data: conversationData } = await (supabase as any)
+  .from("conversations")
+  .select("id, customer_id, created_at, last_message_at")  // ✅ id 필드 추가
+  .in("customer_id", customerIds);
+
+// Fetch message counts for each customer
+const conversationIds = conversationData?.map((c: any) => c.id) || [];  // ✅ 정상 작동
+```
+
+**문제 흐름:**
+1. 고객 ID로 conversations 조회 → `id` 필드 없이 조회
+2. conversationData에서 `c.id`를 추출하려 했으나 `undefined` 반환
+3. `conversationIds`가 빈 배열이 됨
+4. messages 조회 시 빈 배열로 필터링되어 0건 반환
+5. 고객 통계가 모두 0으로 표시됨
+
+**수정 결과:**
+- 메시지 카운트 (총 메시지, 수신/발신) 정확히 표시
+- 대화 통계 (총 대화 수, 최근 접속) 실시간 업데이트
+- 고객 정보 페이지 전체가 실시간 DB 데이터로 표시
+
+#### 4. Supabase 마이그레이션 파일 재구성
+
+**수정 작업:**
+```bash
+mv web/supabase/phase4-schema.sql supabase/migrations/003_phase4_schema.sql
+```
+
+**파일 구조 (변경 후):**
+```
+/supabase/migrations/
+├── 001_initial_schema.sql       (22,810 bytes) - 기본 스키마
+├── 002_message_templates.sql    (6,644 bytes)  - 템플릿 + OAuth
+└── 003_phase4_schema.sql        (18,790 bytes) - 엔터프라이즈 기능
+```
+
+**실행 순서:**
+```sql
+-- Supabase SQL Editor에서 순차 실행:
+-- 1. 001_initial_schema.sql
+-- 2. 002_message_templates.sql
+-- 3. 003_phase4_schema.sql
+```
+
+### 빌드 검증
+```bash
+$ npm run build
+
+✓ Compiled successfully
+Route (app)
+- 31 pages
+- 48 API routes
+
+○  (Static)  prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+TypeScript Errors: 0
+```
+
+### 수정된 파일
+1. `/web/src/app/(dashboard)/inbox/page.tsx` - 2 changes
+   - JSX 주석 제거 (lines 1944-1948)
+   - 번역 텍스트 색상 수정 (lines 1955-1965)
+
+2. `/web/src/app/api/customers/route.ts` - 1 change
+   - conversations select에 `id` 필드 추가 (line 54)
+
+3. 파일 이동: `web/supabase/phase4-schema.sql` → `/supabase/migrations/003_phase4_schema.sql`
+
+### 검증 완료
+- ✅ 빌드 통과 (0 errors)
+- ✅ JSX 주석 문제 해결
+- ✅ 번역 텍스트 가독성 개선
+- ✅ 고객 관리 페이지 실시간 연동
+- ✅ 마이그레이션 파일 정리
+
+### 다음 단계
+1. ✅ 모든 버그 수정 완료
+2. ✅ 빌드 검증 통과
+3. ✅ CLAUDE.md 업데이트 (Section 13)
+4. ✅ claude.ai.md 업데이트 (Section 21)
+5. ⏳ Git commit 및 push
+6. ⏳ Vercel 자동 배포

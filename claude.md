@@ -236,8 +236,32 @@
   - 총 3개 파일 확인:
     1. `/supabase/migrations/001_initial_schema.sql` - 기본 스키마 (629 lines)
     2. `/supabase/migrations/002_message_templates.sql` - 메시지 템플릿 + OAuth 세션 (205 lines)
-    3. `/web/supabase/phase4-schema.sql` - Phase 4 엔터프라이즈 기능
-  - **실행 순서**: 001 → 002 → phase4 (Supabase SQL Editor에서 순차 실행)
+    3. `/supabase/migrations/003_phase4_schema.sql` - Phase 4 엔터프라이즈 기능 (이동 완료)
+  - **실행 순서**: 001 → 002 → 003 (Supabase SQL Editor에서 순차 실행)
+
+#### 13. 인박스/고객관리 추가 버그 수정 (2026-01-29) ✅ NEW
+- **AI 메시지 주석이 실제 내용에 포함되는 문제 수정** (심각한 버그)
+  - **문제**: "// 고객: 원문 표시" 텍스트가 메시지에 실제로 표시됨
+  - **원인**: JSX 코드 안에 주석이 잘못 들어가 실제 텍스트로 렌더링됨
+  - **수정**: `/web/src/app/(dashboard)/inbox/page.tsx` (lines 1944-1948)
+    - JSX 주석 제거, 깔끔한 코드로 정리
+
+- **번역 텍스트 색상 가독성 수정**
+  - **문제**: 번역 토글 시 흰색 텍스트가 보이지 않음
+  - **원인**: `text-primary-foreground/70` 색상이 파란 배경에서 가독성 낮음
+  - **수정**: 에이전트/AI 메시지의 번역 텍스트를 `text-white`, `text-white/90`으로 변경
+  - **결과**: 번역 토글 시 원문이 명확히 보임
+
+- **고객 관리 페이지 실시간 연동 수정**
+  - **문제**: 고객 관리 페이지에서 수치나 정보가 실시간 연동 안됨
+  - **원인**: `/api/customers` 라우트에서 conversations select 시 `id` 필드 누락
+  - **수정**: `conversations` 조회 시 `id` 필드 추가 (line 54)
+  - **결과**: 메시지 카운트, 대화 통계 정확히 표시됨
+
+- **Supabase 마이그레이션 파일 재구성**
+  - `web/supabase/phase4-schema.sql` → `/supabase/migrations/003_phase4_schema.sql` 이동
+  - 모든 마이그레이션 파일을 단일 폴더에 집중
+  - 실행 순서 명확화: 001 → 002 → 003
 
 ---
 

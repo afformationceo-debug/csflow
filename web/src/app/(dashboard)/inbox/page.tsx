@@ -1943,8 +1943,8 @@ export default function InboxPage() {
                                   {/* Main message content: Show customer language version */}
                                   <p className="text-sm leading-relaxed">
                                     {(msg.sender === "agent" || msg.sender === "ai") && msg.translatedContent
-                                      ? msg.translatedContent  // AI/에이전트: 번역본 (고객 언어) 표시
-                                      : msg.content}  // 고객: 원문 표시
+                                      ? msg.translatedContent
+                                      : msg.content}
                                   </p>
                                   {/* Translation toggle: Show Korean version for reference */}
                                   {showTranslation && msg.translatedContent && (
@@ -1954,14 +1954,14 @@ export default function InboxPage() {
                                     )}>
                                       <div className={cn(
                                         "flex items-center gap-1 text-[9px] mb-0.5",
-                                        (msg.sender === "agent" || msg.sender === "ai") ? "text-primary-foreground/70" : "text-muted-foreground"
+                                        (msg.sender === "agent" || msg.sender === "ai") ? "text-white/90" : "text-muted-foreground"
                                       )}>
                                         <Globe className="h-2.5 w-2.5" />
                                         {(msg.sender === "agent" || msg.sender === "ai") ? "원문 (한국어)" : "번역 (한국어)"}
                                       </div>
                                       <p className={cn(
                                         "text-xs leading-relaxed",
-                                        (msg.sender === "agent" || msg.sender === "ai") ? "text-primary-foreground/80" : "text-muted-foreground"
+                                        (msg.sender === "agent" || msg.sender === "ai") ? "text-white" : "text-muted-foreground"
                                       )}>
                                         {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
                                       </p>
