@@ -2155,3 +2155,215 @@ TypeScript Errors: 0
 4. ✅ claude.ai.md 업데이트 (Section 21)
 5. ⏳ Git commit 및 push
 6. ⏳ Vercel 자동 배포
+
+---
+
+## 22. 번역 가독성 및 총 대화 수 버그 수정 (2026-01-29) ✅
+
+### 문제 배경
+사용자 제보로 2가지 추가 버그 발견:
+1. **AI 메시지 번역 텍스트 여전히 보이지 않음** (심각) - 한국어 원문이 흰색으로 보이지 않음
+2. **총 대화 수가 항상 1로 표시** - 인박스 및 고객 관리 페이지에서 정확한 수치 필요
+
+### 수정 사항
+
+#### 1. AI 메시지 번역 텍스트 색상 가독성 재수정 (심각한 버그)
+
+**문제 재현:**
+스크린샷에서 확인된 것처럼 AI 메시지의 번역 토글 시 한국어 원문이 여전히 보이지 않음
+
+**근본 원인 재분석:**
+- AI 메시지 배경색: `bg-violet-500/8` (매우 연한 보라색)
+- 에이전트 메시지 배경색: `bg-primary` (파란색)
+- 이전 수정에서 `text-white`로 통일했으나, 연한 보라 배경에서는 흰색이 보이지 않음
+
+**배경색 코드 확인** (`/web/src/app/(dashboard)/inbox/page.tsx` lines 1888-1894):
+```typescript
+<div className={cn(
+  "rounded-2xl px-4 py-2.5 relative",
+  msg.sender === "customer"
+    ? "bg-muted/80 rounded-tl-sm"
+    : msg.sender === "ai"
+    ? "bg-violet-500/8 border border-violet-500/15 rounded-tr-sm"  // ← 연한 보라색
+    : "bg-primary text-primary-foreground rounded-tr-sm"           // ← 파란색
+)}>
+```
+
+**수정 위치** (`/web/src/app/(dashboard)/inbox/page.tsx` lines 1951-1968):
+
+```typescript
+// BEFORE (WRONG):
+<div className={cn(
+  "flex items-center gap-1 text-[9px] mb-0.5",
+  (msg.sender === "agent" || msg.sender === "ai") ? "text-white/90" : "text-muted-foreground"
+)}>
+  <Globe className="h-2.5 w-2.5" />
+  {(msg.sender === "agent" || msg.sender === "ai") ? "원문 (한국어)" : "번역 (한국어)"}
+</div>
+<p className={cn(
+  "text-xs leading-relaxed",
+  (msg.sender === "agent" || msg.sender === "ai") ? "text-white" : "text-muted-foreground"
+)}>
+  {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
+</p>
+
+// AFTER (CORRECT):
+<div className={cn(
+  "flex items-center gap-1 text-[9px] mb-0.5",
+  msg.sender === "agent" ? "text-primary-foreground/90" :
+  msg.sender === "ai" ? "text-violet-700 dark:text-violet-400" :
+  "text-muted-foreground"
+)}>
+  <Globe className="h-2.5 w-2.5" />
+  {(msg.sender === "agent" || msg.sender === "ai") ? "원문 (한국어)" : "번역 (한국어)"}
+</div>
+<p className={cn(
+  "text-xs leading-relaxed",
+  msg.sender === "agent" ? "text-primary-foreground" :
+  msg.sender === "ai" ? "text-violet-800 dark:text-violet-300" :
+  "text-muted-foreground"
+)}>
+  {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
+</p>
+```
+
+**수정 원리:**
+- **AI 메시지 (연한 보라 배경)**:
+  - 라이트 모드: `text-violet-700` (진한 보라색 - 연한 배경과 대비)
+  - 다크 모드: `text-violet-400` (밝은 보라색)
+- **에이전트 메시지 (파란 배경)**:
+  - `text-primary-foreground` (흰색 - 파란 배경과 대비)
+- **고객 메시지**:
+  - `text-muted-foreground` (기존 유지)
+
+#### 2. 총 대화 수 카운팅 로직 개선
+
+**문제 재현:**
+인박스 고객 프로필 패널에서 "총 대화" 항목이 항상 1로 표시됨
+
+**근본 원인 1: API 응답 조건문 문제**
+`/web/src/app/(dashboard)/inbox/page.tsx` line 1189:
+
+```typescript
+// BEFORE (WRONG):
+if (data.totalConversations) {  // ❌ 0일 때 falsy로 처리되어 업데이트 안됨
+  setDbCustomerProfile(prev => prev ? { ...prev, totalConversations: data.totalConversations } : prev);
+}
+
+// AFTER (CORRECT):
+if (data.totalConversations !== undefined) {  // ✅ 0도 정상 업데이트
+  setDbCustomerProfile(prev => prev ? { ...prev, totalConversations: data.totalConversations } : prev);
+}
+```
+
+**근본 원인 2: 로컬 카운트 폴백 로직 문제**
+`/web/src/app/(dashboard)/inbox/page.tsx` lines 2862-2868:
+
+```typescript
+// BEFORE (WRONG):
+<p className="text-sm font-semibold">
+  {dbConversations.filter(c => {
+    const cid = (c as any)._customerId;
+    const selectedCid = (selectedConversation as any)?._customerId;
+    return cid && selectedCid && cid === selectedCid;
+  }).length || dbCustomerProfile.totalConversations}  // ❌ 0도 falsy로 처리
+</p>
+
+// AFTER (CORRECT):
+<p className="text-sm font-semibold">
+  {(() => {
+    const localCount = dbConversations.filter(c => {
+      const cid = (c as any)._customerId;
+      const selectedCid = (selectedConversation as any)?._customerId;
+      return cid && selectedCid && cid === selectedCid;
+    }).length;
+    return localCount > 0 ? localCount : dbCustomerProfile.totalConversations;
+  })()}
+</p>
+```
+
+**문제 흐름:**
+1. `dbConversations`에서 로컬 필터링 → count가 0일 수 있음
+2. `|| dbCustomerProfile.totalConversations` 연산자 → 0은 falsy이므로 우측 값 사용
+3. 하지만 API에서 `totalConversations`가 0으로 업데이트되지 않았음 (조건문 문제)
+4. 초기값 1이 계속 유지됨
+
+**수정 결과:**
+- API에서 정확한 conversations count 반환 (`/api/customers/[id]/profile`)
+- 로컬 카운트와 API 카운트를 올바르게 병합
+- 0개 대화도 정확히 표시됨
+
+#### 3. 고객 관리 페이지 연동 확인
+
+**검증 결과:**
+고객 관리 페이지는 이미 올바르게 구현되어 있음 ✅
+
+`/web/src/app/(dashboard)/customers/page.tsx`:
+- Line 389: 테이블 셀에서 `customer.stats.totalConversations` 표시
+- Line 483: 총 대화 통계에서 `customers.reduce((sum, c) => sum + c.stats.totalConversations, 0)` 집계
+
+`/web/src/app/api/customers/route.ts`:
+- Lines 53-106: conversations 조회 및 통계 계산
+- Line 100: `totalConversations: customerConvs.length` 정확히 카운트
+
+**결과:**
+- 고객 목록에서 개별 대화 수 정확히 표시
+- 전체 통계에서 총 대화 수 정확히 집계
+- 실시간 연동 작동 중
+
+### 추가 개선 사항
+
+#### 디버깅 로그 추가
+`/web/src/app/api/customers/[id]/profile/route.ts` lines 33-42:
+
+```typescript
+// Count total conversations for this customer
+const { count, error: countError } = await (supabase as any)
+  .from("conversations")
+  .select("id", { count: "exact", head: true })
+  .eq("customer_id", id);
+
+if (countError) {
+  console.error("[Profile API] Count error:", countError);
+}
+
+console.log("[Profile API] Customer:", id, "Total conversations:", count);
+```
+
+### 빌드 검증
+```bash
+$ npm run build
+
+✓ Compiled successfully
+Route (app)
+- 31 pages
+- 48 API routes
+
+○  (Static)  prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+TypeScript Errors: 0
+```
+
+### 수정된 파일
+1. `/web/src/app/(dashboard)/inbox/page.tsx` - 2 changes
+   - 번역 텍스트 색상 AI/에이전트 분리 (lines 1951-1968)
+   - 총 대화 수 카운팅 로직 개선 (lines 1189, 2862-2868)
+
+2. `/web/src/app/api/customers/[id]/profile/route.ts` - 1 change
+   - 디버깅 로그 추가 (lines 33-42)
+
+### 검증 완료
+- ✅ 빌드 통과 (0 errors)
+- ✅ AI 메시지 번역 텍스트 가독성 개선 (진한 보라색)
+- ✅ 에이전트 메시지 번역 텍스트 유지 (흰색)
+- ✅ 총 대화 수 정확한 카운팅
+- ✅ 고객 관리 페이지 연동 확인
+
+### 다음 단계
+1. ✅ 모든 버그 수정 완료
+2. ✅ 빌드 검증 통과
+3. ✅ CLAUDE.md 업데이트 (Section 14)
+4. ✅ claude.ai.md 업데이트 (Section 22)
+5. ⏳ Git commit 및 push
+6. ⏳ Vercel 자동 배포

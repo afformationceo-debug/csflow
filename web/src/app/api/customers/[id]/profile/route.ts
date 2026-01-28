@@ -30,10 +30,16 @@ export async function GET(
     }
 
     // Count total conversations for this customer
-    const { count } = await (supabase as any)
+    const { count, error: countError } = await (supabase as any)
       .from("conversations")
       .select("id", { count: "exact", head: true })
       .eq("customer_id", id);
+
+    if (countError) {
+      console.error("[Profile API] Count error:", countError);
+    }
+
+    console.log("[Profile API] Customer:", id, "Total conversations:", count);
 
     return NextResponse.json({
       ...customer,

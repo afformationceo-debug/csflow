@@ -1186,7 +1186,7 @@ export default function InboxPage() {
           const data = await res.json();
           const meta = data.metadata || {};
           setMemoText(meta.memo || "");
-          if (data.totalConversations) {
+          if (data.totalConversations !== undefined) {
             setDbCustomerProfile(prev => prev ? { ...prev, totalConversations: data.totalConversations } : prev);
           }
         }
@@ -1950,18 +1950,24 @@ export default function InboxPage() {
                                   {showTranslation && msg.translatedContent && (
                                     <div className={cn(
                                       "mt-2 pt-2 border-t",
-                                      (msg.sender === "agent" || msg.sender === "ai") ? "border-primary-foreground/20" : "border-border/40"
+                                      msg.sender === "agent" ? "border-primary-foreground/20" :
+                                      msg.sender === "ai" ? "border-violet-500/20" :
+                                      "border-border/40"
                                     )}>
                                       <div className={cn(
                                         "flex items-center gap-1 text-[9px] mb-0.5",
-                                        (msg.sender === "agent" || msg.sender === "ai") ? "text-white/90" : "text-muted-foreground"
+                                        msg.sender === "agent" ? "text-primary-foreground/90" :
+                                        msg.sender === "ai" ? "text-violet-700 dark:text-violet-400" :
+                                        "text-muted-foreground"
                                       )}>
                                         <Globe className="h-2.5 w-2.5" />
                                         {(msg.sender === "agent" || msg.sender === "ai") ? "원문 (한국어)" : "번역 (한국어)"}
                                       </div>
                                       <p className={cn(
                                         "text-xs leading-relaxed",
-                                        (msg.sender === "agent" || msg.sender === "ai") ? "text-white" : "text-muted-foreground"
+                                        msg.sender === "agent" ? "text-primary-foreground" :
+                                        msg.sender === "ai" ? "text-violet-800 dark:text-violet-300" :
+                                        "text-muted-foreground"
                                       )}>
                                         {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
                                       </p>
@@ -2854,11 +2860,14 @@ export default function InboxPage() {
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
                     <p className="text-[10px] text-muted-foreground">총 대화</p>
                     <p className="text-sm font-semibold">
-                      {dbConversations.filter(c => {
-                        const cid = (c as any)._customerId;
-                        const selectedCid = (selectedConversation as any)?._customerId;
-                        return cid && selectedCid && cid === selectedCid;
-                      }).length || dbCustomerProfile.totalConversations}
+                      {(() => {
+                        const localCount = dbConversations.filter(c => {
+                          const cid = (c as any)._customerId;
+                          const selectedCid = (selectedConversation as any)?._customerId;
+                          return cid && selectedCid && cid === selectedCid;
+                        }).length;
+                        return localCount > 0 ? localCount : dbCustomerProfile.totalConversations;
+                      })()}
                     </p>
                   </div>
                   <div className="p-2 rounded-lg bg-muted/30 text-center">

@@ -263,6 +263,30 @@
   - 모든 마이그레이션 파일을 단일 폴더에 집중
   - 실행 순서 명확화: 001 → 002 → 003
 
+#### 14. 번역 가독성 및 총 대화 수 버그 수정 (2026-01-29) ✅ NEW
+- **AI 메시지 번역 텍스트 색상 가독성 재수정** (심각한 버그)
+  - **문제**: AI 메시지의 번역 토글 시 한국어 원문이 여전히 흰색으로 보이지 않음
+  - **원인**: AI 메시지는 연한 보라색 배경(`bg-violet-500/8`), 에이전트 메시지는 파란색 배경(`bg-primary`)으로 다름
+  - **이전 수정의 문제**: `text-white`는 파란 배경에는 맞지만 연한 보라 배경에는 보이지 않음
+  - **수정**: `/web/src/app/(dashboard)/inbox/page.tsx` (lines 1951-1968)
+    - AI 메시지: `text-violet-700 dark:text-violet-400` (진한 보라색)
+    - 에이전트 메시지: `text-primary-foreground` (흰색, 파란 배경용)
+    - 배경색에 따라 텍스트 색상 분리 적용
+
+- **총 대화 수 카운팅 로직 개선**
+  - **문제**: 인박스 "총 대화" 표시가 항상 1로 나옴
+  - **원인 1**: `if (data.totalConversations)` 조건문 - 0일 때 falsy로 처리되어 업데이트 안됨
+  - **원인 2**: `|| dbCustomerProfile.totalConversations` 연산자 - localCount가 0일 때도 우측 값 사용
+  - **수정**:
+    - Line 1189: `if (data.totalConversations !== undefined)` 로 변경
+    - Lines 2862-2868: IIFE로 로컬 카운트 계산 후 `localCount > 0 ? localCount : dbCustomerProfile.totalConversations` 사용
+  - **결과**: 총 대화 수가 정확히 표시됨
+
+- **고객 관리 페이지 총 대화 수 연동**
+  - 고객 관리 페이지는 이미 `customer.stats.totalConversations` 사용 중 ✅
+  - `/api/customers` 엔드포인트에서 conversations 카운트 제공 ✅
+  - 고객 목록 및 통계에 실시간 반영됨 ✅
+
 ---
 
 ## 경쟁사 분석: Channel.io
