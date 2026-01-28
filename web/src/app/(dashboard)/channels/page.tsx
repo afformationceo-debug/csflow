@@ -132,95 +132,7 @@ const CHANNEL_ICONS: Record<ChannelType, React.ElementType> = {
   wechat: MessageSquare,
 };
 
-// ── Mock data ──
-
-const MOCK_CHANNELS: ConnectedChannel[] = [
-  {
-    id: "ch-001",
-    channelType: "line",
-    accountName: "힐링안과 LINE",
-    accountId: "healing_eye_jp",
-    isActive: true,
-    messageCount: 1245,
-    lastActiveAt: "2분 전",
-    createdAt: "2025-08-15",
-  },
-  {
-    id: "ch-002",
-    channelType: "line",
-    accountName: "강남피부과 LINE",
-    accountId: "gangnam_skin_jp",
-    isActive: true,
-    messageCount: 823,
-    lastActiveAt: "5분 전",
-    createdAt: "2025-09-10",
-  },
-  {
-    id: "ch-003",
-    channelType: "whatsapp",
-    accountName: "힐링안과 WhatsApp",
-    accountId: "+82-2-xxxx-xxxx",
-    isActive: true,
-    messageCount: 567,
-    lastActiveAt: "12분 전",
-    createdAt: "2025-10-01",
-  },
-  {
-    id: "ch-004",
-    channelType: "facebook",
-    accountName: "서울성형 Facebook",
-    accountId: "seoul_plastic",
-    isActive: true,
-    messageCount: 412,
-    lastActiveAt: "18분 전",
-    createdAt: "2025-10-20",
-  },
-  {
-    id: "ch-005",
-    channelType: "instagram",
-    accountName: "서울성형 Instagram",
-    accountId: "seoul_plastic_ig",
-    isActive: true,
-    messageCount: 298,
-    lastActiveAt: "25분 전",
-    createdAt: "2025-11-05",
-  },
-  {
-    id: "ch-006",
-    channelType: "kakao",
-    accountName: "스마일치과 카카오톡",
-    accountId: "smile_dental",
-    isActive: false,
-    messageCount: 156,
-    lastActiveAt: "3시간 전",
-    createdAt: "2025-12-01",
-  },
-];
-
-// ── Helper: Fetch channels with mock fallback ──
-
-async function fetchChannels(): Promise<ConnectedChannel[]> {
-  try {
-    const response = await fetch("/api/channels?tenantId=demo-tenant-id");
-    if (!response.ok) throw new Error("API error");
-    const data = await response.json();
-    if (data.channels && data.channels.length > 0) {
-      return data.channels.map((ch: Record<string, unknown>) => ({
-        id: ch.id as string,
-        channelType: ch.channelType as ChannelType,
-        accountName: ch.accountName as string,
-        accountId: ch.accountId as string,
-        isActive: ch.isActive as boolean,
-        messageCount: (ch.messageCount as number) ?? 0,
-        lastActiveAt: (ch.lastActiveAt as string) ?? "-",
-        createdAt: ch.createdAt as string,
-      }));
-    }
-    throw new Error("empty");
-  } catch {
-    return MOCK_CHANNELS;
-  }
-}
+// Mock data removed — channels are now loaded exclusively from DB
 
 // ── Animated bar ──
 
@@ -263,7 +175,7 @@ interface Tenant {
 }
 
 export default function ChannelsPage() {
-  const [channels, setChannels] = useState<ConnectedChannel[]>(MOCK_CHANNELS);
+  const [channels, setChannels] = useState<ConnectedChannel[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newChannelType, setNewChannelType] = useState<ChannelType | "">("");
   const [newAccountName, setNewAccountName] = useState("");
@@ -317,10 +229,10 @@ export default function ChannelsPage() {
             createdAt: ch.createdAt as string,
           })));
         } else {
-          setChannels(MOCK_CHANNELS);
+          setChannels([]);
         }
       } catch {
-        setChannels(MOCK_CHANNELS);
+        setChannels([]);
       }
     }
     loadChannels();

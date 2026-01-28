@@ -188,212 +188,9 @@ const customerTagPresets: { label: string; color: string; bg: string }[] = [
   { label: "보험문의", color: "text-teal-700 dark:text-teal-300", bg: "bg-teal-100 dark:bg-teal-900/40" },
 ];
 
-// ── 거래처(병원) 목록 ──
+// 거래처(병원) 목록은 DB에서 로드 — hospitals state로 관리
 
-const hospitals: Hospital[] = [
-  { id: "healing", name: "힐링안과", nameEn: "Healing Eye", specialty: "안과", color: "#2563eb" },
-  { id: "smile", name: "스마일치과", nameEn: "Smile Dental", specialty: "치과", color: "#10b981" },
-  { id: "seoul", name: "서울성형", nameEn: "Seoul Plastic", specialty: "성형외과", color: "#8b5cf6" },
-  { id: "gangnam", name: "강남피부과", nameEn: "Gangnam Derma", specialty: "피부과", color: "#f59e0b" },
-  { id: "cheongdam", name: "청담봄온의원", nameEn: "Cheongdam Bomon", specialty: "성형외과", color: "#ec4899" },
-  { id: "yonsei", name: "연세안과", nameEn: "Yonsei Eye", specialty: "안과", color: "#0ea5e9" },
-  { id: "samsung", name: "삼성미래의원", nameEn: "Samsung Future", specialty: "종합", color: "#6366f1" },
-  { id: "apgujeong", name: "압구정성형", nameEn: "Apgujeong PS", specialty: "성형외과", color: "#d946ef" },
-  { id: "sinsa", name: "신사치과", nameEn: "Sinsa Dental", specialty: "치과", color: "#14b8a6" },
-  { id: "jamsil", name: "잠실피부과", nameEn: "Jamsil Derma", specialty: "피부과", color: "#f97316" },
-];
-
-// ── Mock Data ──
-
-const mockConversations: Conversation[] = [
-  {
-    id: "1",
-    customer: { name: "김환자", country: "일본", language: "ja", avatar: "KH" },
-    hospital: hospitals[0],
-    channel: "line",
-    lastMessage: "ラシック手術の費用はいくらですか？",
-    lastMessageTranslated: "라식 수술 비용이 얼마인가요?",
-    lastMessageAt: new Date(Date.now() - 5 * 60 * 1000),
-    status: "urgent",
-    unread: 2,
-    aiConfidence: null,
-    consultationTag: "first_booking",
-    customerTags: ["VIP", "가격문의"],
-    assignee: "김코디",
-    isPinned: true,
-    sentimentScore: 0.6,
-  },
-  {
-    id: "2",
-    customer: { name: "이환자", country: "한국", language: "ko", avatar: "LH" },
-    hospital: hospitals[1],
-    channel: "kakao",
-    lastMessage: "예약 변경하고 싶어요",
-    lastMessageTranslated: null,
-    lastMessageAt: new Date(Date.now() - 60 * 60 * 1000),
-    status: "pending",
-    unread: 0,
-    aiConfidence: null,
-    consultationTag: "confirmed",
-    customerTags: ["리피터"],
-    assignee: "박상담",
-    sentimentScore: 0.3,
-  },
-  {
-    id: "3",
-    customer: { name: "박환자", country: "대만", language: "zh-TW", avatar: "PH" },
-    hospital: hospitals[2],
-    channel: "instagram",
-    lastMessage: "수술 전후 사진 보고 싶어요",
-    lastMessageTranslated: null,
-    lastMessageAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    status: "resolved",
-    unread: 0,
-    aiConfidence: 92,
-    consultationTag: "completed",
-    customerTags: ["인플루언서"],
-    sentimentScore: 0.9,
-  },
-  {
-    id: "4",
-    customer: { name: "John Smith", country: "미국", language: "en", avatar: "JS" },
-    hospital: hospitals[0],
-    channel: "whatsapp",
-    lastMessage: "What's the price for LASIK surgery?",
-    lastMessageTranslated: "라식 수술 가격이 어떻게 되나요?",
-    lastMessageAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    status: "ai_processing",
-    unread: 1,
-    aiConfidence: 87,
-    consultationTag: "prospect",
-    customerTags: ["가격문의"],
-    sentimentScore: 0.5,
-  },
-  {
-    id: "5",
-    customer: { name: "田中太郎", country: "일본", language: "ja", avatar: "TT" },
-    hospital: hospitals[3],
-    channel: "line",
-    lastMessage: "治療の予約をしたいです",
-    lastMessageTranslated: "치료 예약을 하고 싶습니다",
-    lastMessageAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
-    status: "pending",
-    unread: 0,
-    aiConfidence: null,
-    consultationTag: "potential",
-    customerTags: [],
-    assignee: "이상담",
-    sentimentScore: 0.7,
-  },
-  {
-    id: "6",
-    customer: { name: "Sarah Johnson", country: "영국", language: "en", avatar: "SJ" },
-    hospital: hospitals[4],
-    channel: "whatsapp",
-    lastMessage: "Can I get a quote for rhinoplasty?",
-    lastMessageTranslated: "코 성형 견적을 받을 수 있을까요?",
-    lastMessageAt: new Date(Date.now() - 45 * 60 * 1000),
-    status: "waiting",
-    unread: 1,
-    aiConfidence: 78,
-    consultationTag: "prospect",
-    customerTags: ["가격문의", "현지에이전트"],
-    sentimentScore: 0.4,
-  },
-  {
-    id: "7",
-    customer: { name: "Nguyen Thi", country: "베트남", language: "vi", avatar: "NT" },
-    hospital: hospitals[5],
-    channel: "facebook",
-    lastMessage: "Tôi muốn đặt lịch khám mắt",
-    lastMessageTranslated: "눈 검사 예약을 하고 싶습니다",
-    lastMessageAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
-    status: "on_hold",
-    unread: 0,
-    aiConfidence: null,
-    consultationTag: "potential",
-    customerTags: ["통역필요"],
-    sentimentScore: 0.5,
-  },
-];
-
-const mockMessages: Message[] = [
-  {
-    id: "m0",
-    sender: "system",
-    content: "대화가 시작되었습니다 — LINE 채널, 힐링안과",
-    time: "14:25",
-  },
-  {
-    id: "m1",
-    sender: "customer",
-    content: "ラシック手術の費用はいくらですか？",
-    translatedContent: "라식 수술 비용이 얼마인가요?",
-    time: "14:30",
-    language: "ja",
-  },
-  {
-    id: "m2",
-    sender: "ai",
-    content: "라식 수술 비용은 양안 기준 150만원~200만원입니다. 정확한 비용은 사전 검사 후 확정됩니다. 상담 예약을 도와드릴까요?",
-    translatedContent: "ラシック手術の費用は両眼で150万ウォン〜200万ウォンです。正確な費用は事前検査後に確定します。相談予約をお手伝いしましょうか？",
-    time: "14:31",
-    confidence: 92,
-    sources: ["가격표.pdf", "라식FAQ.md"],
-  },
-  {
-    id: "m-internal-1",
-    sender: "internal_note",
-    content: "VIP 고객입니다. 특별 할인 적용 가능 — 담당: 김코디",
-    time: "14:32",
-    author: "김코디",
-  },
-  {
-    id: "m3",
-    sender: "customer",
-    content: "はい、予約したいです。来月の15日は空いていますか？",
-    translatedContent: "네, 예약하고 싶어요. 다음달 15일 가능한가요?",
-    time: "14:35",
-    language: "ja",
-  },
-  {
-    id: "m-internal-2",
-    sender: "internal_note",
-    content: "@박상담 2월 15일 예약 가능 여부 확인 부탁드립니다.",
-    time: "14:36",
-    author: "김코디",
-    mentions: ["박상담"],
-  },
-  {
-    id: "m4",
-    sender: "agent",
-    content: "2월 15일 오전 10시에 상담 예약 가능합니다. 예약 진행할까요?",
-    translatedContent: "2月15日午前10時に相談予約可能です。予約を進めましょうか？",
-    time: "14:40",
-  },
-];
-
-const customerProfile = {
-  name: "김환자",
-  country: "일본",
-  city: "도쿄",
-  language: "일본어",
-  channels: [
-    { type: "line", id: "healing_user_123" },
-    { type: "whatsapp", id: "+81-90-xxxx-xxxx" },
-  ],
-  interests: ["라식", "라섹", "스마일라식"],
-  booking: { date: "2024-02-15", time: "10:00", type: "상담 예약" },
-  consultationTag: "first_booking" as ConsultationTag,
-  customerTags: ["VIP", "가격문의"],
-  notes: "일본 도쿄 거주, 한국어 가능, 2월 방문 예정",
-  crmId: "CRM-12345",
-  firstContact: "2024-01-20",
-  totalConversations: 5,
-  lastVisit: "2024-01-25",
-  sentimentTrend: "positive",
-  conversionScore: 85,
-};
+// Mock data removed — all data loaded from DB only
 
 // ── Utility Functions ──
 
@@ -452,9 +249,11 @@ const smoothEase = [0.22, 1, 0.36, 1] as [number, number, number, number];
 function HospitalMultiSelect({
   selected,
   onSelect,
+  hospitals,
 }: {
   selected: string[];
   onSelect: (ids: string[]) => void;
+  hospitals: Hospital[];
 }) {
   const [open, setOpen] = useState(false);
   const allSelected = selected.length === 0; // empty means "all"
@@ -739,15 +538,56 @@ export default function InboxPage() {
   const [quickReplyMode, setQuickReplyMode] = useState(false);
 
   // DB state
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [dbConversations, setDbConversations] = useState<Conversation[]>([]);
   const [dbMessages, setDbMessages] = useState<Message[]>([]);
-  const [dbCustomerProfile, setDbCustomerProfile] = useState<typeof customerProfile | null>(null);
+  const [dbCustomerProfile, setDbCustomerProfile] = useState<{
+    name: string;
+    country: string;
+    city: string;
+    language: string;
+    channels: { type: string; id: string }[];
+    interests: string[];
+    booking: { date: string; time: string; type: string } | undefined;
+    consultationTag: ConsultationTag;
+    customerTags: string[];
+    notes: string;
+    crmId: string;
+    firstContact: string;
+    totalConversations: number;
+    lastVisit: string;
+    sentimentTrend: string;
+    conversionScore: number;
+  } | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Fetch tenants (hospitals) from DB ──
+  useEffect(() => {
+    async function loadHospitals() {
+      try {
+        const res = await fetch("/api/tenants");
+        if (!res.ok) return;
+        const data = await res.json();
+        const tenants = data.tenants || [];
+        const mapped: Hospital[] = tenants.map((t: any) => ({
+          id: t.id,
+          name: t.display_name || t.name,
+          nameEn: t.name,
+          specialty: t.specialty || "종합",
+          color: "#6366f1",
+        }));
+        setHospitals(mapped);
+      } catch {
+        // leave empty
+      }
+    }
+    loadHospitals();
+  }, []);
 
   // ── Fetch conversations from DB ──
   useEffect(() => {
@@ -762,7 +602,8 @@ export default function InboxPage() {
         // Map DB data to our Conversation type
         const mapped: Conversation[] = rawConversations.map((conv: any) => {
           const customer = conv.customer;
-          const customerChannel = conv.customer_channels?.[0];
+          // customer_channels are nested under customer now
+          const customerChannel = customer?.customer_channels?.[0];
           const channelAccount = customerChannel?.channel_account;
           const tenant = channelAccount?.tenant;
           const channelType = channelAccount?.channel_type || "line";
@@ -775,23 +616,17 @@ export default function InboxPage() {
             escalated: "urgent",
           };
 
-          // Find matching hospital or create one from tenant
-          let hospital = hospitals[0]; // default
+          // Build hospital from tenant data
+          const defaultHospital: Hospital = { id: "unknown", name: "미지정", specialty: "종합", color: "#6366f1" };
+          let hospital: Hospital = defaultHospital;
           if (tenant) {
-            const existing = hospitals.find(
-              (h) => h.name === tenant.name || h.nameEn === tenant.name || h.name === tenant.display_name
-            );
-            if (existing) {
-              hospital = existing;
-            } else {
-              hospital = {
-                id: tenant.id,
-                name: tenant.display_name || tenant.name,
-                nameEn: tenant.name,
-                specialty: tenant.specialty || "종합",
-                color: "#6366f1",
-              };
-            }
+            hospital = {
+              id: tenant.id,
+              name: tenant.display_name || tenant.name,
+              nameEn: tenant.name,
+              specialty: tenant.specialty || "종합",
+              color: "#6366f1",
+            };
           }
 
           const nameStr = customer?.name || "Unknown";
@@ -833,8 +668,6 @@ export default function InboxPage() {
         }
       } catch (err) {
         console.error("Failed to fetch conversations:", err);
-        // Fallback to mock data
-        setSelectedConversation(mockConversations[0]);
       } finally {
         setIsLoadingConversations(false);
       }
@@ -877,13 +710,6 @@ export default function InboxPage() {
         return;
       }
 
-      // Check if this is a DB conversation (has UUID id)
-      const isDbConversation = selectedConversation.id.length > 10;
-      if (!isDbConversation) {
-        setDbMessages([]);
-        return;
-      }
-
       try {
         setIsLoadingMessages(true);
         const res = await fetch(`/api/conversations/${selectedConversation.id}/messages`);
@@ -919,7 +745,7 @@ export default function InboxPage() {
     fetchMessages();
 
     // Real-time message subscription for current conversation
-    if (selectedConversation && selectedConversation.id.length > 10) {
+    if (selectedConversation) {
       const supabase = createClient();
       const channel = (supabase as any)
         .channel(`messages:${selectedConversation.id}`)
@@ -972,12 +798,9 @@ export default function InboxPage() {
     });
   }, [selectedConversation]);
 
-  // Combine DB + mock conversations (DB first, then mock as demo)
+  // All conversations from DB only (no mock data)
   const allConversations = useMemo(() => {
-    if (dbConversations.length > 0) {
-      return [...dbConversations, ...mockConversations];
-    }
-    return mockConversations;
+    return dbConversations;
   }, [dbConversations]);
 
   // Scroll to bottom
@@ -1036,16 +859,9 @@ export default function InboxPage() {
     });
   }, [allConversations, selectedHospitals, filterChannel, selectedConsultationTags, selectedStatusTags, selectedCustomerTags, searchQuery]);
 
-  // Get current messages (DB messages for DB conversations, mock for mock)
+  // Get current messages from DB only
   const currentMessages = useMemo(() => {
     if (!selectedConversation) return [];
-    const isDbConversation = selectedConversation.id.length > 10;
-    if (isDbConversation && dbMessages.length > 0) {
-      return dbMessages;
-    }
-    if (!isDbConversation) {
-      return mockMessages;
-    }
     return dbMessages;
   }, [selectedConversation, dbMessages]);
 
@@ -1166,6 +982,7 @@ export default function InboxPage() {
                 <HospitalMultiSelect
                   selected={selectedHospitals}
                   onSelect={setSelectedHospitals}
+                  hospitals={hospitals}
                 />
 
                 <Select value={filterChannel} onValueChange={setFilterChannel}>
@@ -1832,7 +1649,7 @@ export default function InboxPage() {
                               const content = messageInput;
                               setMessageInput("");
                               // Send via API for DB conversations
-                              if (selectedConversation.id.length > 10) {
+                              if (selectedConversation.id) {
                                 try {
                                   await fetch("/api/messages", {
                                     method: "POST",
@@ -1897,7 +1714,7 @@ export default function InboxPage() {
                         if (messageInput.trim() && selectedConversation) {
                           const content = messageInput;
                           setMessageInput("");
-                          if (selectedConversation.id.length > 10) {
+                          if (selectedConversation.id) {
                             try {
                               await fetch("/api/messages", {
                                 method: "POST",
@@ -1963,22 +1780,28 @@ export default function InboxPage() {
             className="h-full border rounded-2xl bg-card/80 backdrop-blur-sm overflow-hidden"
           >
             <ScrollArea className="h-full">
+              {!dbCustomerProfile ? (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <User className="h-8 w-8 mb-2 opacity-40" />
+                  <p className="text-sm">고객을 선택하면 프로필이 표시됩니다</p>
+                </div>
+              ) : (
               <div className="p-4 space-y-4">
                 {/* Profile Header */}
                 <div className="text-center">
                   <div className="relative inline-block">
                     <Avatar className="h-14 w-14 mx-auto mb-2 ring-2 ring-primary/10 ring-offset-2 ring-offset-background">
                       <AvatarFallback className="bg-gradient-to-br from-primary/20 to-violet-500/20 text-primary text-lg font-medium">
-                        {(dbCustomerProfile || customerProfile).name.slice(0, 1)}
+                        {dbCustomerProfile.name.slice(0, 1)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-green-500 border-2 border-background flex items-center justify-center">
                       <Heart className="h-2.5 w-2.5 text-white" />
                     </div>
                   </div>
-                  <h3 className="font-semibold">{(dbCustomerProfile || customerProfile).name}</h3>
+                  <h3 className="font-semibold">{dbCustomerProfile.name}</h3>
                   <div className="flex items-center justify-center gap-1.5 mt-1">
-                    <span className="text-xs text-muted-foreground">{(dbCustomerProfile || customerProfile).country}</span>
+                    <span className="text-xs text-muted-foreground">{dbCustomerProfile.country}</span>
                   </div>
 
                   {/* Conversion Score */}
@@ -1988,7 +1811,7 @@ export default function InboxPage() {
                         <TooltipTrigger asChild>
                           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20">
                             <Zap className="h-3 w-3 text-green-500" />
-                            <span className="text-[11px] font-semibold text-green-600 dark:text-green-400">전환 {(dbCustomerProfile || customerProfile).conversionScore}%</span>
+                            <span className="text-[11px] font-semibold text-green-600 dark:text-green-400">전환 {dbCustomerProfile.conversionScore}%</span>
                           </div>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -2000,7 +1823,7 @@ export default function InboxPage() {
 
                   {/* Consultation Tag Select */}
                   <div className="mt-3">
-                    <Select defaultValue={(dbCustomerProfile || customerProfile).consultationTag}>
+                    <Select defaultValue={dbCustomerProfile.consultationTag}>
                       <SelectTrigger className="w-full h-8 rounded-lg text-xs">
                         <SelectValue placeholder="상담 단계 선택" />
                       </SelectTrigger>
@@ -2046,7 +1869,7 @@ export default function InboxPage() {
                     </DropdownMenu>
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    {(dbCustomerProfile || customerProfile).customerTags.map((tag) => {
+                    {dbCustomerProfile.customerTags.map((tag) => {
                       const preset = customerTagPresets.find((p) => p.label === tag);
                       return (
                         <Badge key={tag} variant="secondary" className={cn(
@@ -2067,11 +1890,11 @@ export default function InboxPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
                     <p className="text-[10px] text-muted-foreground">총 대화</p>
-                    <p className="text-sm font-semibold">{(dbCustomerProfile || customerProfile).totalConversations}</p>
+                    <p className="text-sm font-semibold">{dbCustomerProfile.totalConversations}</p>
                   </div>
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
                     <p className="text-[10px] text-muted-foreground">첫 접촉</p>
-                    <p className="text-sm font-semibold">{(dbCustomerProfile || customerProfile).firstContact.slice(5)}</p>
+                    <p className="text-sm font-semibold">{dbCustomerProfile.firstContact.slice(5)}</p>
                   </div>
                 </div>
 
@@ -2084,7 +1907,7 @@ export default function InboxPage() {
                     연결된 채널
                   </h4>
                   <div className="space-y-1.5">
-                    {(dbCustomerProfile || customerProfile).channels.map((ch, idx) => (
+                    {dbCustomerProfile.channels.map((ch, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-xs p-2 rounded-lg bg-muted/30">
                         <span className={cn("px-1.5 py-0.5 rounded-md text-[9px]", getChannelConfig(ch.type).bg, getChannelConfig(ch.type).text)}>
                           {getChannelConfig(ch.type).label}
@@ -2103,13 +1926,13 @@ export default function InboxPage() {
                     <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                     위치
                   </h4>
-                  <p className="text-xs text-muted-foreground">{(dbCustomerProfile || customerProfile).city}{(dbCustomerProfile || customerProfile).city ? ", " : ""}{(dbCustomerProfile || customerProfile).country}</p>
+                  <p className="text-xs text-muted-foreground">{dbCustomerProfile.city}{dbCustomerProfile.city ? ", " : ""}{dbCustomerProfile.country}</p>
                 </div>
 
                 <Separator />
 
                 {/* Booking Info */}
-                {(dbCustomerProfile || customerProfile).booking && (
+                {dbCustomerProfile.booking && (
                   <>
                     <div className="space-y-1.5">
                       <h4 className="text-xs font-medium flex items-center gap-1.5">
@@ -2117,9 +1940,9 @@ export default function InboxPage() {
                         예약 정보
                       </h4>
                       <div className="p-2.5 rounded-xl bg-gradient-to-r from-primary/5 to-violet-500/5 border border-primary/10">
-                        <p className="text-xs font-medium">{(dbCustomerProfile || customerProfile).booking?.type}</p>
+                        <p className="text-xs font-medium">{dbCustomerProfile.booking?.type}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {(dbCustomerProfile || customerProfile).booking?.date} {(dbCustomerProfile || customerProfile).booking?.time}
+                          {dbCustomerProfile.booking?.date} {dbCustomerProfile.booking?.time}
                         </p>
                       </div>
                     </div>
@@ -2134,7 +1957,7 @@ export default function InboxPage() {
                     관심 시술
                   </h4>
                   <div className="flex flex-wrap gap-1">
-                    {(dbCustomerProfile || customerProfile).interests.map((interest) => (
+                    {dbCustomerProfile.interests.map((interest) => (
                       <Badge key={interest} variant="outline" className="text-[10px] rounded-full">
                         {interest}
                       </Badge>
@@ -2147,7 +1970,7 @@ export default function InboxPage() {
                 {/* Notes */}
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-medium">메모</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{(dbCustomerProfile || customerProfile).notes || "메모 없음"}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{dbCustomerProfile.notes || "메모 없음"}</p>
                 </div>
 
                 <Separator />
@@ -2168,6 +1991,7 @@ export default function InboxPage() {
                   </Button>
                 </div>
               </div>
+              )}
             </ScrollArea>
           </motion.div>
         </ResizablePanel>

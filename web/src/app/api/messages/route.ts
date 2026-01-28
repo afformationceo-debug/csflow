@@ -44,10 +44,12 @@ export async function POST(request: NextRequest) {
       .select(
         `
         *,
-        customer:customers(*),
-        customer_channel:customer_channels(
+        customer:customers(
           *,
-          channel_account:channel_accounts(*)
+          customer_channels(
+            *,
+            channel_account:channel_accounts(*)
+          )
         )
       `
       )
@@ -62,7 +64,9 @@ export async function POST(request: NextRequest) {
     }
 
     const customer = (conversation as any).customer;
-    const customerChannel = (conversation as any).customer_channel;
+    // customer_channels is nested under customer
+    const customerChannels = customer?.customer_channels || [];
+    const customerChannel = customerChannels[0];
 
     if (!customer) {
       return NextResponse.json(

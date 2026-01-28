@@ -12,20 +12,22 @@ export async function GET(request: NextRequest) {
     const supabase = await createServiceClient();
 
     // Fetch conversations with related data
+    // Note: customer_channels doesn't have a direct FK to conversations,
+    // so we fetch conversations + customer first, then enrich with channel data
     const { data: conversations, error } = await (supabase as any)
       .from("conversations")
       .select(`
         *,
         customer:customers(
-          id, name, country, language, profile_image_url, tags, metadata
-        ),
-        customer_channels:customer_channels(
-          id,
-          channel_user_id,
-          channel_username,
-          channel_account:channel_accounts(
-            id, channel_type, account_name, tenant_id,
-            tenant:tenants(id, name, display_name, specialty)
+          id, name, country, language, profile_image_url, tags, metadata,
+          customer_channels(
+            id,
+            channel_user_id,
+            channel_username,
+            channel_account:channel_accounts(
+              id, channel_type, account_name, tenant_id,
+              tenant:tenants(id, name, display_name, specialty)
+            )
           )
         )
       `)

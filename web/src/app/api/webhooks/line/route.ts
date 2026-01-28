@@ -109,6 +109,8 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
   const tenantId = channelAccountData.tenant_id;
   const tenant = channelAccountData.tenant;
 
+  console.log(`[LINE] Processing message from user=${message.channelUserId}, tenant=${tenantId}`);
+
   // 2. Find or create customer
   let userProfile: { displayName?: string; pictureUrl?: string } = {};
   try {
@@ -120,8 +122,10 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
     console.error("Failed to get LINE user profile:", e);
   }
 
-  const { customer, customerChannel, isNew } =
-    await serverCustomerService.findOrCreateCustomer({
+  let customer: any;
+  let customerChannel: any;
+  try {
+    const result = await serverCustomerService.findOrCreateCustomer({
       tenantId,
       channelAccountId: channelAccountData.id,
       channelUserId: message.channelUserId,
@@ -130,12 +134,26 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
       profileImageUrl: userProfile.pictureUrl,
       language: "JA", // Default for LINE users (mostly Japanese)
     });
+    customer = result.customer;
+    customerChannel = result.customerChannel;
+    console.log(`[LINE] Customer ${result.isNew ? "created" : "found"}: ${customer.id}`);
+  } catch (e) {
+    console.error("[LINE] findOrCreateCustomer failed:", e);
+    return;
+  }
 
   // 3. Get or create conversation
-  const conversation = await serverConversationService.getOrCreateConversation(
-    customer.id,
-    tenantId
-  );
+  let conversation: any;
+  try {
+    conversation = await serverConversationService.getOrCreateConversation(
+      customer.id,
+      tenantId
+    );
+    console.log(`[LINE] Conversation: ${conversation.id}`);
+  } catch (e) {
+    console.error("[LINE] getOrCreateConversation failed:", e);
+    return;
+  }
 
   // 4. Detect language and translate message
   let messageText = message.text || "";
@@ -143,41 +161,69 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
   let translatedText: string | undefined;
 
   if (messageText) {
-    originalLanguage = await translationService.detectLanguage(messageText);
+    try {
+      originalLanguage = await translationService.detectLanguage(messageText);
 
-    // Translate to Korean if not Korean
-    if (originalLanguage !== "KO") {
-      const translation = await translationService.translateForCS(
-        messageText,
-        "to_agent",
-        originalLanguage
-      );
-      translatedText = translation.text;
+      // Translate to Korean if not Korean
+      if (originalLanguage !== "KO") {
+        const translation = await translationService.translateForCS(
+          messageText,
+          "to_agent",
+          originalLanguage
+        );
+        translatedText = translation.text;
+      }
+    } catch (e) {
+      console.error("[LINE] Translation failed (continuing without):", e);
     }
   }
 
   // 5. Save inbound message
-  const savedMessage = await serverMessageService.createInboundMessage({
-    conversationId: conversation.id,
-    customerChannelId: customerChannel.id,
-    content: messageText,
-    contentType: message.contentType,
-    mediaUrl: message.mediaUrl,
-    originalLanguage: originalLanguage,
-    externalId: message.messageId,
-    metadata: {
-      sticker: message.sticker,
-      location: message.location,
-    },
-  });
+  let savedMessage: any;
+  try {
+    savedMessage = await serverMessageService.createInboundMessage({
+      conversationId: conversation.id,
+      customerChannelId: customerChannel.id,
+      content: messageText,
+      contentType: message.contentType,
+      mediaUrl: message.mediaUrl,
+      originalLanguage: originalLanguage,
+      externalId: message.messageId,
+      metadata: {
+        sticker: message.sticker,
+        location: message.location,
+      },
+    });
+    console.log(`[LINE] Message saved: ${savedMessage.id}`);
+  } catch (e) {
+    console.error("[LINE] createInboundMessage failed:", e);
+    return;
+  }
+
+  // Update conversation with latest message info (safety net for missing DB trigger)
+  try {
+    await (supabase.from("conversations") as any)
+      .update({
+        last_message_at: new Date().toISOString(),
+        last_message_preview: (messageText || "").slice(0, 100),
+        status: "active",
+      })
+      .eq("id", conversation.id);
+  } catch (e) {
+    console.error("[LINE] Update conversation last_message failed:", e);
+  }
 
   // Update translated content if available
   if (translatedText) {
-    await serverMessageService.updateTranslation(
-      savedMessage.id,
-      translatedText,
-      "KO"
-    );
+    try {
+      await serverMessageService.updateTranslation(
+        savedMessage.id,
+        translatedText,
+        "KO"
+      );
+    } catch (e) {
+      console.error("[LINE] updateTranslation failed:", e);
+    }
   }
 
   // 5.5 Process image or audio messages
@@ -265,54 +311,66 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
   }
 
   // 7. Process through RAG pipeline
-  const queryText = translatedText || messageText;
-  const ragResult = await ragPipeline.process({
-    query: queryText,
-    tenantId,
-    conversationId: conversation.id,
-    customerLanguage: originalLanguage,
-  });
-
-  // 8. Handle escalation or send AI response
-  if (ragResult.shouldEscalate) {
-    // Create escalation
-    await serverEscalationService.createEscalation({
+  try {
+    const queryText = translatedText || messageText;
+    console.log(`[LINE] Processing RAG query: "${queryText.slice(0, 50)}..."`);
+    const ragResult = await ragPipeline.process({
+      query: queryText,
+      tenantId,
       conversationId: conversation.id,
-      messageId: savedMessage.id,
-      reason: ragResult.escalationReason || "AI 신뢰도 미달",
-      aiConfidence: ragResult.confidence,
+      customerLanguage: originalLanguage,
     });
 
-    // Update conversation status
+    console.log(`[LINE] RAG result: confidence=${ragResult.confidence}, escalate=${ragResult.shouldEscalate}`);
+
+    // 8. Handle escalation or send AI response
+    if (ragResult.shouldEscalate) {
+      // Create escalation
+      await serverEscalationService.createEscalation({
+        conversationId: conversation.id,
+        messageId: savedMessage.id,
+        reason: ragResult.escalationReason || "AI 신뢰도 미달",
+        aiConfidence: ragResult.confidence,
+      });
+
+      // Update conversation status
+      await (supabase
+        .from("conversations") as unknown as { update: (data: unknown) => { eq: (col: string, val: string) => unknown } })
+        .update({ status: "escalated" })
+        .eq("id", conversation.id);
+    } else if (ragResult.response) {
+      // Save AI response
+      const aiMessage = await serverMessageService.createAIMessage({
+        conversationId: conversation.id,
+        content: ragResult.response,
+        originalLanguage: "KO",
+        translatedContent: ragResult.translatedResponse,
+        translatedLanguage: originalLanguage,
+        aiConfidence: ragResult.confidence,
+        aiModel: ragResult.model,
+      });
+
+      // Send response to LINE
+      const responseText = ragResult.translatedResponse || ragResult.response;
+
+      await enqueueJob({
+        type: "send_message",
+        data: {
+          messageId: aiMessage.id,
+          channelType: "line",
+          channelAccountId: channelAccountData.id,
+          channelUserId: message.channelUserId,
+          content: responseText,
+        },
+      });
+    }
+  } catch (e) {
+    console.error("[LINE] RAG pipeline failed:", e);
+    // Mark conversation as waiting for agent if RAG fails
     await (supabase
       .from("conversations") as unknown as { update: (data: unknown) => { eq: (col: string, val: string) => unknown } })
-      .update({ status: "escalated" })
+      .update({ status: "waiting" })
       .eq("id", conversation.id);
-  } else if (ragResult.response) {
-    // Save AI response
-    const aiMessage = await serverMessageService.createAIMessage({
-      conversationId: conversation.id,
-      content: ragResult.response,
-      originalLanguage: "KO",
-      translatedContent: ragResult.translatedResponse,
-      translatedLanguage: originalLanguage,
-      aiConfidence: ragResult.confidence,
-      aiModel: ragResult.model,
-    });
-
-    // Send response to LINE
-    const responseText = ragResult.translatedResponse || ragResult.response;
-
-    await enqueueJob({
-      type: "send_message",
-      data: {
-        messageId: aiMessage.id,
-        channelType: "line",
-        channelAccountId: channelAccountData.id,
-        channelUserId: message.channelUserId,
-        content: responseText,
-      },
-    });
   }
 }
 
