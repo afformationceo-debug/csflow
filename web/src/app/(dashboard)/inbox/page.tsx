@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -123,6 +123,7 @@ interface Conversation {
     country: string;
     language: string;
     avatar: string;
+    avatarUrl?: string | null;
   };
   hospital: Hospital;
   channel: string;
@@ -610,6 +611,7 @@ export default function InboxPage() {
 
           // Map DB status to our StatusTag
           const statusMap: Record<string, StatusTag> = {
+            open: "pending",
             active: "pending",
             waiting: "waiting",
             resolved: "resolved",
@@ -639,6 +641,7 @@ export default function InboxPage() {
               country: customer?.country || "",
               language: customer?.language || "ko",
               avatar: avatarInitials,
+              avatarUrl: customer?.profile_image_url || null,
             },
             hospital,
             channel: channelType,
@@ -1082,6 +1085,9 @@ export default function InboxPage() {
                         <div className="flex items-start gap-2.5">
                           <div className="relative">
                             <Avatar className="h-9 w-9">
+                              {conv.customer.avatarUrl && (
+                                <AvatarImage src={conv.customer.avatarUrl} alt={conv.customer.name} />
+                              )}
                               <AvatarFallback className={cn(
                                 "text-xs font-medium",
                                 isSelected ? "bg-primary/15 text-primary" : "bg-muted"
@@ -1242,6 +1248,9 @@ export default function InboxPage() {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <Avatar className="h-9 w-9">
+                        {selectedConversation.customer.avatarUrl && (
+                          <AvatarImage src={selectedConversation.customer.avatarUrl} alt={selectedConversation.customer.name} />
+                        )}
                         <AvatarFallback className="bg-primary/10 text-primary font-medium text-sm">
                           {selectedConversation.customer.avatar}
                         </AvatarFallback>
@@ -1436,6 +1445,9 @@ export default function InboxPage() {
                             <>
                               {msg.sender === "customer" && (
                                 <Avatar className="h-7 w-7 flex-shrink-0 mt-1">
+                                  {selectedConversation.customer.avatarUrl && (
+                                    <AvatarImage src={selectedConversation.customer.avatarUrl} alt={selectedConversation.customer.name} />
+                                  )}
                                   <AvatarFallback className="bg-muted text-[10px]">
                                     {selectedConversation.customer.avatar}
                                   </AvatarFallback>
@@ -1791,6 +1803,9 @@ export default function InboxPage() {
                 <div className="text-center">
                   <div className="relative inline-block">
                     <Avatar className="h-14 w-14 mx-auto mb-2 ring-2 ring-primary/10 ring-offset-2 ring-offset-background">
+                      {selectedConversation?.customer.avatarUrl && (
+                        <AvatarImage src={selectedConversation.customer.avatarUrl} alt={dbCustomerProfile.name} />
+                      )}
                       <AvatarFallback className="bg-gradient-to-br from-primary/20 to-violet-500/20 text-primary text-lg font-medium">
                         {dbCustomerProfile.name.slice(0, 1)}
                       </AvatarFallback>

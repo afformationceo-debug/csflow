@@ -52,17 +52,101 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ channels });
     }
 
-    const channels = (dbChannels || []).map((ch: Record<string, unknown>) => ({
-      id: ch.id,
-      channelType: ch.channel_type,
-      accountName: ch.account_name,
-      accountId: ch.account_id,
-      isActive: ch.is_active,
-      webhookUrl: ch.webhook_url,
-      messageCount: 0,
-      lastActiveAt: "-",
-      createdAt: ch.created_at,
-    }));
+    // Count conversations per channel account via customer_channels join
+    const channelIds = (dbChannels || []).map((ch: Record<string, unknown>) => ch.id);
+    const convCountMap: Record<string, number> = {};
+    const lastActiveMap: Record<string, string> = {};
+
+    if (channelIds.length > 0) {
+      // Get customer_channels for these channel accounts
+      const { data: customerChannels } = await (supabase as any)
+        .from("customer_channels")
+        .select("id, channel_account_id")
+        .in("channel_account_id", channelIds);
+
+      if (customerChannels && customerChannels.length > 0) {
+        const customerChannelIds = customerChannels.map((cc: any) => cc.id);
+
+        // Map customer_channel_id -> channel_account_id
+        const ccToChannelMap: Record<string, string> = {};
+        for (const cc of customerChannels) {
+          ccToChannelMap[cc.id] = cc.channel_account_id;
+        }
+
+        // Count conversations that have messages from these customer channels
+        const { data: conversations } = await (supabase as any)
+          .from("conversations")
+          .select("id, customer_id, last_message_at, tenant_id")
+          .eq("tenant_id", resolvedTenantId);
+
+        if (conversations) {
+          // Count conversations per tenant (which maps to channels for that tenant)
+          for (const channelId of channelIds) {
+            convCountMap[channelId as string] = 0;
+          }
+          // All conversations for this tenant are associated with its channels
+          // For a more precise mapping, we track via customer -> customer_channels -> channel_account
+          for (const cc of customerChannels) {
+            const chId = cc.channel_account_id;
+            if (!convCountMap[chId]) convCountMap[chId] = 0;
+          }
+
+          // Get all customer IDs from customer_channels grouped by channel_account
+          const customerIdsByChannel: Record<string, Set<string>> = {};
+          const { data: ccWithCustomer } = await (supabase as any)
+            .from("customer_channels")
+            .select("customer_id, channel_account_id")
+            .in("channel_account_id", channelIds);
+
+          if (ccWithCustomer) {
+            for (const cc of ccWithCustomer) {
+              if (!customerIdsByChannel[cc.channel_account_id]) {
+                customerIdsByChannel[cc.channel_account_id] = new Set();
+              }
+              customerIdsByChannel[cc.channel_account_id].add(cc.customer_id);
+            }
+          }
+
+          // Count conversations per channel by matching customer_id
+          for (const conv of conversations) {
+            for (const [channelId, customerIds] of Object.entries(customerIdsByChannel)) {
+              if (customerIds.has(conv.customer_id)) {
+                convCountMap[channelId] = (convCountMap[channelId] || 0) + 1;
+                // Track last active
+                if (conv.last_message_at && (!lastActiveMap[channelId] || conv.last_message_at > lastActiveMap[channelId])) {
+                  lastActiveMap[channelId] = conv.last_message_at;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const channels = (dbChannels || []).map((ch: Record<string, unknown>) => {
+      const chId = ch.id as string;
+      const lastActive = lastActiveMap[chId];
+      let lastActiveDisplay = "-";
+      if (lastActive) {
+        const diff = Date.now() - new Date(lastActive).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) lastActiveDisplay = `${mins}분 전`;
+        else if (mins < 1440) lastActiveDisplay = `${Math.floor(mins / 60)}시간 전`;
+        else lastActiveDisplay = `${Math.floor(mins / 1440)}일 전`;
+      }
+
+      return {
+        id: chId,
+        channelType: ch.channel_type,
+        accountName: ch.account_name,
+        accountId: ch.account_id,
+        isActive: ch.is_active,
+        webhookUrl: ch.webhook_url,
+        messageCount: convCountMap[chId] || 0,
+        lastActiveAt: lastActiveDisplay,
+        createdAt: ch.created_at,
+      };
+    });
 
     return NextResponse.json({ channels });
   } catch (error) {

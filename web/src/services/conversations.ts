@@ -233,13 +233,13 @@ export const serverConversationService = {
   ): Promise<Conversation> {
     const supabase = await createServiceClient();
 
-    // Check for existing active conversation
+    // Check for existing non-resolved conversation (any status except "resolved")
     const { data: existing } = await (supabase
       .from("conversations") as any)
       .select()
       .eq("customer_id", customerId)
       .eq("tenant_id", tenantId)
-      .in("status", ["active", "waiting"])
+      .neq("status", "resolved")
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
