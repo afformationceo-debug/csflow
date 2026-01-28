@@ -2580,3 +2580,201 @@ PATCH /api/customers/[id]/profile — 메타데이터 병합 방식 업데이트
 | 대화 삭제 | `DELETE /api/conversations/[id]` + 확인 UI | `conversations/[id]/route.ts` |
 | 관심/고민 감지 | 키워드 매칭 (20+ 시술, 14개 고민) | `customers/[id]/analyze/route.ts` |
 | 메모 저장 | `customers.metadata.memo` 메타데이터 병합 | `customers/[id]/profile/route.ts` |
+
+---
+
+## 19. 인박스 기능 개선 및 시스템 업그레이드 (2026-01-28)
+
+### 19.1 완료된 인박스 기능 개선 (이전 세션)
+
+#### 19.1.1 고객 인바운드 메시지 실시간 수신
+- **문제**: Supabase Realtime이 프로덕션 환경에서 불안정하여 고객 메시지가 새로고침 없이 표시되지 않음
+- **해결책**:
+  - **5초 폴링 (대화 목록)**: `useEffect`로 5초마다 `fetchConversations()` 호출
+  - **3초 폴링 (메시지)**: 메시지 개수 변화 감지 후 업데이트 (중복 방지)
+  - **알림음 중복 방지**: 최신 인바운드 메시지가 5초 이내인 경우에만 재생
+  - Supabase Realtime과 병행하여 폴링 fallback으로 안정성 확보
+
+#### 19.1.2 AI 자동응대 추천 메시지 UI
+- **기능**: AI 자동모드 ON 시, 고객 메시지 수신 → AI 추천 답변 생성 → 입력창 위에 표시
+- **API**: `POST /api/conversations/[id]/ai-suggest` (GPT-4o-mini 사용)
+  - 고객 언어 + 한국어 의미 동시 표시
+  - DeepL 번역 또는 LLM 번역 (OpenAI API 키 없으면 템플릿 fallback)
+- **UI**:
+  - 생성 중: 애니메이션 로딩 점(...)
+  - 완성 후: 고객 언어 응답 (Globe 아이콘) + 한국어 의미 (Languages 아이콘)
+  - 3가지 액션: "입력란에 넣기" (클립보드 붙여넣기), "바로 전송" (즉시 발송), "X" (닫기)
+- **트리거**: `dbMessages.length` 변화 감지 → 최신 인바운드 메시지 ID 체크 → 중복 호출 방지 (`lastInboundIdRef`)
+
+#### 19.1.3 자동 감지 플로우 검증
+- **관심 시술 자동 감지**: `POST /api/customers/[id]/analyze` — 키워드 기반 (NOT LLM)
+  - 20+ 시술 카테고리: 라식, 라섹, 백내장, 코성형, 리프팅, 보톡스, 임플란트, 화이트닝 등
+  - 다국어 키워드: 한국어, 영어, 일본어, 중국어 지원
+- **고민 자동 감지**: 동일 API — 키워드 기반
+  - 14개 고민 카테고리: 비용, 통증, 부작용, 회복기간, 흉터, 자연스러움, 마취, 보험 등
+- **결론**: LLM 사용하지 않음 (비용 절감, 속도 우선). 키워드 매칭으로 충분히 정확함.
+
+#### 19.1.4 메모 저장 개선
+- **변경**: 저장 버튼에 "저장" 텍스트 추가 (`<Save className="h-3 w-3 mr-0.5" /> 저장`)
+- **Enter 키 저장**: Textarea에 `onKeyDown` 추가 — Enter (Shift 없이) 누르면 저장
+- **placeholder**: "메모를 입력하세요... (Enter로 저장)"
+- **편집 버튼**: `<Edit3 className="h-3 w-3 mr-0.5" /> 편집` (아이콘 + 텍스트)
+
+#### 19.1.5 채널 관리 페이지 로딩 개선
+- **문제**: 거래처 fetch → 채널 fetch 순차 실행으로 초기에 "0 채널" 표시
+- **해결책**: `loadTenantsAndChannels()` 함수로 통합 → 첫 거래처 선택 + 채널 즉시 로드
+- **skip 로직**: `isInitialLoadRef` 사용하여 첫 렌더링에서 두 번째 useEffect 실행 방지
+- **로딩 표시**: "연결된 채널" 배지에 스켈레톤 펄스 표시
+
+#### 19.1.6 AI 추천 메시지 번역 미리보기 + 내부노트 채널 전송 방지
+- **DeepL 실시간 번역 미리보기**:
+  - 입력창에 메시지 작성 중 → 500ms 디바운스 후 번역 API 호출
+  - 번역 결과를 입력창 위에 표시 (언어 선택 드롭다운 포함)
+  - 지원 언어: JA, EN, ZH, ZH-HANS, TH, VI, MN, KO
+  - 자동번역 ON/OFF 토글 버튼
+  - 고객 언어 자동 감지 → 기본 번역 언어 설정 (영어 고객 → 영어, 일본어 고객 → 일본어)
+  - 수동 변경 가능
+- **내부노트 채널 전송 방지**:
+  - `isInternalNote` 파라미터 추가 (`POST /api/messages`)
+  - `sender_type: "internal_note"` → DB 저장만, 채널 발송 안함 (라인/카카오/메타 전송 스킵)
+  - 내부노트 작성 시 즉시 optimistic UI 표시
+
+---
+
+### 19.2 거래처/담당자 관리 기능 업그레이드 (2026-01-28)
+
+#### 19.2.1 거래처 등록 개선
+- **대만 언어 추가**: 거래처 등록 시 "中文 (台灣)" 선택 가능 (`zh-tw`)
+  - 기존: ko, en, ja, zh, vi, th
+  - 추가: zh-tw (대만 중국어)
+- **DB 저장**: `POST /api/tenants` — `tenants` 테이블에 저장
+  - 필드: name, display_name, specialty, settings.default_language, ai_config
+  - 기본 AI 설정 자동 생성 (gpt-4, confidence_threshold: 0.85, auto_response_enabled: true)
+- **확인**: 거래처 등록 시 Supabase `tenants` 테이블에 즉시 저장됨 (이미 작동 중)
+
+#### 19.2.2 AI 자동모드 설정 확인
+- **거래처별 AI 설정**: 거래처 관리 → AI 설정 다이얼로그 (이미 구현됨)
+  - 선호 모델 (GPT-4, Claude 등)
+  - 신뢰도 임계값 (50-99%)
+  - 자동 응대 ON/OFF
+  - 시스템 프롬프트
+  - 에스컬레이션 키워드
+- **대화별 AI 설정**: 인박스 → 대화 헤더에 AI ON/OFF 토글 (이미 구현됨)
+  - `PATCH /api/conversations` → `ai_enabled` 필드 업데이트
+  - 상태 표시: 보라색 펄스 (AI ON) / 수동 모드 (AI OFF)
+- **결론**: AI 자동모드는 이미 2단계(거래처 + 대화)로 구현되어 있음
+
+#### 19.2.3 담당자 관리 API 완성
+- **POST /api/team**: 새 팀원 추가
+  - Body: `{ name, email, role, tenant_ids }`
+  - 저장: `users` 테이블 (name, email, role, tenant_ids, is_active, last_login_at)
+  - 역할: admin, manager, agent
+- **PATCH /api/team**: 팀원 정보 수정
+  - Body: `{ id, name?, email?, role?, tenant_ids?, is_active? }`
+  - 모든 필드 선택적 업데이트
+- **DELETE /api/team**: 팀원 삭제 (soft delete)
+  - Query: `?id=xxx`
+  - `is_active=false`로 설정 (실제 삭제 안함)
+- **GET /api/team**: 팀원 목록 + 성과 통계 (이미 구현됨)
+  - 온라인 상태 (online/offline/away), 오늘 해결 건수, 평균 응답 시간, 만족도
+
+#### 19.2.4 인박스 담당자 배정 기능
+- **기존 API**: `PATCH /api/conversations` — `assigned_to` 필드 지원 (이미 구현됨)
+- **사용 방법**:
+  ```typescript
+  await fetch("/api/conversations", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      conversationId: selectedConversation.id,
+      assigned_to: teamMemberId, // UUID
+    }),
+  });
+  ```
+- **UI 구현 필요** (차후 작업):
+  - 고객 프로필 패널에 담당자 선택 드롭다운 추가
+  - 담당자 변경 시 optimistic update + API 호출
+  - 담당자별 필터링 (좌측 대화 목록)
+
+#### 19.2.5 대시보드/거래처 로딩 개선 확인
+- **대시보드**: 이미 DB 로드 + loading skeleton 구현됨
+  - `loadDashboardData()` useEffect 호출
+  - 초기 상태: `defaultStats` 표시 (0 값)
+  - API 로드 후: 실제 값으로 교체 + AnimatedNumber 애니메이션
+- **거래처 관리**: 이미 DB 로드 + loading skeleton 구현됨
+  - `loadTenants()` useEffect 호출
+  - 로딩 중 4개 스켈레톤 카드 표시
+  - API 로드 후: 실제 거래처 표시 + AnimatePresence
+- **결론**: 초기 0 표시는 의도된 동작 (로딩 중 기본값 표시 → API 완료 후 실제 값)
+
+---
+
+### 19.3 DB 테이블 및 API 엔드포인트 정리
+
+#### 19.3.1 DB 테이블 (전체)
+```
+tenants                 — 거래처 (병원/클리닉)
+channel_accounts        — 채널 계정 (LINE, 카카오, WhatsApp 등)
+customers               — 고객
+customer_channels       — 고객-채널 연결
+conversations           — 대화
+messages                — 메시지
+knowledge_documents     — 지식베이스 문서
+knowledge_chunks        — 지식 청크 (벡터 검색용)
+escalations             — 에스컬레이션
+ai_response_logs        — AI 응답 로그
+automation_rules        — 자동화 규칙
+internal_notes          — 내부 노트
+bookings                — 예약
+users                   — 팀원 (담당자) ✅ NEW
+audit_logs              — 감사 로그 (Phase 4)
+sla_configurations      — SLA 설정 (Phase 4)
+sla_violations          — SLA 위반 (Phase 4)
+whitelabel_settings     — 화이트라벨 설정 (Phase 4)
+api_keys                — API 키 관리 (Phase 4)
+tenant_webhooks         — 웹훅 설정 (Phase 4)
+sso_configurations      — SSO 설정 (Phase 4)
+message_templates       — 메시지 템플릿 (Phase 5)
+oauth_sessions          — OAuth 세션 (Phase 5)
+```
+
+#### 19.3.2 신규 API 엔드포인트 (19.2 추가)
+```
+POST /api/team                       — 팀원 추가 (name, email, role, tenant_ids)
+PATCH /api/team                      — 팀원 수정 (id, name?, email?, role?, tenant_ids?, is_active?)
+DELETE /api/team?id=xxx              — 팀원 삭제 (soft delete, is_active=false)
+POST /api/conversations/[id]/ai-suggest  — AI 추천 답변 생성 (GPT-4o-mini, 고객 언어 + 한국어)
+```
+
+#### 19.3.3 기존 API 엔드포인트 (확인됨)
+```
+GET /api/team                        — 팀원 목록 + 성과 통계 (이미 구현됨)
+PATCH /api/conversations             — 대화 업데이트 (ai_enabled, status, assigned_to) (이미 구현됨)
+POST /api/tenants                    — 거래처 등록 (이미 구현됨)
+GET /api/tenants                     — 거래처 목록 (이미 구현됨)
+PATCH /api/tenants                   — 거래처 수정 (ai_config 포함) (이미 구현됨)
+```
+
+---
+
+### 19.4 배포 현황 (2026-01-28)
+
+#### 19.4.1 빌드 및 배포
+- **커밋**: `82d54ec` — "Add Taiwan language, team management API (POST/PATCH/DELETE), improve loading states"
+- **변경 파일**: 2 files (tenants/page.tsx, api/team/route.ts)
+- **추가**: 129 lines
+- **빌드**: ✅ 성공 (Next.js 16.1.4 Turbopack, 2.3s 컴파일)
+- **배포**: ✅ 완료 (Vercel production)
+
+#### 19.4.2 주요 변경 사항 요약
+1. ✅ 거래처 등록: 대만 중국어 (zh-tw) 추가
+2. ✅ 거래처 DB 저장: tenants 테이블에 즉시 저장됨 (확인 완료)
+3. ✅ AI 자동모드: 거래처별 ai_config + 대화별 ai_enabled (이미 구현됨)
+4. ✅ 대시보드/거래처 로딩: DB 로드 + skeleton (이미 구현됨)
+5. ✅ 담당자 관리: POST/PATCH/DELETE API 추가 완료
+6. ✅ 담당자 배정: `PATCH /api/conversations` → assigned_to 지원 (이미 구현됨)
+
+#### 19.4.3 향후 작업 (선택)
+- 인박스 UI에 담당자 선택 드롭다운 추가 (고객 프로필 패널)
+- 담당자별 대화 필터링 UI 구현 (좌측 대화 목록)
+- 담당자 관리 페이지에서 팀원 추가/수정/삭제 UI 구현 (현재는 API만 준비됨)
