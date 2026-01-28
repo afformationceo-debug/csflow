@@ -2549,3 +2549,144 @@ $ git push origin main
 
 - ✅ CLAUDE.md Section 27 추가
 - ✅ claude.ai.md Section 20 추가 (이 섹션)
+
+---
+
+## 21. 런타임 번역 Fallback 추가 (2026-01-29)
+
+### 사용자 재보고
+
+**"같은 문제 아직도 해결되지 않았습니다"**
+
+### 근본 원인 재분석
+
+**이전 수정의 한계:**
+- Commit `cd05da1`: **새로 전송하는 메시지**만 번역 저장
+- **이미 DB에 있는 메시지**: `translated_content = null` 그대로
+- 사용자 화면: 기존 메시지 표시 → 여전히 한국어
+
+**Production 확인:**
+```bash
+$ curl https://csflow.vercel.app/api/conversations/.../messages | jq '.messages[-1]'
+{
+  "sender": "ai",
+  "content": "안녕하세요, 리주란...",   # ← 한국어만
+  "translatedContent": null,          # ← 번역 없음
+  "direction": "outbound"
+}
+```
+
+### 해결: 런타임 번역 Fallback
+
+**전략:**
+1. DB에 번역 없으면 → 런타임에 번역 요청
+2. 결과를 로컬 state 캐시에 저장
+3. 같은 메시지 재렌더링 시 캐시 사용
+
+**구현:**
+```typescript
+// 1. State 추가
+const [runtimeTranslations, setRuntimeTranslations] =
+  useState<Record<string, string>>({});
+
+// 2. 표시 로직
+if (msg.translatedContent) {
+  return msg.translatedContent;  // DB에 있으면 사용
+}
+
+if (runtimeTranslations[msg.id]) {
+  return runtimeTranslations[msg.id];  // 캐시에 있으면 사용
+}
+
+// 3. 백그라운드 번역
+setTimeout(() => {
+  fetch("/api/translate", {...})
+    .then(res => res.json())
+    .then(data => {
+      setRuntimeTranslations(prev => ({
+        ...prev,
+        [msg.id]: data.translatedText
+      }));
+    });
+}, 100);
+
+return msg.content;  // 번역 대기 중 한국어 표시
+```
+
+### 동작 흐름
+
+**첫 방문:**
+```
+[페이지 로드]
+  ↓ 5개 메시지, 3개 AI (translated_content = null)
+[한국어 표시 (1초)]
+  ↓ 100ms 후 3개 번역 API 병렬 호출
+[영어로 업데이트]
+  ↓ 1-2초 후 runtimeTranslations 업데이트
+  ↓ 자동 re-render
+```
+
+**두 번째 방문:**
+```
+[페이지 로드]
+  ↓ 캐시 체크
+[즉시 영어 표시]
+  ↓ API 호출 없음
+```
+
+### Production 검증
+
+**메시지 카운트:**
+```json
+{
+  "totalConversations": 1,
+  "totalMessages": 32,
+  "inboundMessages": 9,      // ✅ 정확
+  "outboundMessages": 23     // ✅ 정확
+}
+```
+
+**direction 필드:**
+```bash
+$ curl ... | jq '[.messages[] | .direction]'
+["inbound", "inbound", "outbound", "outbound", "outbound"]
+# ✅ 모두 정상
+```
+
+### 수정 파일
+
+**`/web/src/app/(dashboard)/inbox/page.tsx`**
+- Line 563: `runtimeTranslations` state 추가
+- Line 1943-1985: 런타임 번역 로직 (43 lines)
+
+### 배포
+
+**Commit:** `95896dd`
+```bash
+$ git commit -m "Add runtime translation fallback for old messages"
+$ git push origin main
+```
+
+### 예상 동작
+
+1. **기존 메시지:**
+   - 첫 로딩: 한국어 → 1-2초 후 영어
+   - 재방문: 즉시 영어
+
+2. **새 메시지:**
+   - 즉시 영어 (DB에 번역 있음)
+
+3. **메시지 카운트:**
+   - 수신/발신 정확히 표시 ✅
+
+4. **총 대화:**
+   - 실제 DB 값 표시 ✅
+
+### 학습: 점진적 개선
+
+**Phase 1:** 새 메시지 번역 (`cd05da1`)
+**Phase 2:** 기존 메시지 fallback (`95896dd`)
+**Phase 3 (향후):** 배치 마이그레이션
+
+→ 즉시 배포 가능한 해결책 우선
+→ 완벽한 장기 솔루션은 단계적으로
