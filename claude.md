@@ -1321,10 +1321,18 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 - [x] 메시지 입력 컴포넌트 ✅
   - [x] 텍스트 입력 ✅
   - [x] 번역 토글 ✅
+  - [x] **DeepL 실시간 번역 미리보기** ✅ NEW (`6eb0297`)
+    - [x] 입력 중 500ms 디바운스로 번역 API 호출 ✅
+    - [x] 번역 결과 입력창 위에 표시 ✅
+    - [x] 자동번역 ON/OFF 토글 ✅
+    - [x] 언어 선택 드롭다운 (JA/EN/ZH/ZH-HANS/TH/VI/MN/KO) ✅
+    - [x] 고객 언어 자동 감지 + 수동 변경 가능 ✅
 - [x] 내부 노트 기능 ✅
   - [x] 팀원 간 코멘트 ✅
   - [x] @멘션 지원 ✅
   - [x] 내부/고객 탭 분리 ✅
+  - [x] **내부노트 채널 전송 방지** ✅ NEW (`6eb0297`)
+    - [x] `sender_type: "internal_note"` DB 저장만, 채널 발송 안함 ✅
 - [x] 상담 태그 시스템 ✅
 - [x] SLA 대기시간 표시 ✅
 
@@ -2310,12 +2318,13 @@ Supabase SQL Editor에서 아래 SQL 파일들을 **순서대로** 실행해주�
 | `2ee3991` | `knowledge/page.tsx`, `settings/channels/page.tsx` | `demo-tenant` 하드코딩 | 실제 tenant ID를 `/api/tenants`에서 동적 조회, mock 문서 8건 삭제 |
 | `964f8de` | `analytics/page.tsx`, `channels/page.tsx`, `dashboard/page.tsx` | 하드코딩 인사이트 + hydration 에러 | 분석 인사이트 3건 동적 생성, channels fallback 제거, Date 초기화를 useEffect로 이동 |
 | `90f1ab9` | `conversations.ts`, `inbox/page.tsx`, `api/channels/route.ts` | 인박스 대화 중복 + LINE 프로필사진 미표시 + 채널 대화 0건 | `getOrCreateConversation`에서 비종료 전체 상태 포함, `AvatarImage` + `profile_image_url` 적용, `statusMap`에 `open` 추가, 채널 API `messageCount` 실제 집계 |
+| `6eb0297` | `inbox/page.tsx`, `api/messages/route.ts` | 내부노트가 고객에게 전송됨 + 번역 미리보기 없음 | `isInternalNote` 파라미터로 내부노트 채널 전송 방지 (`sender_type: "internal_note"` 저장만), DeepL 실시간 번역 미리보기 UI + 언어 선택 (JA/EN/ZH/ZH-HANS/TH/VI/MN/KO), 자동번역 ON/OFF 토글 |
 
 #### 페이지별 검증 결과
 
 | 페이지 | 상태 | DB 데이터 | 비고 |
 |--------|------|----------|------|
-| `/inbox` | ✅ 정상 | 실시간 대화, LINE 프로필사진 | 고객별 대화 중복 방지, AvatarImage 적용, open 상태 매핑 |
+| `/inbox` | ✅ 정상 | 실시간 대화, LINE 프로필사진 | 고객별 대화 중복 방지, AvatarImage 적용, open 상태 매핑, 내부노트 채널 전송 방지, DeepL 번역 미리보기 + 언어 선택 UI |
 | `/dashboard` | ✅ 정상 | 동적 통계, 실시간 시간 | 인사이트, 채널별 문의, 거래처 정확도 |
 | `/channels` | ✅ 정상 | 채널별 실제 대화 건수 표시 | 채널 추가/삭제/토글, messageCount 실제 집계 |
 | `/tenants` | ✅ 정상 | 거래처 목록 + 통계 | AI 설정, 검색, CRUD |
