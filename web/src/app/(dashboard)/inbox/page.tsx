@@ -1064,18 +1064,27 @@ export default function InboxPage() {
   }, []);
 
   // Generate AI suggestion when new inbound message arrives and AI auto-mode is ON
-  const lastInboundIdRef = useRef<string>("");
+  // Track last processed inbound message ID per conversation to prevent duplicate RAG calls
+  const processedInboundsByConvRef = useRef<Record<string, string>>({});
+
   useEffect(() => {
     if (!aiAutoResponseEnabled || !selectedConversation) return;
+
     // Find the latest inbound message
     const inboundMsgs = dbMessages.filter(m => m.sender === "customer");
     if (inboundMsgs.length === 0) return;
     const latestInbound = inboundMsgs[inboundMsgs.length - 1];
-    // Only trigger if this is a new inbound message we haven't seen
-    if (latestInbound.id === lastInboundIdRef.current) return;
-    lastInboundIdRef.current = latestInbound.id;
+
     // Don't generate for optimistic messages
     if (latestInbound.id.startsWith("optimistic-")) return;
+
+    // Check if we already processed this inbound message for this conversation
+    const convId = selectedConversation.id;
+    const lastProcessedId = processedInboundsByConvRef.current[convId];
+    if (latestInbound.id === lastProcessedId) return;
+
+    // Mark this message as processed for this conversation
+    processedInboundsByConvRef.current[convId] = latestInbound.id;
 
     setIsAiGenerating(true);
     setAiSuggestion(null);
@@ -1098,12 +1107,10 @@ export default function InboxPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbMessages.length, aiAutoResponseEnabled, selectedConversation?.id]);
 
-  // Persist AI suggestion when conversation changes (don't clear)
-  // AI suggestion should remain until user sends it or explicitly dismisses
-  // Only clear the ref to allow regeneration on new inbound messages
+  // Clear AI suggestion when switching conversations to prevent confusion
   useEffect(() => {
-    // Keep aiSuggestion intact (don't clear) - only reset tracking ref
-    lastInboundIdRef.current = "";
+    setAiSuggestion(null);
+    setIsAiGenerating(false);
   }, [selectedConversation?.id]);
 
   // Auto-detect interests/concerns when messages change

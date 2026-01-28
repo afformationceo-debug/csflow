@@ -5396,3 +5396,207 @@ debug: Add logging to LINE message sending to track truncation issue
 - ✅ 모든 빌드 검증 통과 (0 errors)
 - ✅ 4개 이슈 완전 해결
 
+---
+
+## 22. AI 추천 답변 중복 생성 문제 해결 (2026-01-29)
+
+### 22.1 문제 보고
+
+**사용자 보고 현상**:
+> "AI 추천응답 기능에서, 실제로 추천응답을 사용해서 보냈습니다. 그런데 아직 고객에게 답장이 안온 상황이고, 다시 그대화를 들어가면 아까 추천했던 대화 추천을 한번 더 합니다. 이미 보냈는데 두번 rag하게 되는 상황은 아닌지"
+
+**사용자 질문**:
+1. AI 추천 사용 후 같은 대화 재진입 시 동일한 추천이 다시 표시됨
+2. 중복 RAG 호출이 발생하는지 확인 필요
+3. 고객 답장 도착 시 새로운 추천이 생성되는지 확인 필요
+
+### 22.2 문제 분석
+
+#### 기존 코드 동작 방식 (inbox/page.tsx)
+
+**AI 생성 트리거** (Lines 1066-1099):
+```typescript
+const lastInboundIdRef = useRef<string>("");
+useEffect(() => {
+  if (!aiAutoResponseEnabled || !selectedConversation) return;
+  const inboundMsgs = dbMessages.filter(m => m.sender === "customer");
+  if (inboundMsgs.length === 0) return;
+  const latestInbound = inboundMsgs[inboundMsgs.length - 1];
+
+  // Only trigger if this is a new inbound message we haven't seen
+  if (latestInbound.id === lastInboundIdRef.current) return;
+  lastInboundIdRef.current = latestInbound.id;
+
+  // ... RAG API call
+}, [dbMessages.length, aiAutoResponseEnabled, selectedConversation?.id]);
+```
+
+**대화 전환 시** (Lines 1104-1107):
+```typescript
+useEffect(() => {
+  // Keep aiSuggestion intact (don't clear) - only reset tracking ref
+  lastInboundIdRef.current = "";  // ⚠️ 문제: ref 초기화
+}, [selectedConversation?.id]);
+```
+
+**AI 추천 전송** (Lines 2106-2134):
+```typescript
+onClick={() => {
+  setAiSuggestion(null);  // ✅ 올바르게 clear
+  // Optimistic UI + API 호출
+}}
+```
+
+#### 문제의 근본 원인
+
+1. **시나리오**:
+   - 고객 메시지 A 도착 → AI 추천 생성 → `lastInboundIdRef.current = "msg-A"`
+   - 담당자가 AI 추천 사용하여 전송 → `setAiSuggestion(null)` 호출
+   - 담당자가 다른 대화로 이동 → `lastInboundIdRef.current = ""` (초기화)
+   - 담당자가 원래 대화로 돌아옴 → 다시 메시지 A를 확인 → AI 추천 재생성
+
+2. **중복 RAG 호출**: ❌ 발생하지 않음 (이미 처리된 메시지는 건너뜀)
+   - 같은 대화 내에서는 `lastInboundIdRef` 비교로 차단됨
+   - **하지만 대화 전환 후 재진입 시 ref가 초기화되어 재생성됨**
+
+3. **새 고객 메시지 시 재생성**: ✅ 정상 작동
+   - 새로운 고객 메시지 도착 시 `latestInbound.id`가 변경되어 새 AI 생성
+
+### 22.3 해결 방법
+
+**방안 선택**: 대화별로 마지막 처리한 고객 메시지 ID를 추적하는 방식
+
+**변경 전**:
+- `lastInboundIdRef`: 단일 문자열 ref (모든 대화 공용)
+- 대화 전환 시 무조건 `""` 초기화
+
+**변경 후**:
+- `processedInboundsByConvRef`: Record 타입 ref (대화별 독립 추적)
+- 각 대화의 마지막 처리 메시지 ID를 보존
+
+#### 수정된 코드 (Lines 1066-1107)
+
+```typescript
+// Track last processed inbound message ID per conversation to prevent duplicate RAG calls
+const processedInboundsByConvRef = useRef<Record<string, string>>({});
+
+useEffect(() => {
+  if (!aiAutoResponseEnabled || !selectedConversation) return;
+
+  const inboundMsgs = dbMessages.filter(m => m.sender === "customer");
+  if (inboundMsgs.length === 0) return;
+  const latestInbound = inboundMsgs[inboundMsgs.length - 1];
+
+  // Don't generate for optimistic messages
+  if (latestInbound.id.startsWith("optimistic-")) return;
+
+  // Check if we already processed this inbound message for this conversation
+  const convId = selectedConversation.id;
+  const lastProcessedId = processedInboundsByConvRef.current[convId];
+  if (latestInbound.id === lastProcessedId) return;
+
+  // Mark this message as processed for this conversation
+  processedInboundsByConvRef.current[convId] = latestInbound.id;
+
+  setIsAiGenerating(true);
+  setAiSuggestion(null);
+  // ... RAG API call
+}, [dbMessages.length, aiAutoResponseEnabled, selectedConversation?.id]);
+
+// Clear AI suggestion when switching conversations to prevent confusion
+useEffect(() => {
+  setAiSuggestion(null);
+  setIsAiGenerating(false);
+}, [selectedConversation?.id]);
+```
+
+### 22.4 개선 효과
+
+| 상황 | 변경 전 | 변경 후 |
+|------|---------|---------|
+| **AI 추천 전송 후 재진입** | ❌ AI 재생성됨 | ✅ 재생성 안됨 (이미 처리됨) |
+| **다른 대화로 전환 후 복귀** | ❌ AI 재생성됨 | ✅ 재생성 안됨 |
+| **새 고객 메시지 도착** | ✅ 새 AI 생성 | ✅ 새 AI 생성 (정상) |
+| **중복 RAG 호출** | ❌ 대화 재진입 시 발생 | ✅ 완전 차단 |
+| **메모리 사용** | 문자열 1개 | Record (대화 수만큼) |
+
+### 22.5 시나리오별 동작 검증
+
+#### 시나리오 1: AI 추천 전송 후 재진입
+```
+1. 고객 메시지 A 도착 (id: "msg-001")
+   → processedInboundsByConvRef["conv-1"] = "msg-001"
+   → AI 추천 생성
+
+2. 담당자 AI 추천 전송
+   → setAiSuggestion(null)
+
+3. 담당자 다른 대화로 이동
+   → processedInboundsByConvRef["conv-1"] = "msg-001" (유지)
+   → setAiSuggestion(null) (UI만 clear)
+
+4. 담당자 원래 대화(conv-1)로 복귀
+   → latestInbound.id = "msg-001"
+   → processedInboundsByConvRef["conv-1"] = "msg-001" (일치)
+   → ✅ AI 재생성 안함 (return)
+```
+
+#### 시나리오 2: 새 고객 메시지 도착
+```
+1. 이전 상태: processedInboundsByConvRef["conv-1"] = "msg-001"
+
+2. 고객 새 메시지 B 도착 (id: "msg-002")
+   → latestInbound.id = "msg-002"
+   → processedInboundsByConvRef["conv-1"] = "msg-001" (불일치)
+   → ✅ 새 AI 생성
+   → processedInboundsByConvRef["conv-1"] = "msg-002" (업데이트)
+```
+
+#### 시나리오 3: 여러 대화 간 전환
+```
+1. 대화 A → AI 생성 → processedInboundsByConvRef["conv-A"] = "msg-A1"
+2. 대화 B로 전환 → AI 생성 → processedInboundsByConvRef["conv-B"] = "msg-B1"
+3. 대화 A로 복귀 → processedInboundsByConvRef["conv-A"] = "msg-A1" (보존됨)
+   → ✅ AI 재생성 안함
+```
+
+### 22.6 파일 변경
+
+| 파일 | 변경 내용 | 라인 |
+|------|----------|------|
+| `web/src/app/(dashboard)/inbox/page.tsx` | AI 생성 추적 ref를 대화별 Record로 변경 | 1066-1107 |
+| | - `lastInboundIdRef` → `processedInboundsByConvRef` | |
+| | - 대화 전환 시 ref 초기화 제거 | |
+| | - 대화 전환 시 UI만 clear (setAiSuggestion, setIsAiGenerating) | |
+
+### 22.7 Commit
+
+```
+commit [HASH]
+Author: Claude Code AI
+Date: 2026-01-29
+
+fix: Prevent duplicate AI suggestion generation on conversation re-entry
+
+- Change tracking from single lastInboundIdRef to per-conversation Record
+- Preserve processed message IDs when switching conversations
+- Only clear AI suggestion UI state on conversation change
+- Prevents duplicate RAG calls for already-processed customer messages
+- New customer messages still trigger fresh AI generation correctly
+
+Modified:
+  - web/src/app/(dashboard)/inbox/page.tsx (Lines 1066-1107)
+```
+
+### 22.8 추가 개선 가능성 (선택)
+
+1. **메모리 최적화**: 오래된 대화 ID 정리 (LRU 캐시)
+2. **성능 모니터링**: RAG 호출 횟수 추적 및 로깅
+3. **UI 피드백**: "이미 답변 전송됨" 표시 추가
+
+### 22.9 배포 상태
+
+- ✅ 코드 수정 완료: `web/src/app/(dashboard)/inbox/page.tsx`
+- ⏳ Commit 대기 중
+- ⏳ Vercel 배포 대기 중
+

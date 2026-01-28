@@ -1059,3 +1059,49 @@ LLM 쿼리 → Hybrid Search (Vector + Full-text + RRF) → Top-k 문서 → GPT
 ✅ 5개 커밋 프로덕션 배포
 ✅ 빌드 검증 통과 (0 errors)
 
+---
+
+## 19. AI 추천 답변 중복 생성 문제 해결 (2026-01-29)
+
+### 문제 현상
+사용자 보고: "AI 추천을 전송한 후 다른 대화로 이동했다가 다시 돌아오면 같은 AI 추천이 또 나타납니다. 중복 RAG 호출이 발생하나요?"
+
+### 근본 원인
+- **기존**: 단일 `lastInboundIdRef`로 모든 대화 추적
+- **문제**: 대화 전환 시 `lastInboundIdRef = ""` 초기화
+- **결과**: 같은 대화 재진입 시 이미 처리한 고객 메시지를 다시 AI 생성
+
+### 해결 방법
+**대화별 독립 추적**:
+```typescript
+// Before: 모든 대화 공용 ref
+const lastInboundIdRef = useRef<string>("");
+
+// After: 대화별 처리 기록
+const processedInboundsByConvRef = useRef<Record<string, string>>({});
+```
+
+### 시나리오별 동작
+
+1. **AI 전송 후 재진입** ✅
+   - 전: 같은 AI 재생성됨
+   - 후: 재생성 안됨 (이미 처리됨)
+
+2. **새 고객 메시지** ✅
+   - 전: 새 AI 생성 (정상)
+   - 후: 새 AI 생성 (정상)
+
+3. **중복 RAG 호출** ✅
+   - 전: 대화 재진입 시 발생
+   - 후: 완전 차단
+
+### 변경 파일
+- `web/src/app/(dashboard)/inbox/page.tsx` (Lines 1066-1107)
+  - `lastInboundIdRef` → `processedInboundsByConvRef`
+  - 대화 전환 시 ref 초기화 제거
+  - UI만 clear (setAiSuggestion, setIsAiGenerating)
+
+### 배포 상태
+✅ 코드 수정 완료
+⏳ Commit 대기 중
+
