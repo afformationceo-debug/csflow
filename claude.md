@@ -2445,11 +2445,17 @@ Supabase SQL Editor에서 아래 SQL 파일들을 **순서대로** 실행해주�
 
 고객:
 - GET/POST /api/customers
-- GET /api/customers/[id]/profile
+- GET/PATCH /api/customers/[id]/profile
 - GET /api/customers/[id]/timeline
 - POST /api/customers/[id]/sync
 - GET /api/customers/[id]/duplicates
 - POST /api/customers/[id]/merge
+- POST /api/customers/[id]/analyze (관심 시술/고민 자동 감지)
+
+대화:
+- GET/PATCH /api/conversations
+- DELETE /api/conversations/[id]
+- GET /api/conversations/[id]/messages
 
 지식베이스:
 - GET/POST /api/knowledge/documents
@@ -2497,3 +2503,80 @@ Supabase SQL Editor에서 아래 SQL 파일들을 **순서대로** 실행해주�
    - 3단 레이아웃 (목록-대화-정보)
    - 상담 태그 시스템
    - 채널/담당자별 필터
+
+---
+
+## 18. 인박스 기능 고도화 (2026-01-28)
+
+### 완료된 인박스 개선 항목
+
+#### 18.1 메시지 전송 최적화
+- **Korean IME 중복 전송 버그 수정**: `onCompositionStart`/`onCompositionEnd` 이벤트로 IME 조합 중 Enter 키 무시
+- **전송 속도 개선**: API 호출을 fire-and-forget 패턴으로 변경, 즉시 optimistic UI 표시
+- **중복 메시지 방지**: Realtime 수신 시 optimistic 메시지와 대조하여 중복 제거
+
+#### 18.2 실시간 메시지 수신
+- **Supabase Realtime 직접 추가**: 새 메시지를 refetch 대신 직접 append하여 즉시 표시
+- **인바운드 메시지 실시간 반영**: conversations 테이블과 messages 테이블 모두 구독
+- **최적화된 구독**: 현재 선택된 대화의 메시지만 필터링 구독
+
+#### 18.3 알림음
+- **Web Audio API 기반 알림**: AudioContext로 생성한 정겨운 3음 차임벨
+- **인바운드 메시지에만 재생**: 고객 메시지 수신 시에만 알림음 재생
+- **쓰로틀링**: 2초 간격으로 중복 알림음 방지
+
+#### 18.4 대화 삭제
+- **삭제 API**: `DELETE /api/conversations/[id]` — 메시지 먼저 삭제 후 대화 삭제 (FK 순서)
+- **확인 다이얼로그**: 오른쪽 패널 하단에 삭제 버튼 → 확인 UI 표시 → 최종 삭제
+- **상태 정리**: 삭제 후 대화 목록, 선택 상태, 메시지, 프로필 모두 초기화
+
+#### 18.5 위치 다국어 표기
+- **고객 언어 기반 자동 변환**: 일본어 고객이면 "日本", 영어면 "Japan" 등
+- **지원 국가**: 일본, 한국, 중국, 대만, 미국, 베트남, 태국, 몽골
+- **지원 언어**: JA, EN, ZH, ZH-HANS, TH, VI, KO
+
+#### 18.6 관심 시술 자동 감지
+- **키워드 기반 분석**: 대화 내 시술 관련 키워드 자동 감지 (다국어)
+- **20+ 시술 카테고리**: 라식, 라섹, 백내장, 코성형, 리프팅, 보톡스, 임플란트 등
+- **API**: `POST /api/customers/[id]/analyze` — 대화 분석 후 메타데이터 저장
+- **UI**: 자동감지 배지와 함께 보라색 태그로 표시
+
+#### 18.7 고민 자동 감지
+- **고객 고민 키워드 분석**: 비용/가격, 통증, 부작용, 회복기간, 흉터 등
+- **14개 고민 카테고리**: 비용, 통증, 부작용, 회복, 흉터, 자연스러움, 마취, 보험 등
+- **다국어 키워드 매칭**: 한국어, 영어, 일본어, 중국어 키워드 지원
+- **UI**: 자동감지 배지와 함께 앰버색 태그로 표시
+
+#### 18.8 메모 기능
+- **편집 가능한 메모**: 클릭하여 편집 모드 진입, 저장 버튼으로 DB 저장
+- **고객 메타데이터 저장**: `customers.metadata.memo` 필드에 저장
+- **메타데이터 병합**: PATCH 시 기존 메타데이터를 덮어쓰지 않고 병합
+
+#### 18.9 총 대화 수 실시간 반영
+- **로컬 카운트**: dbConversations에서 같은 고객의 대화 수를 실시간 계산
+- **API 카운트**: `/api/customers/[id]/profile` GET에서 conversations 카운트 반환
+
+#### 18.10 채널 관리 페이지 로딩 개선
+- **로딩 스켈레톤**: 채널 데이터 로드 중 애니메이션 스켈레톤 표시
+- **통계 카드 스켈레톤**: 숫자 대신 펄스 애니메이션으로 로딩 표시
+- **채널 목록 스켈레톤**: 3개의 플레이스홀더 행으로 로딩 상태 표시
+
+### 신규 API 엔드포인트
+
+```
+DELETE /api/conversations/[id]    — 대화 및 메시지 삭제
+POST /api/customers/[id]/analyze  — 관심 시술/고민 자동 감지
+GET /api/customers/[id]/profile   — 총 대화 수 포함 프로필 반환
+PATCH /api/customers/[id]/profile — 메타데이터 병합 방식 업데이트
+```
+
+### 기술 구현 상세
+
+| 기능 | 구현 방식 | 파일 |
+|------|----------|------|
+| IME 중복 방지 | `isComposingRef` + `onCompositionStart/End` | `inbox/page.tsx` |
+| 실시간 수신 | Supabase Realtime payload 직접 append | `inbox/page.tsx` |
+| 알림음 | Web Audio API (830Hz→1050Hz→1320Hz 차임) | `inbox/page.tsx` |
+| 대화 삭제 | `DELETE /api/conversations/[id]` + 확인 UI | `conversations/[id]/route.ts` |
+| 관심/고민 감지 | 키워드 매칭 (20+ 시술, 14개 고민) | `customers/[id]/analyze/route.ts` |
+| 메모 저장 | `customers.metadata.memo` 메타데이터 병합 | `customers/[id]/profile/route.ts` |
