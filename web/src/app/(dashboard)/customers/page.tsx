@@ -114,7 +114,7 @@ const bookingStatusConfig: Record<string, { label: string; color: string }> = {
   cancelled: { label: "예약취소", color: "bg-red-500/10 text-red-600" },
 };
 
-const smoothEase = [0.22, 1, 0.36, 1];
+const smoothEase = [0.22, 1, 0.36, 1] as const;
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);

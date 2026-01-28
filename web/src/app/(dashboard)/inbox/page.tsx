@@ -170,6 +170,7 @@ interface Message {
   mentions?: string[];
   isEdited?: boolean;
   reactions?: { emoji: string; count: number }[];
+  direction?: "inbound" | "outbound";
 }
 
 // ── Config Data ──
