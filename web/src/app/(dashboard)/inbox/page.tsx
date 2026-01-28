@@ -1907,7 +1907,13 @@ export default function InboxPage() {
                                       )}
                                     </div>
                                   )}
-                                  <p className="text-sm leading-relaxed">{msg.content}</p>
+                                  {/* Main message content: Show translated for agent, original for customer */}
+                                  <p className="text-sm leading-relaxed">
+                                    {msg.sender === "agent" && msg.translatedContent
+                                      ? msg.translatedContent
+                                      : msg.content}
+                                  </p>
+                                  {/* Translation toggle: Show opposite of main content */}
                                   {showTranslation && msg.translatedContent && (
                                     <div className={cn(
                                       "mt-2 pt-2 border-t",
@@ -1918,7 +1924,7 @@ export default function InboxPage() {
                                         msg.sender === "agent" ? "text-primary-foreground/70" : "text-muted-foreground"
                                       )}>
                                         <Globe className="h-2.5 w-2.5" />
-                                        {msg.sender === "agent" ? "고객에게 전송" : "번역"}
+                                        {msg.sender === "agent" ? "원문 (한국어)" : "번역 (한국어)"}
                                       </div>
                                       <p className={cn(
                                         "text-xs leading-relaxed",

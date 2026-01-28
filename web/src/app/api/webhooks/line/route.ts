@@ -126,6 +126,17 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
   let customer: any;
   let customerChannel: any;
   try {
+    // Detect initial language from message if available
+    let initialLanguage: SupportedLanguage = "EN"; // Default to English (more universal than Japanese)
+    if (message.text) {
+      try {
+        initialLanguage = await translationService.detectLanguage(message.text);
+        console.log(`[LINE] Initial language detection: ${initialLanguage}`);
+      } catch (e) {
+        console.error("[LINE] Initial language detection failed:", e);
+      }
+    }
+
     const result = await serverCustomerService.findOrCreateCustomer({
       tenantId,
       channelAccountId: channelAccountData.id,
@@ -133,11 +144,11 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
       channelUsername: userProfile.displayName || message.channelUsername,
       name: userProfile.displayName,
       profileImageUrl: userProfile.pictureUrl,
-      language: "JA", // Default for LINE users (mostly Japanese)
+      language: initialLanguage,
     });
     customer = result.customer;
     customerChannel = result.customerChannel;
-    console.log(`[LINE] Customer ${result.isNew ? "created" : "found"}: ${customer.id}`);
+    console.log(`[LINE] Customer ${result.isNew ? "created" : "found"}: ${customer.id}, language: ${customer.language}`);
   } catch (e) {
     console.error("[LINE] findOrCreateCustomer failed:", e);
     return;
@@ -164,6 +175,20 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
   if (messageText) {
     try {
       originalLanguage = await translationService.detectLanguage(messageText);
+      console.log(`[LINE] Detected customer language: ${originalLanguage}`);
+
+      // Update customer language if different from current
+      if (customer.language !== originalLanguage) {
+        try {
+          await (supabase.from("customers") as any)
+            .update({ language: originalLanguage })
+            .eq("id", customer.id);
+          customer.language = originalLanguage; // Update local copy
+          console.log(`[LINE] Updated customer language to: ${originalLanguage}`);
+        } catch (e) {
+          console.error("[LINE] Failed to update customer language:", e);
+        }
+      }
 
       // Translate to Korean if not Korean
       if (originalLanguage !== "KO") {
