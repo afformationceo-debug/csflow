@@ -53,15 +53,20 @@ export async function GET(request: NextRequest) {
     const priority = searchParams.get("priority");
     const limit = parseInt(searchParams.get("limit") || "50");
 
-    // Query escalations with conversation -> customer, channel_account, tenant joins
+    // Query escalations with conversation -> customer (with channel info), tenant joins
     let query = (supabase as any)
       .from("escalations")
       .select(`
         *,
         conversation:conversations(
           id, status, priority, last_message_at, last_message_preview, tenant_id,
-          customer:customers(id, name, country, language, profile_image_url, email, phone, tags),
-          channel_accounts:channel_accounts(id, channel_type, account_name, tenant_id),
+          customer:customers(
+            id, name, country, language, profile_image_url, tags,
+            customer_channels(
+              id,
+              channel_account:channel_accounts(id, channel_type, account_name, tenant_id)
+            )
+          ),
           tenant:tenants(*)
         )
       `)
@@ -139,7 +144,7 @@ export async function GET(request: NextRequest) {
       const conv = esc.conversation;
       const customer = conv?.customer;
       const tenant = conv?.tenant;
-      const channelAccount = conv?.channel_accounts;
+      const channelAccount = customer?.customer_channels?.[0]?.channel_account;
       const pagePriority = mapPriorityFromDB(esc.priority);
       const pageStatus = mapStatusFromDB(esc.status);
 
