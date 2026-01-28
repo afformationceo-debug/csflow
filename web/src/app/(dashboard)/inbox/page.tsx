@@ -586,12 +586,22 @@ export default function InboxPage() {
     { code: "KO", label: "한국어", flag: "🇰🇷" },
   ];
 
+  // AI auto-response state (per conversation)
+  const [aiAutoResponseEnabled, setAiAutoResponseEnabled] = useState(true);
+
   // Auto-set target language from customer's language when conversation changes
   useEffect(() => {
     if (selectedConversation?.customer?.language) {
       const lang = selectedConversation.customer.language.toUpperCase();
-      const matched = translationLanguages.find(l => l.code === lang || l.code.startsWith(lang));
+      // Try exact match first, then prefix match (e.g. "ZH" matches "ZH-HANS")
+      const matched = translationLanguages.find(l => l.code === lang)
+        || translationLanguages.find(l => l.code.startsWith(lang) || lang.startsWith(l.code));
       if (matched) setTargetLanguage(matched.code);
+    }
+    // Load AI enabled state from conversation
+    if (selectedConversation) {
+      const conv = selectedConversation as any;
+      setAiAutoResponseEnabled(conv._aiEnabled !== false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversation?.id]);
@@ -723,7 +733,8 @@ export default function InboxPage() {
             _dbId: conv.id,
             _customerId: customer?.id,
             _tenantId: conv.tenant_id,
-          } as Conversation & { _dbId?: string; _customerId?: string; _tenantId?: string };
+            _aiEnabled: conv.ai_enabled !== false,
+          } as Conversation & { _dbId?: string; _customerId?: string; _tenantId?: string; _aiEnabled?: boolean };
         });
 
         setDbConversations(mapped);
@@ -1353,6 +1364,49 @@ export default function InboxPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
+                    {/* AI Auto-Response Toggle */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={aiAutoResponseEnabled ? "secondary" : "ghost"}
+                            size="sm"
+                            className={cn(
+                              "h-7 text-[10px] rounded-lg transition-all",
+                              aiAutoResponseEnabled
+                                ? "bg-violet-500/10 text-violet-600 hover:bg-violet-500/15 dark:text-violet-400"
+                                : "text-muted-foreground"
+                            )}
+                            onClick={async () => {
+                              const newVal = !aiAutoResponseEnabled;
+                              setAiAutoResponseEnabled(newVal);
+                              // Update DB
+                              if (selectedConversation?.id) {
+                                try {
+                                  await fetch(`/api/conversations`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      conversationId: selectedConversation.id,
+                                      ai_enabled: newVal,
+                                    }),
+                                  });
+                                } catch (err) {
+                                  console.error("AI toggle failed:", err);
+                                }
+                              }
+                            }}
+                          >
+                            <Bot className="h-3 w-3 mr-1" />
+                            AI {aiAutoResponseEnabled ? "ON" : "OFF"}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs">AI 자동응대 {aiAutoResponseEnabled ? "활성 — 자동 답변이 전송됩니다" : "비활성 — 수동 응대 모드"}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
                     {/* Sentiment indicator */}
                     <TooltipProvider>
                       <Tooltip>
@@ -1434,9 +1488,9 @@ export default function InboxPage() {
                       </Button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-1.5 ml-auto text-[10px] text-muted-foreground">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                    <span>AI 어시스턴트 활성</span>
+                  <div className={cn("flex items-center gap-1.5 ml-auto text-[10px]", aiAutoResponseEnabled ? "text-violet-600 dark:text-violet-400" : "text-muted-foreground")}>
+                    <div className={cn("h-1.5 w-1.5 rounded-full", aiAutoResponseEnabled ? "bg-violet-500 animate-pulse" : "bg-gray-400")} />
+                    <span>AI {aiAutoResponseEnabled ? "자동응대 활성" : "수동 모드"}</span>
                   </div>
                 </div>
 
@@ -1793,9 +1847,22 @@ export default function InboxPage() {
                             e.preventDefault();
                             if (messageInput.trim() && selectedConversation) {
                               const content = messageInput;
+                              const wasInternalNote = isInternalNote;
                               setMessageInput("");
                               setTranslationPreview("");
-                              // Send via API for DB conversations
+
+                              // Optimistic UI: immediately show sent message
+                              const now = new Date();
+                              const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+                              const optimisticMsg: Message = {
+                                id: `optimistic-${Date.now()}`,
+                                sender: wasInternalNote ? "internal_note" : "agent",
+                                content,
+                                time: timeStr,
+                              };
+                              setDbMessages((prev) => [...prev, optimisticMsg]);
+
+                              // Send via API
                               if (selectedConversation.id) {
                                 try {
                                   await fetch("/api/messages", {
@@ -1804,8 +1871,8 @@ export default function InboxPage() {
                                     body: JSON.stringify({
                                       conversationId: selectedConversation.id,
                                       content,
-                                      isInternalNote,
-                                      targetLanguage: !isInternalNote ? targetLanguage : undefined,
+                                      isInternalNote: wasInternalNote,
+                                      targetLanguage: !wasInternalNote ? targetLanguage : undefined,
                                     }),
                                   });
                                 } catch (err) {
@@ -1862,8 +1929,21 @@ export default function InboxPage() {
                       onClick={async () => {
                         if (messageInput.trim() && selectedConversation) {
                           const content = messageInput;
+                          const wasInternalNote = isInternalNote;
                           setMessageInput("");
                           setTranslationPreview("");
+
+                          // Optimistic UI: immediately show sent message
+                          const now = new Date();
+                          const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+                          const optimisticMsg: Message = {
+                            id: `optimistic-${Date.now()}`,
+                            sender: wasInternalNote ? "internal_note" : "agent",
+                            content,
+                            time: timeStr,
+                          };
+                          setDbMessages((prev) => [...prev, optimisticMsg]);
+
                           if (selectedConversation.id) {
                             try {
                               await fetch("/api/messages", {
@@ -1872,8 +1952,8 @@ export default function InboxPage() {
                                 body: JSON.stringify({
                                   conversationId: selectedConversation.id,
                                   content,
-                                  isInternalNote,
-                                  targetLanguage: !isInternalNote ? targetLanguage : undefined,
+                                  isInternalNote: wasInternalNote,
+                                  targetLanguage: !wasInternalNote ? targetLanguage : undefined,
                                 }),
                               });
                             } catch (err) {
@@ -1978,7 +2058,31 @@ export default function InboxPage() {
 
                   {/* Consultation Tag Select */}
                   <div className="mt-3">
-                    <Select defaultValue={dbCustomerProfile.consultationTag}>
+                    <Select
+                      value={dbCustomerProfile.consultationTag}
+                      onValueChange={async (value) => {
+                        const customerId = (selectedConversation as any)?._customerId;
+                        if (!customerId) return;
+                        // Update local state immediately
+                        const newConsultationTag = value as ConsultationTag;
+                        setDbCustomerProfile(prev => prev ? { ...prev, consultationTag: newConsultationTag } : prev);
+                        // Build updated tags: remove old consultation tags, add new one
+                        const consultationKeys = Object.keys(consultationTagConfig);
+                        const currentTags = dbCustomerProfile.customerTags.filter(t => !consultationKeys.includes(t));
+                        const newTags = [value, ...currentTags];
+                        setDbCustomerProfile(prev => prev ? { ...prev, customerTags: newTags } : prev);
+                        // Also update the conversation in list
+                        setDbConversations(prev => prev.map(c => c.id === selectedConversation?.id ? { ...c, consultationTag: newConsultationTag, customerTags: newTags } : c));
+                        // Save to DB
+                        try {
+                          await fetch(`/api/customers/${customerId}/profile`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ tags: newTags }),
+                          });
+                        } catch (e) { console.error("Failed to save consultation tag:", e); }
+                      }}
+                    >
                       <SelectTrigger className="w-full h-8 rounded-lg text-xs">
                         <SelectValue placeholder="상담 단계 선택" />
                       </SelectTrigger>
@@ -2010,21 +2114,45 @@ export default function InboxPage() {
                           <Plus className="h-3 w-3" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuLabel className="text-[10px]">태그 추가</DropdownMenuLabel>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuLabel className="text-[10px]">태그 추가/제거</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {customerTagPresets.map((tag) => (
-                          <DropdownMenuItem key={tag.label} className="text-xs">
-                            <span className={cn("px-1.5 py-0.5 rounded-full text-[10px]", tag.bg, tag.color)}>
-                              {tag.label}
-                            </span>
-                          </DropdownMenuItem>
-                        ))}
+                        {customerTagPresets.map((tag) => {
+                          const isSelected = dbCustomerProfile.customerTags.includes(tag.label);
+                          return (
+                            <DropdownMenuCheckboxItem
+                              key={tag.label}
+                              checked={isSelected}
+                              className="text-xs"
+                              onCheckedChange={async (checked) => {
+                                const customerId = (selectedConversation as any)?._customerId;
+                                if (!customerId) return;
+                                const currentTags = dbCustomerProfile.customerTags;
+                                const newTags = checked
+                                  ? [...currentTags, tag.label]
+                                  : currentTags.filter(t => t !== tag.label);
+                                setDbCustomerProfile(prev => prev ? { ...prev, customerTags: newTags } : prev);
+                                setDbConversations(prev => prev.map(c => c.id === selectedConversation?.id ? { ...c, customerTags: newTags } : c));
+                                try {
+                                  await fetch(`/api/customers/${customerId}/profile`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ tags: newTags }),
+                                  });
+                                } catch (e) { console.error("Failed to save customer tags:", e); }
+                              }}
+                            >
+                              <span className={cn("px-1.5 py-0.5 rounded-full text-[10px]", tag.bg, tag.color)}>
+                                {tag.label}
+                              </span>
+                            </DropdownMenuCheckboxItem>
+                          );
+                        })}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    {dbCustomerProfile.customerTags.map((tag) => {
+                    {dbCustomerProfile.customerTags.filter(tag => !Object.keys(consultationTagConfig).includes(tag)).map((tag) => {
                       const preset = customerTagPresets.find((p) => p.label === tag);
                       return (
                         <Badge key={tag} variant="secondary" className={cn(
@@ -2032,10 +2160,133 @@ export default function InboxPage() {
                           preset ? cn(preset.bg, preset.color) : ""
                         )}>
                           {tag}
-                          <X className="h-2.5 w-2.5 cursor-pointer opacity-60 hover:opacity-100" />
+                          <X
+                            className="h-2.5 w-2.5 cursor-pointer opacity-60 hover:opacity-100"
+                            onClick={async () => {
+                              const customerId = (selectedConversation as any)?._customerId;
+                              if (!customerId) return;
+                              const newTags = dbCustomerProfile.customerTags.filter(t => t !== tag);
+                              setDbCustomerProfile(prev => prev ? { ...prev, customerTags: newTags } : prev);
+                              setDbConversations(prev => prev.map(c => c.id === selectedConversation?.id ? { ...c, customerTags: newTags } : c));
+                              try {
+                                await fetch(`/api/customers/${customerId}/profile`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ tags: newTags }),
+                                });
+                              } catch (e) { console.error("Failed to remove tag:", e); }
+                            }}
+                          />
                         </Badge>
                       );
                     })}
+                    {dbCustomerProfile.customerTags.filter(tag => !Object.keys(consultationTagConfig).includes(tag)).length === 0 && (
+                      <span className="text-[10px] text-muted-foreground">태그를 추가하세요</span>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Type Tags (유형 태그) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-medium flex items-center gap-1.5">
+                      <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+                      유형 태그
+                    </h4>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-5 w-5">
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuLabel className="text-[10px]">유형 태그 추가/제거</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {[
+                          { label: "가격문의", color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-900/40" },
+                          { label: "예약문의", color: "text-green-700 dark:text-green-300", bg: "bg-green-100 dark:bg-green-900/40" },
+                          { label: "시술상담", color: "text-purple-700 dark:text-purple-300", bg: "bg-purple-100 dark:bg-purple-900/40" },
+                          { label: "불만/클레임", color: "text-red-700 dark:text-red-300", bg: "bg-red-100 dark:bg-red-900/40" },
+                          { label: "후기/리뷰", color: "text-amber-700 dark:text-amber-300", bg: "bg-amber-100 dark:bg-amber-900/40" },
+                          { label: "일반문의", color: "text-gray-700 dark:text-gray-300", bg: "bg-gray-100 dark:bg-gray-800/40" },
+                        ].map((tag) => {
+                          const typeTagKey = `type:${tag.label}`;
+                          const isSelected = dbCustomerProfile.customerTags.includes(typeTagKey);
+                          return (
+                            <DropdownMenuCheckboxItem
+                              key={tag.label}
+                              checked={isSelected}
+                              className="text-xs"
+                              onCheckedChange={async (checked) => {
+                                const customerId = (selectedConversation as any)?._customerId;
+                                if (!customerId) return;
+                                const currentTags = dbCustomerProfile.customerTags;
+                                const newTags = checked
+                                  ? [...currentTags, typeTagKey]
+                                  : currentTags.filter(t => t !== typeTagKey);
+                                setDbCustomerProfile(prev => prev ? { ...prev, customerTags: newTags } : prev);
+                                setDbConversations(prev => prev.map(c => c.id === selectedConversation?.id ? { ...c, customerTags: newTags } : c));
+                                try {
+                                  await fetch(`/api/customers/${customerId}/profile`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ tags: newTags }),
+                                  });
+                                } catch (e) { console.error("Failed to save type tag:", e); }
+                              }}
+                            >
+                              <span className={cn("px-1.5 py-0.5 rounded-full text-[10px]", tag.bg, tag.color)}>
+                                {tag.label}
+                              </span>
+                            </DropdownMenuCheckboxItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {dbCustomerProfile.customerTags.filter(t => t.startsWith("type:")).map((tag) => {
+                      const label = tag.replace("type:", "");
+                      const typePresets: Record<string, { color: string; bg: string }> = {
+                        "가격문의": { color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-900/40" },
+                        "예약문의": { color: "text-green-700 dark:text-green-300", bg: "bg-green-100 dark:bg-green-900/40" },
+                        "시술상담": { color: "text-purple-700 dark:text-purple-300", bg: "bg-purple-100 dark:bg-purple-900/40" },
+                        "불만/클레임": { color: "text-red-700 dark:text-red-300", bg: "bg-red-100 dark:bg-red-900/40" },
+                        "후기/리뷰": { color: "text-amber-700 dark:text-amber-300", bg: "bg-amber-100 dark:bg-amber-900/40" },
+                        "일반문의": { color: "text-gray-700 dark:text-gray-300", bg: "bg-gray-100 dark:bg-gray-800/40" },
+                      };
+                      const preset = typePresets[label];
+                      return (
+                        <Badge key={tag} variant="secondary" className={cn(
+                          "text-[10px] rounded-full gap-1",
+                          preset ? cn(preset.bg, preset.color) : ""
+                        )}>
+                          {label}
+                          <X
+                            className="h-2.5 w-2.5 cursor-pointer opacity-60 hover:opacity-100"
+                            onClick={async () => {
+                              const customerId = (selectedConversation as any)?._customerId;
+                              if (!customerId) return;
+                              const newTags = dbCustomerProfile.customerTags.filter(t => t !== tag);
+                              setDbCustomerProfile(prev => prev ? { ...prev, customerTags: newTags } : prev);
+                              setDbConversations(prev => prev.map(c => c.id === selectedConversation?.id ? { ...c, customerTags: newTags } : c));
+                              try {
+                                await fetch(`/api/customers/${customerId}/profile`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ tags: newTags }),
+                                });
+                              } catch (e) { console.error("Failed to remove type tag:", e); }
+                            }}
+                          />
+                        </Badge>
+                      );
+                    })}
+                    {dbCustomerProfile.customerTags.filter(t => t.startsWith("type:")).length === 0 && (
+                      <span className="text-[10px] text-muted-foreground">유형 태그를 추가하세요</span>
+                    )}
                   </div>
                 </div>
 
