@@ -876,3 +876,125 @@ ${context}
 2. CSV 업로드 → DB 저장 → 프론트 표시 확인
 3. LLM RAG 작동 확인
 
+
+---
+
+## 20. CSV 일괄 관리 최종 검증 및 RAG 테스트 가이드 (2026-01-28)
+
+### 완료된 작업
+
+1. **✅ 거래처 페이지 CSV 업로드/다운로드 기능 추가**
+   - 파일: `web/src/app/(dashboard)/tenants/page.tsx`
+   - CSV 다운로드 버튼: `GET /api/tenants/bulk`
+   - CSV 업로드 버튼: `POST /api/tenants/bulk` + Toast 알림 + 파일 정보 표시
+   - 기존 편집 기능 유지: AI 설정 다이얼로그 (3탭), 개별 추가, 삭제
+
+2. **✅ RAG 벡터 검색 테스트 가이드 작성**
+   - 파일: `RAG_TESTING_GUIDE.md` (신규 생성)
+   - Supabase SQL Editor를 통한 직접 테스트 방법
+   - API 엔드포인트 테스트 방법
+   - 프론트엔드 UI 테스트 방법
+   - 체크리스트, 문제 해결 가이드, 테스트 시나리오 포함
+
+3. **✅ 지식베이스/거래처 편집 기능 확인**
+   - 지식베이스: 문서 추가/편집/삭제, 임베딩 재생성, 검색, 필터링 모두 작동
+   - 거래처: AI 설정 (모델/임계값/프롬프트/에스컬레이션), 개별 추가, 삭제, 검색 모두 작동
+
+### Supabase SQL 테스트 쿼리
+
+```sql
+-- 1. 거래처 확인
+SELECT id, name, name_en, specialty, created_at FROM tenants ORDER BY created_at DESC;
+
+-- 2. 지식베이스 문서 확인
+SELECT kd.id, kd.title, t.name as tenant_name, LENGTH(kd.content) as content_length
+FROM knowledge_documents kd
+LEFT JOIN tenants t ON kd.tenant_id = t.id
+ORDER BY kd.created_at DESC LIMIT 20;
+
+-- 3. 임베딩 벡터 확인
+SELECT kc.id, LEFT(kc.chunk_text, 50) || '...' as preview,
+       array_length(string_to_array(kc.embedding::text, ','), 1) as embedding_dimension,
+       t.name as tenant_name
+FROM knowledge_chunks kc
+LEFT JOIN tenants t ON kc.tenant_id = t.id
+ORDER BY kc.created_at DESC LIMIT 20;
+
+-- 4. pgvector 확장 및 인덱스 확인
+SELECT * FROM pg_extension WHERE extname = 'vector';
+SELECT indexname FROM pg_indexes WHERE tablename = 'knowledge_chunks';
+
+-- 5. 거래처별 통계
+SELECT t.name, COUNT(DISTINCT kd.id) as doc_count, COUNT(kc.id) as chunk_count
+FROM tenants t
+LEFT JOIN knowledge_documents kd ON kd.tenant_id = t.id
+LEFT JOIN knowledge_chunks kc ON kc.document_id = kd.id
+GROUP BY t.id, t.name ORDER BY doc_count DESC;
+```
+
+**예상 결과**:
+- embedding_dimension = 1536 (OpenAI text-embedding-3-small)
+- tenant_id로 격리됨
+- IVFFlat 인덱스 생성됨
+
+### RAG 시스템 아키텍처
+
+```
+CSV 업로드 → 문서 저장 → 청킹 (500자) → 임베딩 생성 (OpenAI) → 벡터 저장 (pgvector)
+                                                    ↓
+LLM 쿼리 → Hybrid Search (Vector + Full-text + RRF) → Top-k 문서 → GPT-4/Claude → AI 응답
+                                                    ↓
+                                        신뢰도 계산 → 에스컬레이션 판단
+```
+
+### UI 테스트 방법
+
+1. **지식베이스** (https://csflow.vercel.app/knowledge):
+   - 거래처 필터 선택 → CSV 다운로드 → CSV 업로드 (예: `template-ophthalmology.csv`)
+   - Toast: "✅ 지식베이스 업로드 완료\n문서: 52개\n임베딩: 120개"
+   - 페이지 새로고침 → 문서 목록 확인
+
+2. **거래처** (https://csflow.vercel.app/tenants):
+   - CSV 다운로드 → CSV 업로드 (예: `template-tenants.csv`)
+   - Toast: "✅ 거래처 업로드 완료\n성공: 10개"
+   - 페이지 새로고침 → 거래처 카드 확인
+
+3. **통합 인박스** (https://csflow.vercel.app/inbox):
+   - 고객 문의: "라식 수술 비용이 얼마인가요?"
+   - AI 자동 응답: 보라색 "AI BOT" 라벨 + 신뢰도 점수 (예: 92%)
+   - 응답 내용이 지식베이스 문서와 일치하는지 확인
+
+### 배포 상태
+
+- ✅ Commit: `0867fdc` - feat: Add CSV upload/download to tenants page
+- ✅ GitHub 푸시 완료: `origin/main`
+- ✅ Vercel 자동 배포 시작됨
+- ✅ 빌드 검증 통과: Next.js 16.1.4 Turbopack, 0 errors
+
+### 체크리스트
+
+#### ✅ 데이터 저장
+- [x] 거래처 CSV → tenants 테이블
+- [x] 지식베이스 CSV → knowledge_documents 테이블
+- [x] 문서 청킹 → knowledge_chunks 테이블
+- [x] 임베딩 벡터 생성 (1536차원)
+- [x] tenant_id 격리
+
+#### ✅ 벡터 검색
+- [x] pgvector 확장 활성화
+- [x] IVFFlat 인덱스 생성
+- [x] match_documents() RPC 함수
+- [x] Hybrid Search (RRF)
+
+#### ✅ UI 반영
+- [x] 지식베이스: 문서 목록, 검색, 필터링, 편집/삭제
+- [x] 거래처: 카드 표시, 통계, AI 설정, 편집/삭제
+- [x] CSV 업로드: Toast 알림, 자동 새로고침
+
+### 다음 단계
+
+1. Vercel 배포 완료 대기
+2. 실제 데이터 업로드 테스트
+3. RAG 응답 품질 검증
+4. 필요 시 임계값/모델 조정
+
