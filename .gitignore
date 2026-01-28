@@ -42,3 +42,4 @@ next-env.d.ts
 # Misc
 *.pem
 .playwright-mcp/
+.env*.local
