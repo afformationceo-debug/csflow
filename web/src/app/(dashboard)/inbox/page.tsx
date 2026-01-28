@@ -1090,9 +1090,11 @@ export default function InboxPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbMessages.length, aiAutoResponseEnabled, selectedConversation?.id]);
 
-  // Clear AI suggestion when conversation changes
+  // Persist AI suggestion when conversation changes (don't clear)
+  // AI suggestion should remain until user sends it or explicitly dismisses
+  // Only clear the ref to allow regeneration on new inbound messages
   useEffect(() => {
-    setAiSuggestion(null);
+    // Keep aiSuggestion intact (don't clear) - only reset tracking ref
     lastInboundIdRef.current = "";
   }, [selectedConversation?.id]);
 
@@ -2221,6 +2223,7 @@ export default function InboxPage() {
                               const wasInternalNote = isInternalNote;
                               setMessageInput("");
                               setTranslationPreview("");
+                              setAiSuggestion(null); // Clear AI suggestion on send
 
                               // Optimistic UI: immediately show sent message
                               const now = new Date();
@@ -2299,6 +2302,7 @@ export default function InboxPage() {
                           const wasInternalNote = isInternalNote;
                           setMessageInput("");
                           setTranslationPreview("");
+                          setAiSuggestion(null); // Clear AI suggestion on send
 
                           // Optimistic UI: immediately show sent message
                           const now = new Date();
