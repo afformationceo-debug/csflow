@@ -161,12 +161,20 @@ export class LineAdapter implements ChannelAdapter {
 
     const lineMessage = this.convertToLineMessage(message);
 
+    const requestBody = {
+      to: message.channelUserId,
+      messages: [lineMessage],
+    };
+
+    const requestBodyStr = JSON.stringify(requestBody);
+
     console.log("[LINE] Sending message:", {
       channelUserId: message.channelUserId,
       contentType: message.contentType,
       textLength: message.text?.length || 0,
-      textPreview: message.text?.substring(0, 100) || "",
-      lineMessagePreview: JSON.stringify(lineMessage).substring(0, 200),
+      textFull: message.text || "",
+      requestBodyLength: requestBodyStr.length,
+      requestBodyFull: requestBodyStr,
     });
 
     try {
@@ -176,17 +184,22 @@ export class LineAdapter implements ChannelAdapter {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({
-          to: message.channelUserId,
-          messages: [lineMessage],
-        }),
+        body: requestBodyStr,
+      });
+
+      const responseText = await response.text();
+
+      console.log("[LINE] API Response:", {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseText,
       });
 
       if (!response.ok) {
-        const error = await response.text();
         return {
           success: false,
-          error: `LINE API error: ${response.status} - ${error}`,
+          error: `LINE API error: ${response.status} - ${responseText}`,
         };
       }
 
@@ -196,6 +209,7 @@ export class LineAdapter implements ChannelAdapter {
         messageId: `line_${Date.now()}`,
       };
     } catch (error) {
+      console.error("[LINE] Send error:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",

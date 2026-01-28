@@ -160,7 +160,8 @@ export async function POST(request: NextRequest) {
     console.log("[Messages API] Translation context:", {
       customerLanguage,
       translateToCustomerLanguage,
-      contentPreview: content.substring(0, 50),
+      contentLength: content.length,
+      contentFull: content,
     });
 
     if (translateToCustomerLanguage && customerLanguage !== "KO") {
@@ -174,9 +175,12 @@ export async function POST(request: NextRequest) {
         translatedLanguage = customerLanguage;
 
         console.log("[Messages API] Translation result:", {
-          originalPreview: content.substring(0, 50),
-          translatedPreview: translatedContent.substring(0, 50),
+          originalLength: content.length,
+          originalFull: content,
+          translatedLength: translatedContent.length,
+          translatedFull: translatedContent,
           targetLang: translatedLanguage,
+          detectedSourceLang: translation.detectedSourceLang,
         });
       } catch (translationError) {
         console.error("Translation failed, sending original:", translationError);

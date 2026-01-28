@@ -86,27 +86,50 @@ class DeepLClient {
   ): Promise<TranslationResult[]> {
     const texts = Array.isArray(text) ? text : [text];
 
+    const requestBody = {
+      text: texts,
+      target_lang: options.targetLang,
+      source_lang: options.sourceLang,
+      formality: options.formality,
+      preserve_formatting: options.preserveFormatting,
+    };
+
+    console.log("[DeepL] API Request:", {
+      url: `${this.baseUrl}/translate`,
+      textLengths: texts.map(t => t.length),
+      texts: texts,
+      targetLang: options.targetLang,
+      sourceLang: options.sourceLang,
+    });
+
     const response = await fetch(`${this.baseUrl}/translate`, {
       method: "POST",
       headers: {
         Authorization: `DeepL-Auth-Key ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        text: texts,
-        target_lang: options.targetLang,
-        source_lang: options.sourceLang,
-        formality: options.formality,
-        preserve_formatting: options.preserveFormatting,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const error = await response.text();
+      console.error("[DeepL] API Error:", {
+        status: response.status,
+        error,
+      });
       throw new Error(`DeepL API error: ${response.status} - ${error}`);
     }
 
     const data = await response.json();
+
+    console.log("[DeepL] API Response:", {
+      translationCount: data.translations.length,
+      translations: data.translations.map((t: any) => ({
+        text: t.text,
+        textLength: t.text.length,
+        detectedSourceLang: t.detected_source_language,
+      })),
+    });
 
     return data.translations.map(
       (t: { text: string; detected_source_language: string }) => ({
@@ -255,6 +278,12 @@ export const translationService = {
       // Translate agent's Korean response to customer's language
       const targetLang = customerLang || "EN";
 
+      console.log("[Translation] to_customer request:", {
+        sourceText: text,
+        sourceLength: text.length,
+        targetLang,
+      });
+
       if (targetLang === "KO") {
         return {
           text,
@@ -263,6 +292,14 @@ export const translationService = {
       }
 
       const result = await this.translate(text, targetLang, "KO");
+
+      console.log("[Translation] to_customer result:", {
+        translatedText: result.text,
+        translatedLength: result.text.length,
+        detectedSourceLang: result.detectedSourceLang,
+        cached: result.cached,
+      });
+
       return {
         ...result,
         originalLang: "KO",
