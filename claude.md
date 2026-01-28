@@ -1910,8 +1910,40 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
    - `supabase/migrations/001_initial_schema.sql`
    - `supabase/migrations/002_message_templates.sql`
    - `web/supabase/phase4-schema.sql`
-2. **channel_accounts 테이블에 채널 레코드 등록** (Supabase Dashboard → SQL Editor)
-3. **거래처(tenant) 레코드 생성** (AI 설정 포함)
+2. **채널 관리 UI에서 채널 등록** → Supabase `channel_accounts` 테이블에 자동 저장됨
+3. **거래처(tenant) 자동 생성** → 첫 채널 등록 시 기본 거래처가 자동 생성됨
+
+#### 7.20 채널 등록 DB 연동 (2026-01-28) ✅
+- [x] `POST /api/channels` API에 직접 자격증명 채널(LINE, KakaoTalk, WeChat) 지원 추가 ✅
+  - 기존 Meta OAuth 채널(Facebook, Instagram, WhatsApp)과 병행 지원
+  - `channel_accounts` 테이블에 INSERT → Supabase 영구 저장
+  - 중복 채널 감지 (tenant_id + channel_type + account_id)
+  - 기본 거래처 자동 생성 (테넌트 미존재 시)
+- [x] `GET /api/channels` API → `channel_accounts` 테이블 직접 쿼리로 변경 ✅
+- [x] `DELETE /api/channels` → UUID 기반 삭제 + 레거시 호환 ✅
+- [x] 채널 추가 폼 채널별 필드 분기 ✅
+  - **LINE**: 채널 ID, 채널 액세스 토큰, 채널 시크릿, 봇 Basic ID
+  - **KakaoTalk**: REST API 키, Admin 키
+  - **WeChat**: 앱 ID, 앱 시크릿
+- [x] `handleAddChannel` → API 호출로 변경 (기존: React state만 업데이트) ✅
+- [x] LINE 채널 등록 완료 (Supabase 저장 확인) ✅
+  - Tenant ID: `8d3bd24e-0d74-4dc7-aa34-3e39d5821244`
+  - Channel ID: `dc37a525-0388-4fb0-8345-f9d1cece3171`
+  - credentials JSONB: `{ access_token, channel_secret, channel_id, bot_basic_id }`
+  - webhook_url: `https://csflow.vercel.app/api/webhooks/line`
+- [x] DB 저장 구조:
+  ```
+  channel_accounts 테이블:
+  - id: UUID (auto-generated)
+  - tenant_id: UUID (FK → tenants.id)
+  - channel_type: "line" | "kakao" | "wechat" | "facebook" | "instagram" | "whatsapp"
+  - account_name: "CS Command LINE"
+  - account_id: "2008754781" (LINE Channel ID)
+  - credentials: JSONB { access_token, channel_secret, channel_id, bot_basic_id }
+  - is_active: true
+  - webhook_url: "https://csflow.vercel.app/api/webhooks/line"
+  - created_at, updated_at
+  ```
 
 ---
 

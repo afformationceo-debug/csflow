@@ -115,12 +115,24 @@ Query → [Vector Search (pgvector)] + [Full-text Search (PostgreSQL)]
 2. **신뢰도 미달**: < 75% (기본) → 에스컬레이션
 3. **민감 주제**: 가격 협상, 환불, 부작용 등 → 에스컬레이션
 
-### 신뢰도 계산
+### 신뢰도 계산 (실제 구현 - `llm.ts:110-159`)
 
 ```
-Retrieval (0.20) + Generation (0.25) + Factuality (0.30) + Domain (0.15) + Consistency (0.10)
-= Overall Confidence Score
+confidence = avgSimilarity × 0.6 + 0.4 − uncertaintyPenalty − noContextPenalty
+
+구성 요소:
+├─ Base: 0.4 (문서 미발견 시에도 기본 40%)
+├─ avgSimilarity × 0.6: 검색된 문서들의 코사인 유사도 평균 × 가중치
+├─ uncertaintyPenalty: -0.15 (응답에 "확실하지 않", "정확히 모르" 등 포함 시)
+└─ noContextPenalty: -0.30 (검색된 문서가 0개일 때)
+
+75% 임계값 달성 조건:
+├─ 문서 있음 + 불확실 표현 없음: avgSimilarity ≥ 0.583
+├─ 문서 있음 + 불확실 표현 있음: avgSimilarity ≥ 0.833
+└─ 문서 없음: 최대 confidence = 0.10 (항상 에스컬레이션)
 ```
+
+**불확실성 키워드 목록**: "확실하지 않", "정확히 모르", "담당자에게 확인", "확인이 필요", "잘 모르겠"
 
 ---
 
@@ -346,7 +358,7 @@ private async executeAction(action, context) {
 | Instagram DM | ✅ 설정됨 | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `IG_WEBHOOK_VERIFY_TOKEN` |
 | WhatsApp Business | ✅ 설정됨 | `WHATSAPP_VERIFY_TOKEN`, `NEXT_PUBLIC_WA_CONFIG_ID` |
 | Meta OAuth | ✅ 설정됨 | `META_OAUTH_REDIRECT_URI`, `META_WEBHOOK_VERIFY_TOKEN` |
-| LINE Messaging API | ✅ 설정됨 | `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ID` |
+| LINE Messaging API | ✅ 설정됨 | `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ID`, `LINE_BOT_BASIC_ID` |
 | Slack Notifications | ✅ 설정됨 | `SLACK_BOT_TOKEN` |
 | Sentry 에러 모니터링 | ✅ 설정됨 | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT` |
 
@@ -442,6 +454,31 @@ SELECT * FROM conversations ORDER BY created_at DESC LIMIT 10;
 SELECT * FROM customers ORDER BY created_at DESC LIMIT 10;
 ```
 
+### 채널 등록 DB 구조
+
+채널 등록 시 Supabase `channel_accounts` 테이블에 영속 저장됩니다.
+
+```
+[채널 관리 UI (/channels)]
+  └─ handleAddChannel()
+       └─ POST /api/channels
+            ├─ 테넌트 자동 해석 (UUID 검증 → 기존 테넌트 검색 → 기본 테넌트 생성)
+            ├─ 중복 채널 검사 (tenant_id + channel_type + account_id)
+            └─ INSERT channel_accounts
+                 ├─ tenant_id: UUID (FK → tenants)
+                 ├─ channel_type: "line" | "kakao" | "wechat" | "facebook" | ...
+                 ├─ account_name: 표시 이름
+                 ├─ account_id: 채널 고유 ID
+                 ├─ credentials: JSONB { access_token, channel_secret, ... }
+                 ├─ is_active: true
+                 └─ webhook_url: 자동 생성 (csflow.vercel.app/api/webhooks/{type})
+```
+
+**등록된 LINE 채널 (2026-01-28)**:
+- Channel ID: `dc37a525-0388-4fb0-8345-f9d1cece3171`
+- Tenant: `8d3bd24e-0d74-4dc7-aa34-3e39d5821244` (CS Command Center)
+- Bot: `@246kdolz` (LINE Channel ID: 2008754781)
+
 ---
 
 ## Vercel 배포 설정
@@ -476,3 +513,6 @@ SELECT * FROM customers ORDER BY created_at DESC LIMIT 10;
 | 2026-01-28 | Meta 웹훅 핸들러 개선: 플랫폼별 개별 Verify Token 및 App Secret 지원 |
 | 2026-01-28 | Vercel 프로덕션 환경변수 10개 추가 등록 |
 | 2026-01-28 | 메신저 연동 테스트 가이드 작성 |
+| 2026-01-28 | 채널 등록 DB 영속화: POST /api/channels → Supabase channel_accounts 직접 저장 |
+| 2026-01-28 | LINE 채널 등록 완료 (@246kdolz, ID:2008754781) - Supabase DB 확인 |
+| 2026-01-28 | 신뢰도 계산 공식 문서화: avgSimilarity×0.6+0.4 (실제 llm.ts 구현 기준) |
