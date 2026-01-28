@@ -6364,3 +6364,338 @@ export const dynamic = "force-dynamic";
 - `metadata` 필드: 내부용 데이터 (sources, logs, confidence)
 - 채널 발송 시 metadata 절대 포함 안됨
 
+
+---
+
+## Section 26: AI 번역 수정 + 메시지 카운트 + 고객 관리 (2026-01-29)
+
+### 26.1 사용자 보고 이슈 (3개)
+
+#### Issue #5: AI 번역 표시 오류 ✅ 완료
+
+**증상:** AI 제안 화면에서 영어 텍스트가 한국어 섹션에도 표시
+- "고객 언어 (EN)" 섹션: 영어 원문 정상 표시
+- "한국어 의미" 섹션: 영어 원문 그대로 표시 (번역 없음)
+- 문장 일부 누락 ("How can i" 부분 미표시)
+
+**근본 원인:** `/api/conversations/[id]/ai-suggest/route.ts` (line 113-115)
+```typescript
+// ❌ Before (잘못된 필드 매핑)
+return NextResponse.json({
+  suggestion: {
+    original: ragResult.translatedResponse || ragResult.response,  // 한국어 번역
+    korean: ragResult.response,  // 영어 원문
+```
+
+**RAG Pipeline 동작:**
+1. `ragResult.response` = 고객 언어로 생성된 AI 응답 (예: 영어)
+2. `ragResult.translatedResponse` = 한국어로 번역된 응답
+
+**해결방법:** 필드 스왑 (line 113-115)
+```typescript
+// ✅ After (올바른 필드 매핑)
+return NextResponse.json({
+  suggestion: {
+    original: ragResult.response,  // 고객 언어 (예: EN)
+    korean: ragResult.translatedResponse || ragResult.response,  // 한국어 번역
+```
+
+**검증:**
+- AI 제안 생성 → "고객 언어" 섹션에 영어 원문
+- "한국어 의미" 섹션에 한국어 번역
+- 전체 문장 표시 확인
+
+**커밋:** `247c889` - "Fix AI translation display: Swap original/korean fields"
+
+---
+
+#### Issue #6: 실시간 메시지 카운트 ✅ 완료
+
+**요구사항:** 인박스 우측 패널에 메시지 수 실시간 표시
+- 수신 메시지 (inbound) 개수
+- 발신 메시지 (outbound) 개수
+- 대화 전환 시 자동 업데이트
+
+**구현 위치:** `/app/(dashboard)/inbox/page.tsx` (line 2845 이후)
+
+**구현 내용:**
+```tsx
+{/* Message Count - Real-time Inbound/Outbound */}
+<div className="grid grid-cols-2 gap-2">
+  <div className="p-2 rounded-lg bg-blue-500/5 border border-blue-500/10 text-center">
+    <p className="text-[10px] text-muted-foreground">수신 메시지</p>
+    <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+      {dbMessages.filter(m => m.direction === "inbound").length}
+    </p>
+  </div>
+  <div className="p-2 rounded-lg bg-green-500/5 border border-green-500/10 text-center">
+    <p className="text-[10px] text-muted-foreground">발신 메시지</p>
+    <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+      {dbMessages.filter(m => m.direction === "outbound").length}
+    </p>
+  </div>
+</div>
+```
+
+**특징:**
+- **실시간 업데이트:** `dbMessages` state 변경 시 자동 재계산
+- **색상 코딩:** 수신(파란색), 발신(초록색) 구분
+- **위치:** "총 대화" / "첫 접촉" 카드 바로 아래
+
+**데이터 소스:** `dbMessages` state (선택된 대화의 메시지 배열)
+
+**커밋:** `7a2ea1b` - "Add real-time message count display (inbound/outbound)"
+
+---
+
+#### Issue #7: 고객 관리 기능 ✅ 완료
+
+**요구사항:**
+1. 새 메시지 도착 시 자동 고객 등록
+2. 고객 프로필 페이지 구현
+3. 통합 정보 표시:
+   - 고객 이름, 정보
+   - 총 대화 수
+   - 관심시술
+   - 고민
+   - 채널 출처
+   - 예약 상태
+   - 태그
+   - 메모
+
+**구현된 컴포넌트:**
+
+##### 1. 고객 관리 페이지 (`/customers`)
+- **테이블 뷰:** 모든 고객 정보 한눈에 표시
+- **검색 기능:** 이름, 국가, 관심시술, 고민 검색
+- **필터:** 태그별 필터링
+- **정렬:** 이름, 가입일, 최근 접촉일 기준
+- **통계:** 총 고객 수, 총 대화, 총 메시지, 예약 확정 수
+
+##### 2. 고객 API (`GET /api/customers`)
+**엔드포인트:** `/api/customers?search=<query>&tag=<tag>`
+
+**주요 로직:**
+1. **customers 테이블 조회** (customer_channels JOIN)
+2. **대화 통계 계산** (conversations 테이블)
+   - 총 대화 수
+   - 첫 접촉일 / 최근 접촉일
+3. **메시지 통계 계산** (messages 테이블)
+   - 총 메시지 수
+   - 수신 메시지 수 (inbound)
+   - 발신 메시지 수 (outbound)
+4. **태그 추출** (tags 배열 파싱)
+   - consultation: 상담 상태 (가망/잠재/예약 등)
+   - customer: 고객 특성 (VIP/리피터 등)
+   - type: 문의 유형 (가격/예약/불만 등)
+5. **메타데이터 추출** (metadata JSONB)
+   - interested_procedures: 관심시술 배열
+   - concerns: 고민 배열
+   - memo: 메모
+   - booking_status: 예약 상태
+
+**응답 구조:**
+```typescript
+{
+  customers: [
+    {
+      id: string,
+      name: string,
+      country: string,
+      language: string,
+      profile_image_url: string,
+      customer_channels: [...],  // 연결된 채널
+      stats: {
+        totalConversations: number,
+        totalMessages: number,
+        inboundMessages: number,
+        outboundMessages: number,
+        firstContact: string,
+        lastContact: string,
+      },
+      consultationTag: string,  // 가망/잠재/예약/완료/취소
+      customerTags: string[],   // VIP/리피터/불만고객 등
+      typeTags: string[],       // 가격문의/예약문의 등
+      interestedProcedures: string[],  // 라식/보톡스 등
+      concerns: string[],       // 비용/통증/회복기간 등
+      memo: string,
+      bookingStatus: string,    // none/pending/confirmed/completed/cancelled
+    },
+    ...
+  ]
+}
+```
+
+##### 3. 테이블 컬럼 상세
+
+| 컬럼 | 설명 | 데이터 소스 |
+|------|------|------------|
+| **고객** | 프로필 사진 + 이름 | customers.name, profile_image_url |
+| **위치 / 언어** | 국가 + 언어 | customers.country, language |
+| **채널** | 연결된 메신저 채널 | customer_channels → channel_accounts |
+| **상담 상태** | 가망/잠재/예약/완료/취소 | tags (consultation: prefix) |
+| **예약 상태** | 미예약/대기/확정/완료/취소 | metadata.booking_status |
+| **대화** | 총 대화 건수 | COUNT(conversations) |
+| **메시지** | 수신 ↓ / 발신 ↑ | COUNT(messages) by direction |
+| **관심시술** | 라식/보톡스/리프팅 등 | metadata.interested_procedures |
+| **고민** | 비용/통증/부작용 등 | metadata.concerns |
+| **첫 접촉** | 최초 대화 날짜 | MIN(conversations.created_at) |
+| **최근 접촉** | 마지막 대화 날짜 | MAX(conversations.last_message_at) |
+| **메모** | 자유 텍스트 메모 | metadata.memo |
+
+##### 4. 자동 고객 등록 플로우
+
+```
+새 메시지 수신 (LINE/Meta/Kakao Webhook)
+    ↓
+getOrCreateCustomer() 호출
+    ↓
+┌─ customer_channels 테이블에서 조회
+│  (channel_account_id + channel_user_id)
+│
+├─ 존재 → 기존 고객 반환
+│
+└─ 미존재 → 신규 고객 생성
+   ├─ customers 테이블 INSERT
+   │  - name: channel_username || "Unknown"
+   │  - language: 채널에서 감지된 언어
+   │  - country: 국가 (있다면)
+   │  - profile_image_url: 프로필 사진
+   │
+   └─ customer_channels 테이블 INSERT
+      - customer_id: 신규 생성된 ID
+      - channel_account_id
+      - channel_user_id
+      - channel_username
+```
+
+**자동 업데이트:**
+- 관심시술: `POST /api/customers/[id]/analyze` (대화 분석)
+- 고민: 동일 API로 자동 감지
+- 태그: 대화 내용 기반 자동 태깅
+- 메모: 에이전트가 수동 작성
+
+##### 5. 사이드바 메뉴 추가
+
+**파일:** `/components/layout/sidebar.tsx`
+
+**변경 내용:**
+```typescript
+// 아이콘 추가
+import { UserCircle } from "lucide-react";
+
+// 메뉴 항목 추가 (통합 인박스 다음)
+{
+  name: "고객 관리",
+  href: "/customers",
+  icon: UserCircle,
+},
+```
+
+**메뉴 순서:**
+1. 대시보드
+2. 통합 인박스
+3. **고객 관리** ← NEW
+4. 채널 관리
+5. 거래처 관리
+6. 지식베이스
+7. 담당자 관리
+8. 에스컬레이션
+9. 분석/리포트
+10. 설정
+
+##### 6. 주요 기능
+
+**검색:**
+- 고객 이름, 국가, 언어
+- 관심시술 키워드
+- 고민 키워드
+- 메모 내용
+- 300ms 디바운싱 적용
+
+**필터:**
+- 전체 태그 (all)
+- 상담 상태별 (consultation:*)
+- 고객 특성별 (customer:*)
+- 문의 유형별 (type:*)
+
+**정렬:**
+- 가입일 (created_at) - 기본값
+- 최근 접촉 (last_contact)
+- 이름 (name)
+- 오름차순 / 내림차순 토글
+
+**통계 패널:**
+- 총 고객 수
+- 총 대화 수
+- 총 메시지 수
+- 예약 확정 고객 수
+
+**커밋:** `4f8ecda` - "Add comprehensive customer management feature"
+
+---
+
+### 26.2 파일 변경 사항
+
+#### 신규 파일 (2개)
+1. `/app/(dashboard)/customers/page.tsx` - 고객 관리 페이지 (673 lines)
+2. `/app/api/customers/route.ts` - 고객 목록 API (160 lines)
+
+#### 수정 파일 (2개)
+1. `/app/api/conversations/[id]/ai-suggest/route.ts`
+   - Line 113-115: original/korean 필드 스왑
+   - 번역 표시 오류 수정
+
+2. `/app/(dashboard)/inbox/page.tsx`
+   - Line 2845+: 메시지 카운트 카드 추가
+   - 수신/발신 메시지 실시간 표시
+
+3. `/components/layout/sidebar.tsx`
+   - UserCircle 아이콘 import
+   - "고객 관리" 메뉴 항목 추가
+
+---
+
+### 26.3 배포 상태
+
+#### 완료된 커밋 (3개)
+1. `247c889` - AI 번역 표시 수정
+2. `7a2ea1b` - 실시간 메시지 카운트 추가
+3. `4f8ecda` - 종합 고객 관리 기능
+
+#### GitHub Push
+- ✅ 모든 변경사항 main 브랜치 푸시 완료
+- ✅ Vercel 자동 배포 트리거
+
+#### 프로덕션 검증 (대기 중)
+- ⏳ Vercel 빌드 진행 중
+- ⏳ AI 번역 표시 확인 필요
+- ⏳ 메시지 카운트 동작 확인 필요
+- ⏳ 고객 관리 페이지 접근 확인 필요
+
+---
+
+### 26.4 주요 학습 사항
+
+#### RAG Pipeline 응답 구조
+- `response`: LLM이 생성한 원본 응답 (고객 언어)
+- `translatedResponse`: 에이전트를 위한 번역 (한국어)
+- 프론트엔드 표시 시 필드명과 실제 의미 일치 확인 필수
+
+#### Real-time State 기반 UI
+- React state (`dbMessages`)를 필터링하여 실시간 카운트
+- 대화 전환 시 자동 재계산 (useEffect 불필요)
+- 색상 코딩으로 방향성 명확히 표시
+
+#### 고객 데이터 통합 전략
+- 여러 테이블 JOIN (customers, conversations, messages, customer_channels)
+- 통계 데이터는 백엔드에서 미리 계산 (프론트엔드 부담 감소)
+- 메타데이터 JSONB로 유연한 확장 가능
+- 태그 prefix 패턴으로 카테고리 분류 (consultation:, customer:, type:)
+
+#### Auto-Registration Pattern
+- Webhook 수신 시 `getOrCreateCustomer()` 호출
+- channel_user_id 기준 고객 식별
+- 신규 고객 자동 생성 + 초기 프로필 설정
+- 대화 내용 분석으로 점진적 프로필 보강
+

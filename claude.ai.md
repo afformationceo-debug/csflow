@@ -1363,3 +1363,205 @@ outboundContent = translatedContent || content  // 텍스트만
 - ✅ 모든 페이지 즉시 로딩
 - ✅ RAG 로그 보안 확인
 
+
+---
+
+## 22. AI 번역 + 메시지 카운트 + 고객 관리 (2026-01-29)
+
+### 이슈 #5: AI 번역 표시 오류 ✅
+
+**문제:** AI 제안에서 영어가 한국어 섹션에 표시
+- "고객 언어 (EN)": 영어 (정상)
+- "한국어 의미": 영어 (❌ 번역 안됨)
+
+**원인:** `/api/conversations/[id]/ai-suggest/route.ts` (line 113-115)
+```typescript
+// ❌ Before
+original: ragResult.translatedResponse,  // 한국어
+korean: ragResult.response,              // 영어
+
+// ✅ After
+original: ragResult.response,                            // 영어
+korean: ragResult.translatedResponse || ragResult.response,  // 한국어
+```
+
+**RAG Pipeline:**
+- `response` = 고객 언어 응답 (EN)
+- `translatedResponse` = 한국어 번역
+
+**커밋:** `247c889`
+
+---
+
+### 이슈 #6: 실시간 메시지 카운트 ✅
+
+**구현:** 인박스 우측 패널에 수신/발신 메시지 개수 표시
+
+```tsx
+<div className="grid grid-cols-2 gap-2">
+  <div className="bg-blue-500/5 border border-blue-500/10">
+    <p>수신 메시지</p>
+    <p>{dbMessages.filter(m => m.direction === "inbound").length}</p>
+  </div>
+  <div className="bg-green-500/5 border border-green-500/10">
+    <p>발신 메시지</p>
+    <p>{dbMessages.filter(m => m.direction === "outbound").length}</p>
+  </div>
+</div>
+```
+
+**특징:**
+- 실시간 업데이트 (`dbMessages` state)
+- 색상 코딩 (수신=파란색, 발신=초록색)
+- 대화 전환 시 자동 재계산
+
+**커밋:** `7a2ea1b`
+
+---
+
+### 이슈 #7: 고객 관리 기능 ✅
+
+#### 신규 페이지: `/customers`
+
+**기능:**
+- 테이블 뷰 (모든 고객 정보)
+- 검색 (이름/국가/관심시술/고민)
+- 필터 (태그별)
+- 정렬 (이름/가입일/최근 접촉)
+- 통계 (고객/대화/메시지/예약 확정)
+
+#### API: `GET /api/customers`
+
+**주요 로직:**
+1. customers + customer_channels JOIN
+2. conversations 통계 계산 (총 대화, 첫/최근 접촉)
+3. messages 통계 계산 (총/수신/발신 메시지)
+4. 태그 파싱 (consultation/customer/type)
+5. 메타데이터 추출 (관심시술/고민/메모/예약상태)
+
+**응답 예시:**
+```json
+{
+  "customers": [{
+    "id": "...",
+    "name": "김환자",
+    "country": "Japan",
+    "language": "ja",
+    "customer_channels": [...],
+    "stats": {
+      "totalConversations": 3,
+      "totalMessages": 47,
+      "inboundMessages": 25,
+      "outboundMessages": 22,
+      "firstContact": "2026-01-20",
+      "lastContact": "2026-01-29"
+    },
+    "consultationTag": "prospect",
+    "customerTags": ["VIP", "리피터"],
+    "typeTags": ["가격문의"],
+    "interestedProcedures": ["라식", "백내장"],
+    "concerns": ["비용", "회복기간"],
+    "memo": "일본어 통역 필요",
+    "bookingStatus": "pending"
+  }]
+}
+```
+
+#### 테이블 컬럼
+
+| 컬럼 | 데이터 소스 |
+|------|------------|
+| 고객 | name, profile_image_url |
+| 위치/언어 | country, language |
+| 채널 | customer_channels |
+| 상담 상태 | tags (consultation:*) |
+| 예약 상태 | metadata.booking_status |
+| 대화 수 | COUNT(conversations) |
+| 메시지 | COUNT(messages) ↓↑ |
+| 관심시술 | metadata.interested_procedures |
+| 고민 | metadata.concerns |
+| 첫/최근 접촉 | MIN/MAX(conversations) |
+| 메모 | metadata.memo |
+
+#### 자동 고객 등록
+
+```
+Webhook 수신
+  ↓
+getOrCreateCustomer(channel_account_id, channel_user_id)
+  ↓
+├─ 존재 → 기존 고객 반환
+└─ 미존재 → 신규 생성
+   ├─ customers INSERT
+   └─ customer_channels INSERT
+```
+
+**자동 업데이트:**
+- 관심시술/고민: `POST /api/customers/[id]/analyze` (대화 분석)
+- 태그: 내용 기반 자동 태깅
+- 메모: 에이전트 수동 작성
+
+#### 사이드바 메뉴
+
+```typescript
+{
+  name: "고객 관리",
+  href: "/customers",
+  icon: UserCircle,
+}
+```
+
+**위치:** 통합 인박스 다음
+
+**커밋:** `4f8ecda`
+
+---
+
+### 파일 변경
+
+**신규 (2개):**
+- `/app/(dashboard)/customers/page.tsx` (673 lines)
+- `/app/api/customers/route.ts` (160 lines)
+
+**수정 (3개):**
+- `/app/api/conversations/[id]/ai-suggest/route.ts` - 번역 필드 스왑
+- `/app/(dashboard)/inbox/page.tsx` - 메시지 카운트 추가
+- `/components/layout/sidebar.tsx` - 고객 관리 메뉴 추가
+
+---
+
+### 배포
+
+**커밋 (3개):**
+1. `247c889` - AI 번역 수정
+2. `7a2ea1b` - 메시지 카운트
+3. `4f8ecda` - 고객 관리
+
+**GitHub:** ✅ Push 완료 (main 브랜치)
+**Vercel:** ⏳ 자동 배포 진행 중
+
+---
+
+### 학습 포인트
+
+#### RAG Response 구조
+- `response` = 고객 언어 (원본)
+- `translatedResponse` = 한국어 (에이전트용)
+
+#### Real-time UI
+- React state 직접 필터링
+- 대화 전환 시 자동 재계산
+- 색상 코딩으로 명확한 방향성
+
+#### 고객 데이터 통합
+- 다중 테이블 JOIN (customers/conversations/messages/channels)
+- 백엔드 통계 사전 계산
+- JSONB 메타데이터 유연성
+- 태그 prefix 패턴 (consultation:/customer:/type:)
+
+#### Auto-Registration
+- Webhook → `getOrCreateCustomer()`
+- channel_user_id 기준 식별
+- 신규 고객 자동 생성
+- 대화 분석으로 점진적 보강
+
