@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -287,19 +287,28 @@ function TabButton({
   );
 }
 
-// ─── Mock Data ─────────────────────────────────────────────────────
-const connectedChannelsSummary = [
-  { type: "LINE", count: 3, icon: MessageSquare, color: "bg-[#06C755]", active: true },
-  { type: "카카오톡", count: 2, icon: MessageSquare, color: "bg-[#FEE500]", active: true },
-  { type: "Facebook", count: 1, icon: Facebook, color: "bg-[#1877F2]", active: true },
-  { type: "Instagram", count: 2, icon: Instagram, color: "bg-gradient-to-r from-[#f09433] to-[#bc1888]", active: true },
-  { type: "WhatsApp", count: 1, icon: Phone, color: "bg-[#25D366]", active: false },
-];
+// ─── Channel Icon Map ──────────────────────────────────────────────
+const channelIconMap: Record<string, React.ElementType> = {
+  line: MessageSquare,
+  kakao: MessageSquare,
+  facebook: Facebook,
+  instagram: Instagram,
+  whatsapp: Phone,
+  wechat: MessageSquare,
+};
 
 // ─── Main Component ────────────────────────────────────────────────
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("general");
   const [showToast, setShowToast] = useState(false);
+
+  // Tenant ID (loaded from API)
+  const [tenantId, setTenantId] = useState<string | null>(null);
+
+  // Connected channels (loaded from API)
+  const [connectedChannelsSummary, setConnectedChannelsSummary] = useState<
+    { type: string; channelType?: string; count: number; color: string; active: boolean }[]
+  >([]);
 
   // General settings
   const [platformName, setPlatformName] = useState("CS Command Center");
@@ -334,7 +343,7 @@ export default function SettingsPage() {
   ]);
 
   // Translation settings
-  const [deeplConnected] = useState(true);
+  const [deeplConnected, setDeeplConnected] = useState(false);
   const [autoTranslation, setAutoTranslation] = useState(true);
   const [defaultTranslationDirection, setDefaultTranslationDirection] = useState("ko-en");
   const [supportedLanguages, setSupportedLanguages] = useState([
@@ -348,18 +357,117 @@ export default function SettingsPage() {
   ]);
 
   // Notification channel settings
-  const [slackConnected] = useState(true);
-  const [slackToken] = useState("xoxb-****-****-****-abcdef1234");
+  const [slackConnected, setSlackConnected] = useState(false);
+  const [slackToken, setSlackToken] = useState("");
   const [slackDefaultChannel, setSlackDefaultChannel] = useState("#cs-alerts");
   const [escalationAlert, setEscalationAlert] = useState(true);
   const [bookingConfirmAlert, setBookingConfirmAlert] = useState(true);
   const [noResponseAlert, setNoResponseAlert] = useState(true);
   const [noResponseThreshold, setNoResponseThreshold] = useState("24");
 
-  // Save handler
-  const handleSave = () => {
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+  // ─── Load Settings from API ──────────────────────────────────────
+  const loadSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings");
+      const data = await res.json();
+
+      if (data.settings) {
+        const s = data.settings;
+        if (s.tenantId) setTenantId(s.tenantId);
+        if (s.platformName) setPlatformName(s.platformName);
+        if (s.defaultLanguage) setDefaultLanguage(s.defaultLanguage);
+        if (s.timezone) setTimezone(s.timezone);
+        if (s.darkMode !== undefined) setDarkMode(s.darkMode);
+        if (s.emailNotification !== undefined) setEmailNotification(s.emailNotification);
+        if (s.browserNotification !== undefined) setBrowserNotification(s.browserNotification);
+        if (s.soundNotification !== undefined) setSoundNotification(s.soundNotification);
+
+        // AI settings
+        if (s.ai) {
+          if (s.ai.model) setAiModel(s.ai.model);
+          if (s.ai.confidenceThreshold !== undefined) setConfidenceThreshold(s.ai.confidenceThreshold);
+          if (s.ai.maxResponseLength !== undefined) setMaxResponseLength(String(s.ai.maxResponseLength));
+          if (s.ai.autoResponseEnabled !== undefined) setAutoResponseEnabled(s.ai.autoResponseEnabled);
+          if (s.ai.systemPrompt) setSystemPrompt(s.ai.systemPrompt);
+          if (s.ai.escalationKeywords) setEscalationKeywords(s.ai.escalationKeywords);
+          if (s.ai.forbiddenTopics) setForbiddenTopics(s.ai.forbiddenTopics);
+        }
+
+        // Translation settings
+        if (s.translation) {
+          if (s.translation.deeplConnected !== undefined) setDeeplConnected(s.translation.deeplConnected);
+          if (s.translation.autoTranslation !== undefined) setAutoTranslation(s.translation.autoTranslation);
+          if (s.translation.defaultDirection) setDefaultTranslationDirection(s.translation.defaultDirection);
+          if (s.translation.supportedLanguages) setSupportedLanguages(s.translation.supportedLanguages);
+        }
+
+        // Notification settings
+        if (s.notifications) {
+          if (s.notifications.slackConnected !== undefined) setSlackConnected(s.notifications.slackConnected);
+          if (s.notifications.slackToken) setSlackToken(s.notifications.slackToken);
+          if (s.notifications.slackDefaultChannel) setSlackDefaultChannel(s.notifications.slackDefaultChannel);
+          if (s.notifications.escalationAlert !== undefined) setEscalationAlert(s.notifications.escalationAlert);
+          if (s.notifications.bookingConfirmAlert !== undefined) setBookingConfirmAlert(s.notifications.bookingConfirmAlert);
+          if (s.notifications.noResponseAlert !== undefined) setNoResponseAlert(s.notifications.noResponseAlert);
+          if (s.notifications.noResponseThreshold !== undefined) setNoResponseThreshold(String(s.notifications.noResponseThreshold));
+        }
+      }
+
+      if (data.channels) {
+        setConnectedChannelsSummary(data.channels);
+      }
+    } catch (error) {
+      console.error("Failed to load settings:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  // ─── Save Handler ─────────────────────────────────────────────────
+  const handleSave = async () => {
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          platformName,
+          defaultLanguage,
+          timezone,
+          darkMode,
+          emailNotification,
+          browserNotification,
+          soundNotification,
+          ai: {
+            model: aiModel,
+            confidenceThreshold,
+            maxResponseLength: parseInt(maxResponseLength),
+            autoResponseEnabled,
+            systemPrompt,
+            escalationKeywords,
+            forbiddenTopics,
+          },
+          translation: {
+            autoTranslation,
+            defaultDirection: defaultTranslationDirection,
+            supportedLanguages,
+          },
+          notifications: {
+            slackDefaultChannel,
+            escalationAlert,
+            bookingConfirmAlert,
+            noResponseAlert,
+            noResponseThreshold: parseInt(noResponseThreshold),
+          },
+        }),
+      });
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
   };
 
   // Language toggle handler
@@ -1132,7 +1240,7 @@ export default function SettingsPage() {
                 <CardContent className="relative pt-4">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {connectedChannelsSummary.map((channel, index) => {
-                      const Icon = channel.icon;
+                      const Icon = channelIconMap[channel.channelType || channel.type.toLowerCase()] || MessageSquare;
                       return (
                         <motion.div
                           key={channel.type}

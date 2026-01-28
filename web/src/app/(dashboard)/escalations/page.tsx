@@ -85,227 +85,7 @@ interface Escalation {
   slaDeadline: string;
 }
 
-// ────────────────────────────────────────────────────────────
-// Mock Data
-// ────────────────────────────────────────────────────────────
-
-const teamMembers: TeamMember[] = [
-  {
-    id: "tm-1",
-    name: "박상담사",
-    avatar: null,
-    role: "시니어 상담사",
-    activeEscalations: 2,
-    status: "online",
-  },
-  {
-    id: "tm-2",
-    name: "김매니저",
-    avatar: null,
-    role: "CS 매니저",
-    activeEscalations: 1,
-    status: "online",
-  },
-  {
-    id: "tm-3",
-    name: "이상담사",
-    avatar: null,
-    role: "상담사",
-    activeEscalations: 3,
-    status: "away",
-  },
-  {
-    id: "tm-4",
-    name: "정상담사",
-    avatar: null,
-    role: "주니어 상담사",
-    activeEscalations: 0,
-    status: "online",
-  },
-  {
-    id: "tm-5",
-    name: "최팀장",
-    avatar: null,
-    role: "팀장",
-    activeEscalations: 1,
-    status: "offline",
-  },
-];
-
-const mockEscalations: Escalation[] = [
-  {
-    id: "1",
-    conversationId: "conv-1",
-    customer: {
-      name: "김환자",
-      country: "일본",
-      avatar: null,
-      email: "kim@example.jp",
-      phone: "+81-90-1234-5678",
-    },
-    tenant: { name: "힐링안과" },
-    channel: "line",
-    priority: "critical",
-    status: "open",
-    reason: "긴급 키워드 감지: 통증이 심해요",
-    aiConfidence: 0.45,
-    lastMessage:
-      "수술 후에 눈이 너무 아파요. 통증이 심해서 잠을 못자겠어요.",
-    createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-    assignedTo: null,
-    slaDeadline: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "2",
-    conversationId: "conv-2",
-    customer: {
-      name: "이환자",
-      country: "중국",
-      avatar: null,
-      email: "lee@example.cn",
-    },
-    tenant: { name: "스마일치과" },
-    channel: "whatsapp",
-    priority: "high",
-    status: "in_progress",
-    reason: "신뢰도 미달: 52.3%",
-    aiConfidence: 0.52,
-    lastMessage:
-      "임플란트 수술 가격이랑 기간이 어떻게 되나요? 다른 병원 견적이랑 비교하고 싶어요.",
-    createdAt: new Date(Date.now() - 55 * 60 * 1000).toISOString(),
-    assignedTo: teamMembers[0],
-    slaDeadline: new Date(Date.now() + 35 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "3",
-    conversationId: "conv-3",
-    customer: {
-      name: "박환자",
-      country: "베트남",
-      avatar: null,
-      phone: "+84-912-345-678",
-    },
-    tenant: { name: "서울성형" },
-    channel: "instagram",
-    priority: "medium",
-    status: "in_progress",
-    reason: "가격 협상",
-    aiConfidence: 0.68,
-    lastMessage:
-      "다른 병원에서는 더 싸게 해준다던데, 할인 가능한가요?",
-    createdAt: new Date(Date.now() - 2.5 * 60 * 60 * 1000).toISOString(),
-    assignedTo: teamMembers[1],
-    slaDeadline: new Date(Date.now() + 90 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "4",
-    conversationId: "conv-4",
-    customer: {
-      name: "최환자",
-      country: "미국",
-      avatar: null,
-      email: "choi@example.com",
-    },
-    tenant: { name: "힐링안과" },
-    channel: "facebook",
-    priority: "low",
-    status: "resolved",
-    reason: "복잡한 의료 문의",
-    aiConfidence: 0.71,
-    lastMessage:
-      "라식과 라섹 중에 뭐가 더 좋은가요? 근시가 심한 편이에요.",
-    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    assignedTo: teamMembers[0],
-    resolvedAt: new Date(Date.now() - 3.5 * 60 * 60 * 1000).toISOString(),
-    slaDeadline: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "5",
-    conversationId: "conv-5",
-    customer: {
-      name: "田中太郎",
-      country: "일본",
-      avatar: null,
-      email: "tanaka@example.jp",
-    },
-    tenant: { name: "강남뷰티" },
-    channel: "line",
-    priority: "critical",
-    status: "open",
-    reason: "수술 부작용 보고",
-    aiConfidence: 0.32,
-    lastMessage:
-      "코 수술 후 3일째인데 부기가 너무 심하고 피가 나요. 긴급합니다.",
-    createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-    assignedTo: null,
-    slaDeadline: new Date(Date.now() + 18 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "6",
-    conversationId: "conv-6",
-    customer: {
-      name: "Nguyen Van",
-      country: "베트남",
-      avatar: null,
-      phone: "+84-905-678-901",
-    },
-    tenant: { name: "서울성형" },
-    channel: "kakao",
-    priority: "high",
-    status: "open",
-    reason: "결제 문제 - 환불 요청",
-    aiConfidence: 0.48,
-    lastMessage:
-      "예약금을 냈는데 취소하고 싶어요. 환불은 어떻게 하나요?",
-    createdAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-    assignedTo: null,
-    slaDeadline: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "7",
-    conversationId: "conv-7",
-    customer: {
-      name: "王小明",
-      country: "중국",
-      avatar: null,
-      email: "wang@example.cn",
-    },
-    tenant: { name: "스마일치과" },
-    channel: "wechat",
-    priority: "medium",
-    status: "in_progress",
-    reason: "통역 필요 - 중국어 전문 상담",
-    aiConfidence: 0.55,
-    lastMessage:
-      "我想了解一下牙齿矫正的费用和时间, 你们有中文客服吗?",
-    createdAt: new Date(Date.now() - 1.5 * 60 * 60 * 1000).toISOString(),
-    assignedTo: teamMembers[2],
-    slaDeadline: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "8",
-    conversationId: "conv-8",
-    customer: {
-      name: "Smith John",
-      country: "미국",
-      avatar: null,
-      email: "smith@example.com",
-      phone: "+1-555-0123",
-    },
-    tenant: { name: "힐링안과" },
-    channel: "whatsapp",
-    priority: "low",
-    status: "resolved",
-    reason: "일반 문의 - AI 한도 초과",
-    aiConfidence: 0.78,
-    lastMessage:
-      "What are your operating hours? Can I visit without an appointment?",
-    createdAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-    assignedTo: teamMembers[3],
-    resolvedAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
-    slaDeadline: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-  },
-];
+// Mock data removed -- data is now fetched from /api/escalations
 
 // ────────────────────────────────────────────────────────────
 // Helpers
@@ -573,14 +353,16 @@ function TeamMemberStatusDot({ status }: { status: TeamMember["status"] }) {
 function AssignDialog({
   escalation,
   onAssign,
+  teamMembersList,
 }: {
   escalation: Escalation;
   onAssign: (escalationId: string, member: TeamMember) => void;
+  teamMembersList: TeamMember[];
 }) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredMembers = teamMembers.filter((m) =>
+  const filteredMembers = teamMembersList.filter((m) =>
     m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     m.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -695,11 +477,13 @@ function EscalationCard({
   index,
   onAssign,
   onStatusChange,
+  teamMembersList,
 }: {
   escalation: Escalation;
   index: number;
   onAssign: (escalationId: string, member: TeamMember) => void;
   onStatusChange: (escalationId: string, newStatus: string) => void;
+  teamMembersList: TeamMember[];
 }) {
   const priorityBarColors: Record<string, string> = {
     critical: "bg-gradient-to-b from-red-500 to-red-600",
@@ -821,6 +605,7 @@ function EscalationCard({
                         <AssignDialog
                           escalation={escalation}
                           onAssign={onAssign}
+                          teamMembersList={teamMembersList}
                         />
                       ) : (
                         <Button
@@ -953,12 +738,39 @@ function StatCard({
 // ────────────────────────────────────────────────────────────
 
 export default function EscalationsPage() {
-  const [escalations, setEscalations] = useState<Escalation[]>(mockEscalations);
+  const [escalations, setEscalations] = useState<Escalation[]>([]);
+  const [teamMembersList, setTeamMembersList] = useState<TeamMember[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [tenantFilter, setTenantFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Load escalations from API
+  const loadEscalations = useCallback(async () => {
+    try {
+      const res = await fetch("/api/escalations");
+      const data = await res.json();
+      if (data.escalations) {
+        setEscalations(data.escalations);
+      }
+      if (data.teamMembers) {
+        setTeamMembersList(data.teamMembers);
+      }
+    } catch (error) {
+      console.error("Failed to load escalations:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Initial load + auto-refresh every 30 seconds
+  useEffect(() => {
+    loadEscalations();
+    const interval = setInterval(loadEscalations, 30000);
+    return () => clearInterval(interval);
+  }, [loadEscalations]);
 
   // Derive unique tenants
   const tenants = useMemo(() => {
@@ -1055,7 +867,8 @@ export default function EscalationsPage() {
 
   // Handlers
   const handleAssign = useCallback(
-    (escalationId: string, member: TeamMember) => {
+    async (escalationId: string, member: TeamMember) => {
+      // Optimistic update
       setEscalations((prev) =>
         prev.map((esc) =>
           esc.id === escalationId
@@ -1063,12 +876,29 @@ export default function EscalationsPage() {
             : esc
         )
       );
+
+      try {
+        await fetch("/api/escalations", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: escalationId,
+            assigned_to: member.id,
+          }),
+        });
+        // Refresh from server to get authoritative state
+        loadEscalations();
+      } catch (error) {
+        console.error("Failed to assign escalation:", error);
+        loadEscalations(); // Revert on error
+      }
     },
-    []
+    [loadEscalations]
   );
 
   const handleStatusChange = useCallback(
-    (escalationId: string, newStatus: string) => {
+    async (escalationId: string, newStatus: string) => {
+      // Optimistic update
       setEscalations((prev) =>
         prev.map((esc) => {
           if (esc.id !== escalationId) return esc;
@@ -1084,8 +914,24 @@ export default function EscalationsPage() {
           return { ...esc, ...updates };
         })
       );
+
+      try {
+        await fetch("/api/escalations", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: escalationId,
+            status: newStatus,
+          }),
+        });
+        // Refresh from server to get authoritative state
+        loadEscalations();
+      } catch (error) {
+        console.error("Failed to update escalation status:", error);
+        loadEscalations(); // Revert on error
+      }
     },
-    []
+    [loadEscalations]
   );
 
   const activeFilterCount = [
@@ -1297,23 +1143,54 @@ export default function EscalationsPage() {
         </CardContent>
       </Card>
 
-      {/* Escalation List */}
-      <div className="space-y-3">
-        <AnimatePresence mode="popLayout">
-          {filteredEscalations.map((esc, index) => (
-            <EscalationCard
-              key={esc.id}
-              escalation={esc}
-              index={index}
-              onAssign={handleAssign}
-              onStatusChange={handleStatusChange}
-            />
+      {/* Loading State */}
+      {isLoading && (
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="border-0 shadow-sm rounded-2xl overflow-hidden">
+              <CardContent className="p-5">
+                <div className="flex items-start gap-4 animate-pulse">
+                  <div className="h-10 w-10 rounded-full bg-muted" />
+                  <div className="flex-1 space-y-3">
+                    <div className="h-4 w-48 rounded bg-muted" />
+                    <div className="h-3 w-full rounded bg-muted" />
+                    <div className="flex gap-2">
+                      <div className="h-5 w-16 rounded-full bg-muted" />
+                      <div className="h-5 w-16 rounded-full bg-muted" />
+                      <div className="h-5 w-32 rounded bg-muted" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="h-5 w-20 rounded-full bg-muted" />
+                    <div className="h-3 w-16 rounded bg-muted" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ))}
-        </AnimatePresence>
-      </div>
+        </div>
+      )}
+
+      {/* Escalation List */}
+      {!isLoading && (
+        <div className="space-y-3">
+          <AnimatePresence mode="popLayout">
+            {filteredEscalations.map((esc, index) => (
+              <EscalationCard
+                key={esc.id}
+                escalation={esc}
+                index={index}
+                onAssign={handleAssign}
+                onStatusChange={handleStatusChange}
+                teamMembersList={teamMembersList}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Empty State */}
-      {filteredEscalations.length === 0 && (
+      {!isLoading && filteredEscalations.length === 0 && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}

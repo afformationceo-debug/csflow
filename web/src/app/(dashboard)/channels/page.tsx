@@ -255,6 +255,13 @@ const itemVariants = {
 
 // ── 메인 컴포넌트 ──
 
+interface Tenant {
+  id: string;
+  name: string;
+  display_name: string;
+  specialty: string | null;
+}
+
 export default function ChannelsPage() {
   const [channels, setChannels] = useState<ConnectedChannel[]>(MOCK_CHANNELS);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -266,10 +273,58 @@ export default function ChannelsPage() {
   const [newBotBasicId, setNewBotBasicId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>("");
 
+  // Fetch tenants
   useEffect(() => {
-    fetchChannels().then(setChannels);
+    async function loadTenants() {
+      try {
+        const res = await fetch("/api/tenants");
+        if (res.ok) {
+          const data = await res.json();
+          const list: Tenant[] = data.tenants || [];
+          setTenants(list);
+          if (list.length > 0) {
+            setSelectedTenantId(list[0].id);
+          }
+        }
+      } catch {
+        // Fallback: use demo tenant
+        setSelectedTenantId("demo-tenant-id");
+      }
+    }
+    loadTenants();
   }, []);
+
+  // Fetch channels when tenant changes
+  useEffect(() => {
+    if (!selectedTenantId) return;
+    async function loadChannels() {
+      try {
+        const response = await fetch(`/api/channels?tenantId=${selectedTenantId}`);
+        if (!response.ok) throw new Error("API error");
+        const data = await response.json();
+        if (data.channels && data.channels.length > 0) {
+          setChannels(data.channels.map((ch: Record<string, unknown>) => ({
+            id: ch.id as string,
+            channelType: ch.channelType as ChannelType,
+            accountName: ch.accountName as string,
+            accountId: ch.accountId as string,
+            isActive: ch.isActive as boolean,
+            messageCount: (ch.messageCount as number) ?? 0,
+            lastActiveAt: (ch.lastActiveAt as string) ?? "-",
+            createdAt: ch.createdAt as string,
+          })));
+        } else {
+          setChannels(MOCK_CHANNELS);
+        }
+      } catch {
+        setChannels(MOCK_CHANNELS);
+      }
+    }
+    loadChannels();
+  }, [selectedTenantId]);
 
   // 통계
   const totalChannels = channels.length;
@@ -319,7 +374,7 @@ export default function ChannelsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenantId: "demo-tenant-id",
+          tenantId: selectedTenantId || "demo-tenant-id",
           channelType: newChannelType,
           accountName: newAccountName,
           accountId: newAccountId,
@@ -389,6 +444,23 @@ export default function ChannelsPage() {
             </div>
           </div>
         </div>
+        <div className="flex items-center gap-3">
+          {/* 거래처 선택 */}
+          {tenants.length > 0 && (
+            <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
+              <SelectTrigger className="w-[200px] rounded-xl">
+                <SelectValue placeholder="거래처 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                {tenants.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                    {t.specialty ? ` (${t.specialty})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2 shadow-sm rounded-xl">
@@ -499,6 +571,7 @@ export default function ChannelsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* ── 요약 통계 ── */}

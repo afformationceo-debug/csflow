@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,95 +65,7 @@ interface TeamMember {
   };
 }
 
-// --- Mock Data ---
-const mockTeamMembers: TeamMember[] = [
-  {
-    id: "1",
-    name: "김관리자",
-    email: "kimadmin@csflow.kr",
-    role: "admin",
-    status: "online",
-    avatar: null,
-    tenants: ["전체 거래처"],
-    performance: {
-      todayResolved: 45,
-      avgResponseTime: "32분",
-      satisfaction: "4.9",
-    },
-  },
-  {
-    id: "2",
-    name: "박매니저",
-    email: "parkmanager@csflow.kr",
-    role: "manager",
-    status: "online",
-    avatar: null,
-    tenants: ["힐링안과", "스마일치과"],
-    performance: {
-      todayResolved: 38,
-      avgResponseTime: "41분",
-      satisfaction: "4.7",
-    },
-  },
-  {
-    id: "3",
-    name: "이상담사",
-    email: "lee@csflow.kr",
-    role: "agent",
-    status: "online",
-    avatar: null,
-    tenants: ["힐링안과"],
-    performance: {
-      todayResolved: 29,
-      avgResponseTime: "38분",
-      satisfaction: "4.6",
-    },
-  },
-  {
-    id: "4",
-    name: "최상담사",
-    email: "choi@csflow.kr",
-    role: "agent",
-    status: "away",
-    avatar: null,
-    tenants: ["서울성형", "강남피부과"],
-    performance: {
-      todayResolved: 24,
-      avgResponseTime: "45분",
-      satisfaction: "4.5",
-    },
-  },
-  {
-    id: "5",
-    name: "김코디",
-    email: "kimcoord@csflow.kr",
-    role: "coordinator",
-    status: "online",
-    avatar: null,
-    tenants: ["힐링안과"],
-    performance: {
-      todayResolved: 18,
-      avgResponseTime: "25분",
-      satisfaction: "4.8",
-    },
-  },
-  {
-    id: "6",
-    name: "정상담사",
-    email: "jung@csflow.kr",
-    role: "agent",
-    status: "offline",
-    avatar: null,
-    tenants: ["스마일치과"],
-    performance: {
-      todayResolved: 0,
-      avgResponseTime: "-",
-      satisfaction: "-",
-    },
-  },
-];
-
-const allTenants = ["힐링안과", "스마일치과", "서울성형", "강남피부과"];
+// --- Data is now fetched from /api/team ---
 
 const roleConfig: Record<
   Role,
@@ -252,13 +164,7 @@ const rolePermissions = [
   },
 ];
 
-// --- Summary Stats ---
-const summaryStats = {
-  totalMembers: mockTeamMembers.length,
-  activeMembers: mockTeamMembers.filter((m) => m.status === "online").length,
-  todayResolved: mockTeamMembers.reduce((sum, m) => sum + m.performance.todayResolved, 0),
-  avgResponseTime: "36분",
-};
+// --- Summary Stats is now computed dynamically from fetched data ---
 
 // --- Framer Motion Variants ---
 const containerVariants = {
@@ -340,7 +246,59 @@ export default function TeamPage() {
   const [inviteRole, setInviteRole] = useState<string>("");
   const [inviteTenants, setInviteTenants] = useState<string[]>([]);
 
-  const filteredMembers = mockTeamMembers.filter((member) => {
+  // --- Real data state ---
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [allTenants, setAllTenants] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadTeamData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/team");
+      const data = await res.json();
+      if (data.members) {
+        setTeamMembers(data.members);
+      }
+      if (data.tenants) {
+        setAllTenants(data.tenants);
+      }
+    } catch (error) {
+      console.error("Failed to load team data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTeamData();
+  }, [loadTeamData]);
+
+  // --- Computed summary stats from real data ---
+  const summaryStats = useMemo(() => {
+    const membersWithResponseTime = teamMembers.filter(
+      (m) => m.performance.avgResponseTime !== "-"
+    );
+    // Compute average response time from members that have a value
+    let avgResponseTime = "0분";
+    if (membersWithResponseTime.length > 0) {
+      const totalMinutes = membersWithResponseTime.reduce((sum, m) => {
+        const parsed = parseInt(m.performance.avgResponseTime, 10);
+        return sum + (isNaN(parsed) ? 0 : parsed);
+      }, 0);
+      avgResponseTime = `${Math.round(totalMinutes / membersWithResponseTime.length)}분`;
+    }
+
+    return {
+      totalMembers: teamMembers.length,
+      activeMembers: teamMembers.filter((m) => m.status === "online").length,
+      todayResolved: teamMembers.reduce(
+        (sum, m) => sum + m.performance.todayResolved,
+        0
+      ),
+      avgResponseTime,
+    };
+  }, [teamMembers]);
+
+  const filteredMembers = teamMembers.filter((member) => {
     const matchesSearch =
       searchQuery === "" ||
       member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -661,127 +619,157 @@ export default function TeamPage() {
       </motion.div>
 
       {/* Team Member Grid */}
-      <motion.div
-        className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
-        variants={containerVariants}
-        initial="hidden"
-        animate="show"
-      >
-        {filteredMembers.map((member) => {
-          const rCfg = roleConfig[member.role];
-          const sCfg = statusConfig[member.status];
-          return (
-            <motion.div key={member.id} variants={itemVariants} whileHover={cardHover}>
-              <Card
-                className={`border-0 shadow-sm bg-gradient-to-br ${rCfg.gradientFrom} ${rCfg.gradientTo} card-3d rounded-2xl group relative overflow-hidden`}
-              >
-                <CardContent className="p-5">
-                  {/* Top Row: Avatar + Name + Status */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <Avatar className="h-11 w-11 shadow-sm">
-                          <AvatarFallback
-                            className={`${rCfg.bgColor} ${rCfg.color} font-bold text-sm`}
-                          >
-                            {member.name.slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span
-                          className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card ${sCfg.dotColor} ${member.status === "online" ? "live-dot" : ""}`}
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm">{member.name}</span>
-                          {getRoleBadge(member.role)}
+      {isLoading ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="border-0 shadow-sm rounded-2xl">
+              <CardContent className="p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-11 w-11 rounded-full bg-muted/50 animate-pulse" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 w-24 bg-muted/50 rounded animate-pulse" />
+                    <div className="h-3 w-36 bg-muted/50 rounded animate-pulse" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="h-5 w-16 bg-muted/50 rounded-full animate-pulse" />
+                  <div className="h-5 w-20 bg-muted/50 rounded-full animate-pulse" />
+                </div>
+                <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border/50">
+                  {[1, 2, 3].map((j) => (
+                    <div key={j} className="text-center space-y-1">
+                      <div className="h-3 w-12 bg-muted/50 rounded animate-pulse mx-auto" />
+                      <div className="h-5 w-8 bg-muted/50 rounded animate-pulse mx-auto" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <motion.div
+          className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+        >
+          {filteredMembers.map((member) => {
+            const rCfg = roleConfig[member.role];
+            const sCfg = statusConfig[member.status];
+            return (
+              <motion.div key={member.id} variants={itemVariants} whileHover={cardHover}>
+                <Card
+                  className={`border-0 shadow-sm bg-gradient-to-br ${rCfg.gradientFrom} ${rCfg.gradientTo} card-3d rounded-2xl group relative overflow-hidden`}
+                >
+                  <CardContent className="p-5">
+                    {/* Top Row: Avatar + Name + Status */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <Avatar className="h-11 w-11 shadow-sm">
+                            <AvatarFallback
+                              className={`${rCfg.bgColor} ${rCfg.color} font-bold text-sm`}
+                            >
+                              {member.name.slice(0, 2)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card ${sCfg.dotColor} ${member.status === "online" ? "live-dot" : ""}`}
+                          />
                         </div>
-                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                          {member.email}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm">{member.name}</span>
+                            {getRoleBadge(member.role)}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                            {member.email}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {/* Status + Tenants */}
+                    <div className="flex items-center gap-2 mb-4 flex-wrap">
+                      {getStatusIndicator(member.status)}
+                      <span className="text-muted-foreground/30">|</span>
+                      {member.tenants.map((tenant) => (
+                        <span
+                          key={tenant}
+                          className="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                        >
+                          {tenant}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Performance Stats Row */}
+                    <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border/50">
+                      <div className="text-center">
+                        <p className="text-[11px] text-muted-foreground font-medium mb-0.5">
+                          오늘 처리
+                        </p>
+                        <p className="text-base font-bold tabular-nums">
+                          {member.performance.todayResolved}
+                          <span className="text-[11px] font-medium text-muted-foreground ml-0.5">건</span>
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[11px] text-muted-foreground font-medium mb-0.5">
+                          응답시간
+                        </p>
+                        <p className="text-base font-bold tabular-nums">
+                          {member.performance.avgResponseTime}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[11px] text-muted-foreground font-medium mb-0.5">
+                          만족도
+                        </p>
+                        <p className="text-base font-bold tabular-nums flex items-center justify-center gap-0.5">
+                          {member.performance.satisfaction !== "-" && (
+                            <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
+                          )}
+                          {member.performance.satisfaction}
                         </p>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </div>
 
-                  {/* Status + Tenants */}
-                  <div className="flex items-center gap-2 mb-4 flex-wrap">
-                    {getStatusIndicator(member.status)}
-                    <span className="text-muted-foreground/30">|</span>
-                    {member.tenants.map((tenant) => (
-                      <span
-                        key={tenant}
-                        className="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                    {/* Actions Row */}
+                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/50">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1 rounded-lg text-xs h-8 bg-muted/50 hover:bg-muted"
                       >
-                        {tenant}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Performance Stats Row */}
-                  <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border/50">
-                    <div className="text-center">
-                      <p className="text-[11px] text-muted-foreground font-medium mb-0.5">
-                        오늘 처리
-                      </p>
-                      <p className="text-base font-bold tabular-nums">
-                        {member.performance.todayResolved}
-                        <span className="text-[11px] font-medium text-muted-foreground ml-0.5">건</span>
-                      </p>
+                        권한 편집
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1 rounded-lg text-xs h-8 text-muted-foreground hover:text-destructive hover:bg-destructive/5"
+                      >
+                        비활성화
+                      </Button>
                     </div>
-                    <div className="text-center">
-                      <p className="text-[11px] text-muted-foreground font-medium mb-0.5">
-                        응답시간
-                      </p>
-                      <p className="text-base font-bold tabular-nums">
-                        {member.performance.avgResponseTime}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[11px] text-muted-foreground font-medium mb-0.5">
-                        만족도
-                      </p>
-                      <p className="text-base font-bold tabular-nums flex items-center justify-center gap-0.5">
-                        {member.performance.satisfaction !== "-" && (
-                          <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
-                        )}
-                        {member.performance.satisfaction}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Actions Row */}
-                  <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/50">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1 rounded-lg text-xs h-8 bg-muted/50 hover:bg-muted"
-                    >
-                      권한 편집
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1 rounded-lg text-xs h-8 text-muted-foreground hover:text-destructive hover:bg-destructive/5"
-                    >
-                      비활성화
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          );
-        })}
-      </motion.div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </motion.div>
+      )}
 
       {/* Empty State */}
-      {filteredMembers.length === 0 && (
+      {!isLoading && filteredMembers.length === 0 && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -792,8 +780,14 @@ export default function TeamPage() {
               <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-muted/50 mx-auto mb-4">
                 <Users className="h-8 w-8 text-muted-foreground/40" />
               </div>
-              <h3 className="font-semibold text-lg mb-1">검색 결과가 없습니다</h3>
-              <p className="text-sm text-muted-foreground">검색 조건을 변경해 보세요.</p>
+              <h3 className="font-semibold text-lg mb-1">
+                {teamMembers.length === 0 ? "등록된 팀원이 없습니다" : "검색 결과가 없습니다"}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {teamMembers.length === 0
+                  ? "팀원 초대 버튼을 눌러 새로운 팀원을 추가하세요."
+                  : "검색 조건을 변경해 보세요."}
+              </p>
             </CardContent>
           </Card>
         </motion.div>

@@ -104,123 +104,23 @@ function getGreeting(): { text: string; emoji: React.ElementType; subText: strin
 }
 
 // ---------------------------------------------------------------------------
-// Mock Data
+// 기본값 (DB 데이터 로드 전 표시용)
 // ---------------------------------------------------------------------------
-const stats: Stat[] = [
-  {
-    title: "신규 문의",
-    value: "127",
-    numericValue: 127,
-    change: "+12%",
-    trend: "up",
-    icon: MessageSquare,
-    description: "전일 대비",
-    gradient: "from-blue-500/10 to-indigo-500/10",
-    iconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  },
-  {
-    title: "AI 처리율",
-    value: "82.3%",
-    numericValue: 82.3,
-    change: "+5.2%",
-    trend: "up",
-    icon: Bot,
-    description: "자동 응답 비율",
-    gradient: "from-violet-500/10 to-purple-500/10",
-    iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  },
-  {
-    title: "평균 응답",
-    value: "1.2분",
-    numericValue: 1.2,
-    change: "-0.3분",
-    trend: "up",
-    icon: Zap,
-    description: "첫 응답까지",
-    gradient: "from-emerald-500/10 to-green-500/10",
-    iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  },
-  {
-    title: "에스컬레이션",
-    value: "23",
-    numericValue: 23,
-    change: "-8건",
-    trend: "up",
-    icon: AlertTriangle,
-    description: "미해결 건수",
-    gradient: "from-amber-500/10 to-orange-500/10",
-    iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  },
+const defaultStats: Stat[] = [
+  { title: "신규 문의", value: "0", numericValue: 0, change: "-", trend: "up", icon: MessageSquare, description: "오늘 문의", gradient: "from-blue-500/10 to-indigo-500/10", iconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+  { title: "AI 처리율", value: "0%", numericValue: 0, change: "-", trend: "up", icon: Bot, description: "자동 응답 비율", gradient: "from-violet-500/10 to-purple-500/10", iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
+  { title: "활성 대화", value: "0", numericValue: 0, change: "-", trend: "up", icon: Zap, description: "진행 중", gradient: "from-emerald-500/10 to-green-500/10", iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+  { title: "에스컬레이션", value: "0", numericValue: 0, change: "-", trend: "up", icon: AlertTriangle, description: "미해결 건수", gradient: "from-amber-500/10 to-orange-500/10", iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
 ];
 
-const recentConversations: Conversation[] = [
-  {
-    id: 1,
-    customer: "Tanaka Yuki",
-    hospital: "힐링안과",
-    channel: "line",
-    message: "ラーシック手術の費用はいくらですか？",
-    time: "2분 전",
-    status: "ai_processing",
-    country: "JP",
-    unread: true,
-  },
-  {
-    id: 2,
-    customer: "이수진",
-    hospital: "스마일치과",
-    channel: "kakao",
-    message: "예약 변경하고 싶습니다. 3월 15일로 가능한가요?",
-    time: "5분 전",
-    status: "agent",
-    country: "KR",
-  },
-  {
-    id: 3,
-    customer: "Chen Wei",
-    hospital: "서울성형",
-    channel: "instagram",
-    message: "想看双眼皮手术前后对比照片",
-    time: "12분 전",
-    status: "resolved",
-    country: "TW",
-  },
-  {
-    id: 4,
-    customer: "John Smith",
-    hospital: "힐링안과",
-    channel: "whatsapp",
-    message: "What's the price for LASIK surgery?",
-    time: "15분 전",
-    status: "ai_complete",
-    country: "US",
-  },
-  {
-    id: 5,
-    customer: "Maria Garcia",
-    hospital: "강남피부과",
-    channel: "facebook",
-    message: "¿Cuánto cuesta el tratamiento de botox?",
-    time: "23분 전",
-    status: "waiting",
-    country: "MX",
-  },
-];
-
-const channelStats: ChannelStat[] = [
-  { name: "LINE", count: 45, color: "#06C755", icon: "L", percentage: 35 },
-  { name: "WhatsApp", count: 32, color: "#25D366", icon: "W", percentage: 25 },
-  { name: "카카오톡", count: 28, color: "#FEE500", icon: "K", percentage: 22 },
-  { name: "Instagram", count: 15, color: "#E4405F", icon: "I", percentage: 12 },
-  { name: "Facebook", count: 7, color: "#1877F2", icon: "F", percentage: 6 },
-];
-
-const hospitalAccuracy: HospitalAccuracy[] = [
-  { name: "힐링안과", accuracy: 92.1, trend: "up", totalQueries: 312, autoResolved: 287 },
-  { name: "스마일치과", accuracy: 88.7, trend: "up", totalQueries: 198, autoResolved: 175 },
-  { name: "강남피부과", accuracy: 91.5, trend: "up", totalQueries: 245, autoResolved: 224 },
-  { name: "서울성형", accuracy: 85.3, trend: "down", totalQueries: 167, autoResolved: 142 },
-];
+const CHANNEL_COLORS: Record<string, { name: string; color: string; icon: string }> = {
+  line: { name: "LINE", color: "#06C755", icon: "L" },
+  whatsapp: { name: "WhatsApp", color: "#25D366", icon: "W" },
+  kakao: { name: "카카오톡", color: "#FEE500", icon: "K" },
+  instagram: { name: "Instagram", color: "#E4405F", icon: "I" },
+  facebook: { name: "Facebook", color: "#1877F2", icon: "F" },
+  wechat: { name: "WeChat", color: "#07C160", icon: "We" },
+};
 
 // ---------------------------------------------------------------------------
 // Animated Number Component
@@ -378,22 +278,98 @@ export default function DashboardPage() {
   const greeting = useMemo(() => getGreeting(), []);
   const GreetingIcon = greeting.emoji;
 
+  // DB 데이터 상태
+  const [statsData, setStatsData] = useState<Stat[]>(defaultStats);
+  const [recentConversations, setRecentConversations] = useState<Conversation[]>([]);
+  const [channelStats, setChannelStats] = useState<ChannelStat[]>([]);
+  const [hospitalAccuracy, setHospitalAccuracy] = useState<HospitalAccuracy[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // DB에서 대시보드 데이터 로드
+  const loadDashboardData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/dashboard/stats");
+      if (!res.ok) throw new Error("API error");
+      const data = await res.json();
+      const s = data.stats;
+
+      // KPI 카드 업데이트
+      setStatsData([
+        { title: "신규 문의", value: String(s.conversations.today), numericValue: s.conversations.today, change: `총 ${s.conversations.total}건`, trend: "up", icon: MessageSquare, description: "오늘 문의", gradient: "from-blue-500/10 to-indigo-500/10", iconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+        { title: "AI 처리율", value: `${s.ai.autoResponseRate}%`, numericValue: s.ai.autoResponseRate, change: `신뢰도 ${s.ai.avgConfidence}%`, trend: "up", icon: Bot, description: "자동 응답 비율", gradient: "from-violet-500/10 to-purple-500/10", iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
+        { title: "활성 대화", value: String(s.conversations.active), numericValue: s.conversations.active, change: `해결 ${s.conversations.resolved}건`, trend: "up", icon: Zap, description: "진행 중", gradient: "from-emerald-500/10 to-green-500/10", iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+        { title: "에스컬레이션", value: String(s.escalations.pending), numericValue: s.escalations.pending, change: `오늘 ${s.escalations.today}건`, trend: s.escalations.pending > 0 ? "down" : "up", icon: AlertTriangle, description: "미해결 건수", gradient: "from-amber-500/10 to-orange-500/10", iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+      ]);
+
+      // 채널별 통계
+      const chCounts: Record<string, number> = {};
+      (data.channelAccounts || []).forEach((ch: any) => {
+        const type = ch.channel_type || "unknown";
+        chCounts[type] = (chCounts[type] || 0) + 1;
+      });
+      const totalCh = Object.values(chCounts).reduce((a, b) => a + b, 0) || 1;
+      setChannelStats(
+        Object.entries(chCounts).map(([type, count]) => {
+          const info = CHANNEL_COLORS[type] || { name: type, color: "#94A3B8", icon: "?" };
+          return { name: info.name, count, color: info.color, icon: info.icon, percentage: Math.round((count / totalCh) * 100) };
+        })
+      );
+
+      // 최근 대화
+      const statusMap: Record<string, string> = { active: "ai_processing", waiting: "agent", resolved: "resolved", escalated: "waiting" };
+      setRecentConversations(
+        (data.recentConversations || []).slice(0, 5).map((conv: any, i: number) => ({
+          id: i + 1,
+          customer: conv.customer?.name || "알 수 없음",
+          hospital: "-",
+          channel: "line" as const,
+          message: conv.status === "escalated" ? "에스컬레이션 대기 중" : "최근 대화",
+          time: conv.last_message_at ? new Date(conv.last_message_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "-",
+          status: (statusMap[conv.status] || "waiting") as Conversation["status"],
+          country: conv.customer?.country || "KR",
+          unread: conv.status === "active" || conv.status === "waiting",
+        }))
+      );
+
+      // 거래처 성과
+      setHospitalAccuracy(
+        (data.tenants || []).map((t: any) => ({
+          name: t.name || t.name_en || "거래처",
+          accuracy: s.ai.avgConfidence || 0,
+          trend: "up" as const,
+          totalQueries: s.conversations.total || 0,
+          autoResolved: s.conversations.resolved || 0,
+        }))
+      );
+
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.error("대시보드 데이터 로드 실패:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
   useEffect(() => {
     if (!isLive) return;
     const timer = setInterval(() => {
-      setLastUpdate(new Date());
+      loadDashboardData();
     }, 30000);
     return () => clearInterval(timer);
-  }, [isLive]);
+  }, [isLive, loadDashboardData]);
 
   const totalMessages = useMemo(
     () => channelStats.reduce((sum, c) => sum + c.count, 0),
-    []
+    [channelStats]
   );
 
   const handleRefresh = useCallback(() => {
-    setLastUpdate(new Date());
-  }, []);
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto animate-in-up">
@@ -423,17 +399,17 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-1.5 text-sm">
                   <Bot className="h-4 w-4 text-white/60" />
                   <span className="text-white/80">AI 처리율</span>
-                  <span className="font-bold">82.3%</span>
+                  <span className="font-bold">{statsData[1]?.numericValue || 0}%</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-sm">
                   <Heart className="h-4 w-4 text-white/60" />
-                  <span className="text-white/80">만족도</span>
-                  <span className="font-bold">4.7/5.0</span>
+                  <span className="text-white/80">AI 신뢰도</span>
+                  <span className="font-bold">{statsData[1]?.change || "-"}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-sm">
                   <Star className="h-4 w-4 text-white/60" />
-                  <span className="text-white/80">해결률</span>
-                  <span className="font-bold">94.2%</span>
+                  <span className="text-white/80">고객수</span>
+                  <span className="font-bold">{isLoading ? "..." : statsData[0]?.change || "-"}</span>
                 </div>
               </div>
             </div>
@@ -462,7 +438,7 @@ export default function DashboardPage() {
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat, index) => (
+        {statsData.map((stat, index) => (
           <motion.div
             key={stat.title}
             initial={{ opacity: 0, y: 20 }}

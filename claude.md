@@ -1012,6 +1012,17 @@ AI 자동응대 → 신뢰도 < 임계값 → 에스컬레이션 생성
   - [x] 태그 시스템 전면 개편 (상담/상태/고객 3카테고리, 멀티 필터) ✅
   - [x] 채팅 스크롤 수정 (auto-scroll, scroll-to-bottom 버튼) ✅
   - [x] CS 직원 편의 기능 (빠른 답변, 단축키, 호버 액션, 감정 분석, 전환 점수) ✅
+- [x] **전체 프론트엔드 DB 연동 (2026-01-28)** ✅
+  - [x] 대시보드 (`/dashboard`) — `/api/dashboard/stats` 실시간 통계 ✅
+  - [x] 통합 인박스 (`/inbox`) — `/api/conversations`, `/api/conversations/[id]/messages` + Supabase Realtime ✅
+  - [x] 채널 관리 (`/channels`) — `/api/channels`, `/api/channels/available` CRUD ✅
+  - [x] 거래처 관리 (`/tenants`) — `/api/tenants` CRUD + AI 설정 ✅
+  - [x] 지식베이스 (`/knowledge`) — `/api/knowledge/documents` CRUD + 임베딩 ✅
+  - [x] 담당자 관리 (`/team`) — `/api/team` CRUD + 역할/상태 관리 ✅
+  - [x] 에스컬레이션 (`/escalations`) — `/api/escalations` + 담당자 배정, 상태 변경, 30초 자동 새로고침 ✅
+  - [x] 분석/리포트 (`/analytics`) — `/api/analytics?period=` 기간별 통계 + 차트 데이터 ✅
+  - [x] 설정 (`/settings`) — `/api/settings` GET/PATCH 5탭 전체 설정 저장 ✅
+  - [x] 전체 빌드 검증 통과 (Next.js 16.1.4 Turbopack, 30 pages + 42 API routes, 0 errors) ✅
 
 **산출물**:
 - OpenAI Fine-tuning 파이프라인 (에스컬레이션 → 학습 데이터) ✅
@@ -1024,6 +1035,7 @@ AI 자동응대 → 신뢰도 < 임계값 → 에스컬레이션 생성
 - next.config.ts 프로덕션 보안 헤더 및 이미지 최적화 ✅
 - 전체 UI/UX 업그레이드 (card-3d, progress-shine, 그라디언트 헤더, 친근한 UX 문구) ✅
 - 인박스 UI 고도화 (리사이즈, 멀티필터, 태그 개편, 스크롤 수정, CS 편의기능) ✅
+- **전체 9개 프론트엔드 페이지 DB 연동 완료 (Mock 데이터 제거, API Route 기반 실시간 데이터)** ✅
 
 ---
 
@@ -1945,6 +1957,38 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
   - created_at, updated_at
   ```
 
+#### 7.21 인박스 DB 연동 + 번역 색상 + 거래처별 채널 관리 (2026-01-28) ✅
+- [x] **인박스 실시간 DB 연동** ✅
+  - `/api/conversations` API 신규 생성 → conversations + customers + channel_accounts + tenants JOIN 쿼리
+  - `/api/conversations/[id]/messages` API 신규 생성 → 대화별 메시지 조회
+  - Supabase Realtime 구독 (conversations, messages 테이블 변경 감지)
+  - DB 대화 + Mock 대화 병합 표시 (DB 우선, Mock은 데모용)
+  - 대화 선택 시 실시간 메시지 로딩 + 스피너
+  - 메시지 전송 시 `POST /api/messages` API 호출 (DB 대화만)
+  - 고객 프로필 동적 생성 (선택된 대화의 customer 데이터)
+- [x] **번역 텍스트 색상 가독성 수정** ✅
+  - 에이전트 메시지 (파란색 배경): `text-primary-foreground/80` (밝은 색)
+  - 고객 메시지 (일반 배경): `text-muted-foreground` (기존 유지)
+  - 번역 라벨, 테두리도 배경에 맞게 조건부 적용
+- [x] **거래처별 채널 관리** ✅
+  - `/api/tenants` API 신규 생성 → 전체 거래처 목록 조회
+  - 채널 관리 페이지 헤더에 거래처 선택 드롭다운 추가
+  - 거래처 변경 시 해당 거래처 채널만 표시
+  - 채널 추가 시 선택된 거래처에 자동 연결
+
+#### 7.22 전체 프론트엔드 DB 연동 (2026-01-28) ✅
+- [x] **9개 전체 페이지 Mock 데이터 제거 → API Route 기반 실시간 DB 데이터 전환** ✅
+- [x] **대시보드** (`/dashboard`) — `GET /api/dashboard/stats` 실시간 통계 (대화, 메시지, AI, 에스컬레이션, 고객) ✅
+- [x] **통합 인박스** (`/inbox`) — `GET/POST /api/conversations`, `GET /api/conversations/[id]/messages` + Supabase Realtime 구독 ✅
+- [x] **채널 관리** (`/channels`) — `GET/POST/DELETE /api/channels`, `GET /api/channels/available` CRUD + 거래처별 필터 ✅
+- [x] **거래처 관리** (`/tenants`) — `GET/POST/PATCH/DELETE /api/tenants` CRUD + AI 설정 다이얼로그 ✅
+- [x] **지식베이스** (`/knowledge`) — `GET/POST/PATCH/DELETE /api/knowledge/documents`, `POST /api/knowledge/documents/[id]/embed` ✅
+- [x] **담당자 관리** (`/team`) — `GET/POST/PATCH/DELETE /api/team` CRUD + 역할/상태 관리 + 초대 ✅
+- [x] **에스컬레이션** (`/escalations`) — `GET/PATCH /api/escalations` + 담당자 배정 (optimistic update) + 상태 변경 + 30초 자동 새로고침 ✅
+- [x] **분석/리포트** (`/analytics`) — `GET /api/analytics?period=` 기간별 통계 (KPI, 채널분포, 일별트렌드, 거래처성과, 언어분포, 에스컬레이션사유, 응답시간) ✅
+- [x] **설정** (`/settings`) — `GET/PATCH /api/settings` 5탭 전체 설정 로드/저장 (일반/AI/번역/알림/채널) ✅
+- [x] **전체 빌드 검증 통과** (Next.js 16.1.4 Turbopack, 30 pages + 42 API routes, 0 TypeScript errors) ✅
+
 ---
 
 ## 13. 프로젝트 구조
@@ -2248,6 +2292,21 @@ Supabase SQL Editor에서 아래 SQL 파일들을 **순서대로** 실행해주�
 | 단위 테스트 | ✅ 완료 | Vitest 98개 테스트 전체 통과 |
 | Sentry 모니터링 | ✅ 설정 완료 | DSN 등록은 Sentry 프로젝트 생성 후 |
 | **인박스 UI 고도화** | ✅ 완료 | 리사이즈 패널, 멀티 거래처 필터, 태그 개편, 스크롤 수정, CS 편의 기능 (2026-01-28) |
+| **전체 프론트엔드 DB 연동** | ✅ 완료 | 9개 페이지 Mock→DB 전환, 42 API Routes, 빌드 검증 통과 (2026-01-28) |
+
+### 프론트엔드 DB 연동 현황 (전체 완료) ✅
+
+| 페이지 | API Route | 주요 기능 |
+|--------|-----------|----------|
+| 대시보드 (`/dashboard`) | `GET /api/dashboard/stats` | 실시간 통계 (대화, 메시지, AI, 에스컬레이션, 고객) |
+| 통합 인박스 (`/inbox`) | `GET/POST /api/conversations`, `GET /api/conversations/[id]/messages` | Supabase Realtime 실시간 대화, 메시지 전송 |
+| 채널 관리 (`/channels`) | `GET/POST/DELETE /api/channels`, `GET /api/channels/available` | 채널 CRUD, OAuth 연동, 거래처별 필터 |
+| 거래처 관리 (`/tenants`) | `GET/POST/PATCH/DELETE /api/tenants` | 거래처 CRUD, AI 설정, 통계 |
+| 지식베이스 (`/knowledge`) | `GET/POST/PATCH/DELETE /api/knowledge/documents` | 문서 CRUD, 임베딩 생성 |
+| 담당자 관리 (`/team`) | `GET/POST/PATCH/DELETE /api/team` | 팀원 CRUD, 역할/상태 관리, 초대 |
+| 에스컬레이션 (`/escalations`) | `GET/PATCH /api/escalations` | 목록 조회, 담당자 배정, 상태 변경, 30초 자동 새로고침 |
+| 분석/리포트 (`/analytics`) | `GET /api/analytics?period=` | KPI, 채널분포, 일별트렌드, 거래처성과, 언어분포, 에스컬레이션사유, 응답시간 |
+| 설정 (`/settings`) | `GET/PATCH /api/settings` | 5탭 설정 (일반/AI/번역/알림/채널) 로드 및 저장 |
 
 ### 향후 개선 작업 (선택)
 
@@ -2292,7 +2351,11 @@ Supabase SQL Editor에서 아래 SQL 파일들을 **순서대로** 실행해주�
 대화/메시지:
 - GET/POST /api/conversations
 - GET/PATCH /api/conversations/[id]
+- GET /api/conversations/[id]/messages
 - GET/POST /api/messages
+
+거래처:
+- GET /api/tenants
 
 고객:
 - GET/POST /api/customers

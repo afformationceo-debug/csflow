@@ -100,6 +100,7 @@ import {
   Keyboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 
 // ── Types ──
 
@@ -723,7 +724,7 @@ function TagFilterPanel({
 
 export default function InboxPage() {
   // State
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(mockConversations[0]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [showTranslation, setShowTranslation] = useState(true);
   const [messageInput, setMessageInput] = useState("");
   const [filterChannel, setFilterChannel] = useState("all");
@@ -737,9 +738,247 @@ export default function InboxPage() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [quickReplyMode, setQuickReplyMode] = useState(false);
 
+  // DB state
+  const [dbConversations, setDbConversations] = useState<Conversation[]>([]);
+  const [dbMessages, setDbMessages] = useState<Message[]>([]);
+  const [dbCustomerProfile, setDbCustomerProfile] = useState<typeof customerProfile | null>(null);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Fetch conversations from DB ──
+  useEffect(() => {
+    async function fetchConversations() {
+      try {
+        setIsLoadingConversations(true);
+        const res = await fetch("/api/conversations");
+        if (!res.ok) throw new Error("Failed to fetch conversations");
+        const data = await res.json();
+        const rawConversations = data.conversations || [];
+
+        // Map DB data to our Conversation type
+        const mapped: Conversation[] = rawConversations.map((conv: any) => {
+          const customer = conv.customer;
+          const customerChannel = conv.customer_channels?.[0];
+          const channelAccount = customerChannel?.channel_account;
+          const tenant = channelAccount?.tenant;
+          const channelType = channelAccount?.channel_type || "line";
+
+          // Map DB status to our StatusTag
+          const statusMap: Record<string, StatusTag> = {
+            active: "pending",
+            waiting: "waiting",
+            resolved: "resolved",
+            escalated: "urgent",
+          };
+
+          // Find matching hospital or create one from tenant
+          let hospital = hospitals[0]; // default
+          if (tenant) {
+            const existing = hospitals.find(
+              (h) => h.name === tenant.name || h.nameEn === tenant.name || h.name === tenant.display_name
+            );
+            if (existing) {
+              hospital = existing;
+            } else {
+              hospital = {
+                id: tenant.id,
+                name: tenant.display_name || tenant.name,
+                nameEn: tenant.name,
+                specialty: tenant.specialty || "종합",
+                color: "#6366f1",
+              };
+            }
+          }
+
+          const nameStr = customer?.name || "Unknown";
+          const avatarInitials = nameStr.slice(0, 2).toUpperCase();
+
+          return {
+            id: conv.id,
+            customer: {
+              name: nameStr,
+              country: customer?.country || "",
+              language: customer?.language || "ko",
+              avatar: avatarInitials,
+            },
+            hospital,
+            channel: channelType,
+            lastMessage: conv.last_message_preview || "",
+            lastMessageTranslated: null,
+            lastMessageAt: new Date(conv.last_message_at || conv.created_at),
+            status: statusMap[conv.status] || "pending",
+            unread: conv.unread_count || 0,
+            aiConfidence: null,
+            consultationTag: (customer?.tags?.includes("confirmed") ? "confirmed" :
+              customer?.tags?.includes("first_booking") ? "first_booking" :
+              "prospect") as ConsultationTag,
+            customerTags: customer?.tags || [],
+            assignee: undefined,
+            sentimentScore: undefined,
+            _dbId: conv.id,
+            _customerId: customer?.id,
+            _tenantId: conv.tenant_id,
+          } as Conversation & { _dbId?: string; _customerId?: string; _tenantId?: string };
+        });
+
+        setDbConversations(mapped);
+
+        // Select first DB conversation if available
+        if (mapped.length > 0 && !selectedConversation) {
+          setSelectedConversation(mapped[0]);
+        }
+      } catch (err) {
+        console.error("Failed to fetch conversations:", err);
+        // Fallback to mock data
+        setSelectedConversation(mockConversations[0]);
+      } finally {
+        setIsLoadingConversations(false);
+      }
+    }
+
+    fetchConversations();
+
+    // Set up real-time subscription
+    const supabase = createClient();
+    const channel = (supabase as any)
+      .channel("inbox-conversations")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversations" },
+        () => {
+          // Refetch on any change
+          fetchConversations();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        () => {
+          fetchConversations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Fetch messages when conversation is selected ──
+  useEffect(() => {
+    async function fetchMessages() {
+      if (!selectedConversation) {
+        setDbMessages([]);
+        return;
+      }
+
+      // Check if this is a DB conversation (has UUID id)
+      const isDbConversation = selectedConversation.id.length > 10;
+      if (!isDbConversation) {
+        setDbMessages([]);
+        return;
+      }
+
+      try {
+        setIsLoadingMessages(true);
+        const res = await fetch(`/api/conversations/${selectedConversation.id}/messages`);
+        if (!res.ok) throw new Error("Failed to fetch messages");
+        const data = await res.json();
+        const rawMessages = data.messages || [];
+
+        // Map DB messages to our Message type
+        const mapped: Message[] = rawMessages.map((msg: any) => {
+          const createdAt = new Date(msg.created_at);
+          const timeStr = `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
+
+          return {
+            id: msg.id,
+            sender: msg.sender_type as MessageType,
+            content: msg.content || "",
+            translatedContent: msg.translated_content || undefined,
+            time: timeStr,
+            language: msg.original_language || undefined,
+            confidence: msg.ai_confidence ? Math.round(msg.ai_confidence * 100) : undefined,
+          };
+        });
+
+        setDbMessages(mapped);
+      } catch (err) {
+        console.error("Failed to fetch messages:", err);
+        setDbMessages([]);
+      } finally {
+        setIsLoadingMessages(false);
+      }
+    }
+
+    fetchMessages();
+
+    // Real-time message subscription for current conversation
+    if (selectedConversation && selectedConversation.id.length > 10) {
+      const supabase = createClient();
+      const channel = (supabase as any)
+        .channel(`messages:${selectedConversation.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `conversation_id=eq.${selectedConversation.id}`,
+          },
+          () => {
+            fetchMessages();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation?.id]);
+
+  // ── Build customer profile from DB data ──
+  useEffect(() => {
+    if (!selectedConversation) {
+      setDbCustomerProfile(null);
+      return;
+    }
+    // Build profile from conversation data
+    const conv = selectedConversation;
+    setDbCustomerProfile({
+      name: conv.customer.name,
+      country: conv.customer.country || "미상",
+      city: "",
+      language: conv.customer.language || "ko",
+      channels: [{ type: conv.channel, id: conv.id.slice(0, 12) }],
+      interests: [],
+      booking: undefined as any,
+      consultationTag: conv.consultationTag,
+      customerTags: conv.customerTags,
+      notes: "",
+      crmId: "",
+      firstContact: new Date(conv.lastMessageAt).toISOString().slice(0, 10),
+      totalConversations: 1,
+      lastVisit: new Date(conv.lastMessageAt).toISOString().slice(0, 10),
+      sentimentTrend: "neutral" as any,
+      conversionScore: 50,
+    });
+  }, [selectedConversation]);
+
+  // Combine DB + mock conversations (DB first, then mock as demo)
+  const allConversations = useMemo(() => {
+    if (dbConversations.length > 0) {
+      return [...dbConversations, ...mockConversations];
+    }
+    return mockConversations;
+  }, [dbConversations]);
 
   // Scroll to bottom
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
@@ -751,7 +990,7 @@ export default function InboxPage() {
   // Auto-scroll on conversation select or new message
   useEffect(() => {
     scrollToBottom("instant");
-  }, [selectedConversation, scrollToBottom]);
+  }, [selectedConversation, dbMessages, scrollToBottom]);
 
   // Detect scroll position for "scroll to bottom" button
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -762,7 +1001,7 @@ export default function InboxPage() {
 
   // Filter conversations
   const filteredConversations = useMemo(() => {
-    return mockConversations.filter((conv) => {
+    return allConversations.filter((conv) => {
       // Hospital filter
       if (selectedHospitals.length > 0 && !selectedHospitals.includes(conv.hospital.id)) return false;
       // Channel filter
@@ -795,17 +1034,30 @@ export default function InboxPage() {
       // Then by time (newest first)
       return b.lastMessageAt.getTime() - a.lastMessageAt.getTime();
     });
-  }, [selectedHospitals, filterChannel, selectedConsultationTags, selectedStatusTags, selectedCustomerTags, searchQuery]);
+  }, [allConversations, selectedHospitals, filterChannel, selectedConsultationTags, selectedStatusTags, selectedCustomerTags, searchQuery]);
+
+  // Get current messages (DB messages for DB conversations, mock for mock)
+  const currentMessages = useMemo(() => {
+    if (!selectedConversation) return [];
+    const isDbConversation = selectedConversation.id.length > 10;
+    if (isDbConversation && dbMessages.length > 0) {
+      return dbMessages;
+    }
+    if (!isDbConversation) {
+      return mockMessages;
+    }
+    return dbMessages;
+  }, [selectedConversation, dbMessages]);
 
   // Filter messages
   const filteredMessages = useMemo(() => {
-    return mockMessages.filter((msg) => {
+    return currentMessages.filter((msg) => {
       if (messageViewMode === "all") return true;
       if (messageViewMode === "customer") return msg.sender !== "internal_note";
       if (messageViewMode === "internal") return msg.sender === "internal_note";
       return true;
     });
-  }, [messageViewMode]);
+  }, [messageViewMode, currentMessages]);
 
   // Active filters count
   const activeFilterCount = useMemo(() => {
@@ -857,7 +1109,7 @@ export default function InboxPage() {
                   <div>
                     <h2 className="font-semibold text-sm">통합 인박스</h2>
                     <p className="text-[10px] text-muted-foreground">
-                      {filteredConversations.length}/{mockConversations.length}건
+                      {filteredConversations.length}/{allConversations.length}건
                     </p>
                   </div>
                 </div>
@@ -1132,11 +1384,11 @@ export default function InboxPage() {
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                    긴급 {mockConversations.filter((c) => c.status === "urgent").length}
+                    긴급 {allConversations.filter((c) => c.status === "urgent").length}
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
-                    대기 {mockConversations.filter((c) => c.status === "pending" || c.status === "waiting").length}
+                    대기 {allConversations.filter((c) => c.status === "pending" || c.status === "waiting").length}
                   </span>
                 </div>
                 <TooltipProvider>
@@ -1306,6 +1558,20 @@ export default function InboxPage() {
                   onScroll={handleMessagesScroll}
                 >
                   <div className="space-y-3 min-h-full flex flex-col justify-end">
+                    {isLoadingMessages && (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          메시지 로딩 중...
+                        </div>
+                      </div>
+                    )}
+                    {!isLoadingMessages && filteredMessages.length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                        <MessageCircle className="h-8 w-8 mb-2 opacity-30" />
+                        <p className="text-sm">아직 메시지가 없습니다</p>
+                      </div>
+                    )}
                     <AnimatePresence>
                       {filteredMessages.map((msg, idx) => (
                         <motion.div
@@ -1385,12 +1651,21 @@ export default function InboxPage() {
                                   )}
                                   <p className="text-sm leading-relaxed">{msg.content}</p>
                                   {showTranslation && msg.translatedContent && (
-                                    <div className="mt-2 pt-2 border-t border-border/40">
-                                      <div className="flex items-center gap-1 text-[9px] text-muted-foreground mb-0.5">
+                                    <div className={cn(
+                                      "mt-2 pt-2 border-t",
+                                      msg.sender === "agent" ? "border-primary-foreground/20" : "border-border/40"
+                                    )}>
+                                      <div className={cn(
+                                        "flex items-center gap-1 text-[9px] mb-0.5",
+                                        msg.sender === "agent" ? "text-primary-foreground/70" : "text-muted-foreground"
+                                      )}>
                                         <Globe className="h-2.5 w-2.5" />
                                         번역
                                       </div>
-                                      <p className="text-xs text-muted-foreground leading-relaxed">{msg.translatedContent}</p>
+                                      <p className={cn(
+                                        "text-xs leading-relaxed",
+                                        msg.sender === "agent" ? "text-primary-foreground/80" : "text-muted-foreground"
+                                      )}>{msg.translatedContent}</p>
                                     </div>
                                   )}
                                   {/* Message actions on hover */}
@@ -1550,12 +1825,27 @@ export default function InboxPage() {
                           "min-h-[72px] max-h-[150px] pr-20 resize-none rounded-xl transition-all text-sm",
                           isInternalNote && "border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/30 focus-visible:ring-amber-400"
                         )}
-                        onKeyDown={(e) => {
+                        onKeyDown={async (e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
-                            // Send message logic
-                            if (messageInput.trim()) {
+                            if (messageInput.trim() && selectedConversation) {
+                              const content = messageInput;
                               setMessageInput("");
+                              // Send via API for DB conversations
+                              if (selectedConversation.id.length > 10) {
+                                try {
+                                  await fetch("/api/messages", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      conversationId: selectedConversation.id,
+                                      content,
+                                    }),
+                                  });
+                                } catch (err) {
+                                  console.error("Send message failed:", err);
+                                }
+                              }
                             }
                           }
                         }}
@@ -1603,9 +1893,24 @@ export default function InboxPage() {
                         "h-9 w-9 rounded-xl transition-all",
                         isInternalNote ? "bg-amber-500 hover:bg-amber-600" : "bg-primary hover:bg-primary/90"
                       )}
-                      onClick={() => {
-                        if (messageInput.trim()) {
+                      onClick={async () => {
+                        if (messageInput.trim() && selectedConversation) {
+                          const content = messageInput;
                           setMessageInput("");
+                          if (selectedConversation.id.length > 10) {
+                            try {
+                              await fetch("/api/messages", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  conversationId: selectedConversation.id,
+                                  content,
+                                }),
+                              });
+                            } catch (err) {
+                              console.error("Send message failed:", err);
+                            }
+                          }
                         }
                       }}
                     >
@@ -1664,16 +1969,16 @@ export default function InboxPage() {
                   <div className="relative inline-block">
                     <Avatar className="h-14 w-14 mx-auto mb-2 ring-2 ring-primary/10 ring-offset-2 ring-offset-background">
                       <AvatarFallback className="bg-gradient-to-br from-primary/20 to-violet-500/20 text-primary text-lg font-medium">
-                        {customerProfile.name.slice(0, 1)}
+                        {(dbCustomerProfile || customerProfile).name.slice(0, 1)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-green-500 border-2 border-background flex items-center justify-center">
                       <Heart className="h-2.5 w-2.5 text-white" />
                     </div>
                   </div>
-                  <h3 className="font-semibold">{customerProfile.name}</h3>
+                  <h3 className="font-semibold">{(dbCustomerProfile || customerProfile).name}</h3>
                   <div className="flex items-center justify-center gap-1.5 mt-1">
-                    <span className="text-xs text-muted-foreground">{customerProfile.country}</span>
+                    <span className="text-xs text-muted-foreground">{(dbCustomerProfile || customerProfile).country}</span>
                   </div>
 
                   {/* Conversion Score */}
@@ -1683,7 +1988,7 @@ export default function InboxPage() {
                         <TooltipTrigger asChild>
                           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20">
                             <Zap className="h-3 w-3 text-green-500" />
-                            <span className="text-[11px] font-semibold text-green-600 dark:text-green-400">전환 {customerProfile.conversionScore}%</span>
+                            <span className="text-[11px] font-semibold text-green-600 dark:text-green-400">전환 {(dbCustomerProfile || customerProfile).conversionScore}%</span>
                           </div>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -1695,7 +2000,7 @@ export default function InboxPage() {
 
                   {/* Consultation Tag Select */}
                   <div className="mt-3">
-                    <Select defaultValue={customerProfile.consultationTag}>
+                    <Select defaultValue={(dbCustomerProfile || customerProfile).consultationTag}>
                       <SelectTrigger className="w-full h-8 rounded-lg text-xs">
                         <SelectValue placeholder="상담 단계 선택" />
                       </SelectTrigger>
@@ -1741,7 +2046,7 @@ export default function InboxPage() {
                     </DropdownMenu>
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    {customerProfile.customerTags.map((tag) => {
+                    {(dbCustomerProfile || customerProfile).customerTags.map((tag) => {
                       const preset = customerTagPresets.find((p) => p.label === tag);
                       return (
                         <Badge key={tag} variant="secondary" className={cn(
@@ -1762,11 +2067,11 @@ export default function InboxPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
                     <p className="text-[10px] text-muted-foreground">총 대화</p>
-                    <p className="text-sm font-semibold">{customerProfile.totalConversations}</p>
+                    <p className="text-sm font-semibold">{(dbCustomerProfile || customerProfile).totalConversations}</p>
                   </div>
                   <div className="p-2 rounded-lg bg-muted/30 text-center">
                     <p className="text-[10px] text-muted-foreground">첫 접촉</p>
-                    <p className="text-sm font-semibold">{customerProfile.firstContact.slice(5)}</p>
+                    <p className="text-sm font-semibold">{(dbCustomerProfile || customerProfile).firstContact.slice(5)}</p>
                   </div>
                 </div>
 
@@ -1779,7 +2084,7 @@ export default function InboxPage() {
                     연결된 채널
                   </h4>
                   <div className="space-y-1.5">
-                    {customerProfile.channels.map((ch, idx) => (
+                    {(dbCustomerProfile || customerProfile).channels.map((ch, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-xs p-2 rounded-lg bg-muted/30">
                         <span className={cn("px-1.5 py-0.5 rounded-md text-[9px]", getChannelConfig(ch.type).bg, getChannelConfig(ch.type).text)}>
                           {getChannelConfig(ch.type).label}
@@ -1798,13 +2103,13 @@ export default function InboxPage() {
                     <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                     위치
                   </h4>
-                  <p className="text-xs text-muted-foreground">{customerProfile.city}, {customerProfile.country}</p>
+                  <p className="text-xs text-muted-foreground">{(dbCustomerProfile || customerProfile).city}{(dbCustomerProfile || customerProfile).city ? ", " : ""}{(dbCustomerProfile || customerProfile).country}</p>
                 </div>
 
                 <Separator />
 
                 {/* Booking Info */}
-                {customerProfile.booking && (
+                {(dbCustomerProfile || customerProfile).booking && (
                   <>
                     <div className="space-y-1.5">
                       <h4 className="text-xs font-medium flex items-center gap-1.5">
@@ -1812,9 +2117,9 @@ export default function InboxPage() {
                         예약 정보
                       </h4>
                       <div className="p-2.5 rounded-xl bg-gradient-to-r from-primary/5 to-violet-500/5 border border-primary/10">
-                        <p className="text-xs font-medium">{customerProfile.booking.type}</p>
+                        <p className="text-xs font-medium">{(dbCustomerProfile || customerProfile).booking?.type}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {customerProfile.booking.date} {customerProfile.booking.time}
+                          {(dbCustomerProfile || customerProfile).booking?.date} {(dbCustomerProfile || customerProfile).booking?.time}
                         </p>
                       </div>
                     </div>
@@ -1829,7 +2134,7 @@ export default function InboxPage() {
                     관심 시술
                   </h4>
                   <div className="flex flex-wrap gap-1">
-                    {customerProfile.interests.map((interest) => (
+                    {(dbCustomerProfile || customerProfile).interests.map((interest) => (
                       <Badge key={interest} variant="outline" className="text-[10px] rounded-full">
                         {interest}
                       </Badge>
@@ -1842,7 +2147,7 @@ export default function InboxPage() {
                 {/* Notes */}
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-medium">메모</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{customerProfile.notes}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{(dbCustomerProfile || customerProfile).notes || "메모 없음"}</p>
                 </div>
 
                 <Separator />

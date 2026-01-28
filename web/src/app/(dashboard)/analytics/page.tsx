@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,152 +33,17 @@ const periodOptions = [
   { value: "90d", label: "최근 90일" },
 ];
 
-// ─── Mock Data ───────────────────────────────────────────────────────────────
+// ─── Icon Mapping (API returns icon name as string) ─────────────────────────
 
-const kpiCards = [
-  {
-    id: "conversations",
-    label: "총 대화",
-    value: 1247,
-    format: "number",
-    change: 12.5,
-    changeLabel: "전주 대비",
-    icon: MessageSquare,
-    color: "blue",
-    sparkline: [820, 910, 980, 1050, 1120, 1180, 1247],
-  },
-  {
-    id: "ai-resolution",
-    label: "AI 자동 해결율",
-    value: 82.3,
-    format: "percent",
-    change: 5.2,
-    changeLabel: "전주 대비",
-    icon: Bot,
-    color: "violet",
-    sparkline: [72, 74, 76, 78, 79, 81, 82.3],
-  },
-  {
-    id: "response-time",
-    label: "평균 응답시간",
-    value: 1.2,
-    format: "minutes",
-    change: -18.0,
-    changeLabel: "전주 대비",
-    icon: Clock,
-    color: "emerald",
-    sparkline: [2.1, 1.9, 1.7, 1.5, 1.4, 1.3, 1.2],
-  },
-  {
-    id: "csat",
-    label: "CSAT 점수",
-    value: 4.6,
-    format: "score",
-    change: 4.5,
-    changeLabel: "전주 대비",
-    icon: ThumbsUp,
-    color: "amber",
-    sparkline: [4.2, 4.3, 4.3, 4.4, 4.5, 4.5, 4.6],
-  },
-  {
-    id: "escalation",
-    label: "에스컬레이션율",
-    value: 17.7,
-    format: "percent",
-    change: -2.3,
-    changeLabel: "전주 대비",
-    icon: ShieldAlert,
-    color: "rose",
-    sparkline: [22, 21, 20, 19.5, 19, 18.2, 17.7],
-  },
-];
+import type { LucideIcon } from "lucide-react";
 
-const channelDistribution = [
-  { name: "LINE", count: 452, percentage: 36.2, color: "#06C755" },
-  { name: "WhatsApp", count: 325, percentage: 26.1, color: "#25D366" },
-  { name: "카카오톡", count: 278, percentage: 22.3, color: "#FEE500" },
-  { name: "Instagram", count: 122, percentage: 9.8, color: "#E1306C" },
-  { name: "Facebook", count: 70, percentage: 5.6, color: "#1877F2" },
-];
-
-const dailyTrends = [
-  { day: "월", conversations: 156, resolved: 128 },
-  { day: "화", conversations: 189, resolved: 158 },
-  { day: "수", conversations: 201, resolved: 172 },
-  { day: "목", conversations: 178, resolved: 151 },
-  { day: "금", conversations: 215, resolved: 184 },
-  { day: "토", conversations: 167, resolved: 139 },
-  { day: "일", conversations: 141, resolved: 115 },
-];
-
-const tenantPerformance = [
-  {
-    name: "힐링안과",
-    conversations: 423,
-    aiAccuracy: 92.1,
-    escalationRate: 12.3,
-    satisfaction: 4.8,
-    avgResponse: 0.8,
-    trend: "up" as const,
-    change: 8.2,
-  },
-  {
-    name: "스마일치과",
-    conversations: 356,
-    aiAccuracy: 88.7,
-    escalationRate: 15.8,
-    satisfaction: 4.5,
-    avgResponse: 1.1,
-    trend: "up" as const,
-    change: 5.1,
-  },
-  {
-    name: "서울성형",
-    conversations: 298,
-    aiAccuracy: 85.3,
-    escalationRate: 21.2,
-    satisfaction: 4.3,
-    avgResponse: 1.5,
-    trend: "down" as const,
-    change: -3.4,
-  },
-  {
-    name: "강남피부과",
-    conversations: 170,
-    aiAccuracy: 91.5,
-    escalationRate: 14.1,
-    satisfaction: 4.6,
-    avgResponse: 0.9,
-    trend: "up" as const,
-    change: 6.7,
-  },
-];
-
-const languageDistribution = [
-  { language: "일본어", code: "JA", percentage: 33.0, count: 412, color: "#ef4444" },
-  { language: "중국어", code: "ZH", percentage: 23.9, count: 298, color: "#f59e0b" },
-  { language: "베트남어", code: "VI", percentage: 15.0, count: 187, color: "#22c55e" },
-  { language: "영어", code: "EN", percentage: 12.5, count: 156, color: "#3b82f6" },
-  { language: "대만어", code: "TW", percentage: 7.9, count: 98, color: "#8b5cf6" },
-  { language: "기타", code: "ETC", percentage: 7.7, count: 96, color: "#6b7280" },
-];
-
-const escalationReasons = [
-  { reason: "AI 신뢰도 미달", count: 45, percentage: 35.2, severity: "high" as const },
-  { reason: "가격 협상 요청", count: 32, percentage: 25.0, severity: "medium" as const },
-  { reason: "복잡한 의료 문의", count: 28, percentage: 21.9, severity: "high" as const },
-  { reason: "고객 불만/컴플레인", count: 15, percentage: 11.7, severity: "critical" as const },
-  { reason: "긴급 상황 (수술 후)", count: 8, percentage: 6.2, severity: "critical" as const },
-];
-
-const responseTimeDistribution = [
-  { range: "< 30초", count: 312, percentage: 25.0 },
-  { range: "30초-1분", count: 387, percentage: 31.0 },
-  { range: "1-3분", count: 274, percentage: 22.0 },
-  { range: "3-5분", count: 149, percentage: 11.9 },
-  { range: "5-10분", count: 87, percentage: 7.0 },
-  { range: "> 10분", count: 38, percentage: 3.1 },
-];
+const iconMap: Record<string, LucideIcon> = {
+  MessageSquare,
+  Bot,
+  Clock,
+  ThumbsUp,
+  ShieldAlert,
+};
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -417,8 +282,43 @@ const itemVariants = {
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState("7d");
 
-  const maxDailyConversations = Math.max(...dailyTrends.map((d) => d.conversations));
-  const maxResponseCount = Math.max(...responseTimeDistribution.map((d) => d.count));
+  // ─── Data State ────────────────────────────────────────────────────────────
+  const [kpiCards, setKpiCards] = useState<any[]>([]);
+  const [channelDistribution, setChannelDistribution] = useState<any[]>([]);
+  const [dailyTrends, setDailyTrends] = useState<any[]>([]);
+  const [tenantPerformance, setTenantPerformance] = useState<any[]>([]);
+  const [languageDistribution, setLanguageDistribution] = useState<any[]>([]);
+  const [escalationReasons, setEscalationReasons] = useState<any[]>([]);
+  const [responseTimeDistribution, setResponseTimeDistribution] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // ─── Data Fetching ─────────────────────────────────────────────────────────
+  const loadAnalytics = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch(`/api/analytics?period=${period}`);
+      const data = await res.json();
+      if (data.kpiCards) setKpiCards(data.kpiCards);
+      if (data.channelDistribution) setChannelDistribution(data.channelDistribution);
+      if (data.dailyTrends) setDailyTrends(data.dailyTrends);
+      if (data.tenantPerformance) setTenantPerformance(data.tenantPerformance);
+      if (data.languageDistribution) setLanguageDistribution(data.languageDistribution);
+      if (data.escalationReasons) setEscalationReasons(data.escalationReasons);
+      if (data.responseTimeDistribution) setResponseTimeDistribution(data.responseTimeDistribution);
+    } catch (error) {
+      console.error("Failed to load analytics:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [period]);
+
+  useEffect(() => {
+    loadAnalytics();
+  }, [loadAnalytics]);
+
+  // ─── Computed Values (guard empty arrays) ──────────────────────────────────
+  const maxDailyConversations = dailyTrends.length > 0 ? Math.max(...dailyTrends.map((d) => d.conversations)) : 1;
+  const maxResponseCount = responseTimeDistribution.length > 0 ? Math.max(...responseTimeDistribution.map((d) => d.count)) : 1;
 
   return (
     <div className="space-y-6">
@@ -468,7 +368,7 @@ export default function AnalyticsPage() {
         animate="visible"
       >
         {kpiCards.map((kpi) => {
-          const Icon = kpi.icon;
+          const Icon = typeof kpi.icon === "string" ? iconMap[kpi.icon] || MessageSquare : kpi.icon;
           const colors = getColorClasses(kpi.color);
           const isPositiveGood = kpi.id !== "escalation";
           const isGood = isPositiveGood ? kpi.change >= 0 : kpi.change <= 0;
@@ -678,11 +578,11 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="text-[11px] text-muted-foreground">
                   해결율: <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                    {(
-                      (dailyTrends.reduce((s, d) => s + d.resolved, 0) /
-                        dailyTrends.reduce((s, d) => s + d.conversations, 0)) *
-                      100
-                    ).toFixed(1)}%
+                    {(() => {
+                      const totalConv = dailyTrends.reduce((s, d) => s + d.conversations, 0);
+                      const totalRes = dailyTrends.reduce((s, d) => s + d.resolved, 0);
+                      return totalConv > 0 ? ((totalRes / totalConv) * 100).toFixed(1) : "0.0";
+                    })()}%
                   </span>
                 </div>
               </div>
@@ -906,12 +806,18 @@ export default function AnalyticsPage() {
                 <span className="text-muted-foreground">
                   3분 이내 응답:
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400 ml-1 tabular-nums">
-                    {((312 + 387 + 274) / 1247 * 100).toFixed(1)}%
+                    {(() => {
+                      const under3 = responseTimeDistribution.slice(0, 3).reduce((s, b) => s + b.count, 0);
+                      const total = responseTimeDistribution.reduce((s, b) => s + b.count, 0);
+                      return total > 0 ? ((under3 / total) * 100).toFixed(1) : "0.0";
+                    })()}%
                   </span>
                 </span>
                 <span className="text-muted-foreground">
-                  중간값:
-                  <span className="font-semibold text-foreground ml-1">1.1분</span>
+                  총 샘플:
+                  <span className="font-semibold text-foreground ml-1 tabular-nums">
+                    {responseTimeDistribution.reduce((s, b) => s + b.count, 0).toLocaleString()}건
+                  </span>
                 </span>
               </div>
             </CardContent>

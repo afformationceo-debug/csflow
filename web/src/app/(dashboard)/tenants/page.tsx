@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -164,120 +164,7 @@ const MODEL_OPTIONS = [
   { value: "claude-3-sonnet", label: "Claude 3 Sonnet" },
 ];
 
-// --- Mock Data ---
-
-const mockTenants: Tenant[] = [
-  {
-    id: "tenant-1",
-    name: "healing-eye",
-    display_name: "힐링안과",
-    specialty: "ophthalmology",
-    status: "active",
-    default_language: "ko",
-    ai_config: {
-      preferred_model: "gpt-4",
-      confidence_threshold: 0.85,
-      auto_response_enabled: true,
-      system_prompt:
-        "당신은 힐링안과의 AI 상담사입니다. 라식, 라섹, 백내장 수술 등 안과 시술에 대해 친절하고 정확하게 안내해주세요. 가격 문의는 상담 예약을 안내해주세요.",
-      escalation_keywords: ["불만", "환불", "부작용", "통증", "의료사고"],
-    },
-    stats: {
-      total_conversations: 1247,
-      ai_accuracy: 92.1,
-      escalation_rate: 7.3,
-      csat_score: 4.6,
-      monthly_inquiries: 312,
-    },
-    channels: [
-      { type: "line", accountName: "힐링안과 LINE" },
-      { type: "kakao", accountName: "힐링안과 카카오톡" },
-      { type: "whatsapp", accountName: "Healing Eye Clinic" },
-    ],
-    created_at: "2025-08-15T00:00:00Z",
-  },
-  {
-    id: "tenant-2",
-    name: "smile-dental",
-    display_name: "스마일치과",
-    specialty: "dentistry",
-    status: "active",
-    default_language: "ko",
-    ai_config: {
-      preferred_model: "claude-3-sonnet",
-      confidence_threshold: 0.8,
-      auto_response_enabled: true,
-      system_prompt:
-        "당신은 스마일치과의 AI 상담사입니다. 임플란트, 교정, 미백 등 치과 시술에 대해 안내합니다. 정확한 견적은 내원 상담 후 안내해주세요.",
-      escalation_keywords: ["불만", "환불", "소송", "통증", "출혈"],
-    },
-    stats: {
-      total_conversations: 893,
-      ai_accuracy: 88.7,
-      escalation_rate: 9.1,
-      csat_score: 4.3,
-      monthly_inquiries: 198,
-    },
-    channels: [
-      { type: "kakao", accountName: "스마일치과" },
-      { type: "instagram", accountName: "@smile_dental_kr" },
-    ],
-    created_at: "2025-09-20T00:00:00Z",
-  },
-  {
-    id: "tenant-3",
-    name: "seoul-plastic",
-    display_name: "서울성형",
-    specialty: "plastic_surgery",
-    status: "active",
-    default_language: "ko",
-    ai_config: {
-      preferred_model: "gpt-4-turbo",
-      confidence_threshold: 0.9,
-      auto_response_enabled: true,
-      system_prompt:
-        "당신은 서울성형외과의 AI 상담사입니다. 쌍꺼풀, 코성형, 지방흡입 등 성형 시술에 대해 안내합니다. Before/After 사진 요청 시 내원 상담을 안내해주세요.",
-      escalation_keywords: ["불만", "환불", "부작용", "재수술", "의료사고", "비대칭"],
-    },
-    stats: {
-      total_conversations: 1562,
-      ai_accuracy: 85.3,
-      escalation_rate: 12.5,
-      csat_score: 4.1,
-      monthly_inquiries: 427,
-    },
-    channels: [
-      { type: "instagram", accountName: "@seoul_plastic_surgery" },
-      { type: "facebook", accountName: "서울성형외과" },
-    ],
-    created_at: "2025-07-01T00:00:00Z",
-  },
-  {
-    id: "tenant-4",
-    name: "gangnam-derma",
-    display_name: "강남피부과",
-    specialty: "dermatology",
-    status: "active",
-    default_language: "ko",
-    ai_config: {
-      preferred_model: "claude-3-sonnet",
-      confidence_threshold: 0.82,
-      auto_response_enabled: true,
-      system_prompt:
-        "당신은 강남피부과의 AI 상담사입니다. 레이저, 보톡스, 필러, 여드름 치료 등 피부과 시술에 대해 안내합니다. 피부 상태 진단은 내원 상담을 안내해주세요.",
-      escalation_keywords: ["불만", "환불", "알레르기", "부작용", "화상"],
-    },
-    stats: {
-      total_conversations: 678,
-      ai_accuracy: 91.5,
-      escalation_rate: 6.8,
-      csat_score: 4.5,
-      monthly_inquiries: 156,
-    },
-    channels: [{ type: "kakao", accountName: "강남피부과" }],
-    created_at: "2025-10-10T00:00:00Z",
-  },
-];
+// Data is now fetched from the API
 
 // --- Mini Ring Chart Component ---
 
@@ -362,7 +249,8 @@ const cardHover = {
 // --- Component ---
 
 export default function TenantsPage() {
-  const [tenants, setTenants] = useState<Tenant[]>(mockTenants);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [aiConfigTenantId, setAiConfigTenantId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -374,6 +262,26 @@ export default function TenantsPage() {
   });
 
   const [editingAIConfig, setEditingAIConfig] = useState<TenantAIConfig | null>(null);
+
+  // --- Data Fetching ---
+  const loadTenants = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch("/api/tenants");
+      const data = await res.json();
+      if (data.tenants) {
+        setTenants(data.tenants);
+      }
+    } catch (error) {
+      console.error("Failed to load tenants:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTenants();
+  }, [loadTenants]);
 
   // --- Filtered tenants ---
   const filteredTenants = tenants.filter(
@@ -437,41 +345,35 @@ export default function TenantsPage() {
 
   // --- Handlers ---
 
-  const handleAddTenant = () => {
+  const handleAddTenant = async () => {
     if (!newTenant.name || !newTenant.display_name || !newTenant.specialty) return;
-
-    const tenant: Tenant = {
-      id: `tenant-${Date.now()}`,
-      name: newTenant.name,
-      display_name: newTenant.display_name,
-      specialty: newTenant.specialty as Specialty,
-      status: "active",
-      default_language: newTenant.default_language,
-      ai_config: {
-        preferred_model: "gpt-4",
-        confidence_threshold: 0.85,
-        auto_response_enabled: true,
-        system_prompt: "",
-        escalation_keywords: [],
-      },
-      stats: {
-        total_conversations: 0,
-        ai_accuracy: 0,
-        escalation_rate: 0,
-        csat_score: 0,
-        monthly_inquiries: 0,
-      },
-      channels: [],
-      created_at: new Date().toISOString(),
-    };
-
-    setTenants((prev) => [...prev, tenant]);
-    setNewTenant({ name: "", display_name: "", specialty: "", default_language: "ko" });
-    setIsAddDialogOpen(false);
+    try {
+      await fetch("/api/tenants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newTenant.name,
+          name_en: newTenant.display_name,
+          display_name: newTenant.display_name,
+          specialty: newTenant.specialty,
+          default_language: newTenant.default_language,
+        }),
+      });
+      setNewTenant({ name: "", display_name: "", specialty: "", default_language: "ko" });
+      setIsAddDialogOpen(false);
+      loadTenants();
+    } catch (error) {
+      console.error("Failed to add tenant:", error);
+    }
   };
 
-  const handleDeleteTenant = (tenantId: string) => {
-    setTenants((prev) => prev.filter((t) => t.id !== tenantId));
+  const handleDeleteTenant = async (tenantId: string) => {
+    try {
+      await fetch(`/api/tenants?id=${tenantId}`, { method: "DELETE" });
+      loadTenants();
+    } catch (error) {
+      console.error("Failed to delete tenant:", error);
+    }
   };
 
   const openAIConfig = (tenant: Tenant) => {
@@ -479,15 +381,23 @@ export default function TenantsPage() {
     setEditingAIConfig({ ...tenant.ai_config });
   };
 
-  const handleSaveAIConfig = () => {
+  const handleSaveAIConfig = async () => {
     if (!aiConfigTenantId || !editingAIConfig) return;
-    setTenants((prev) =>
-      prev.map((t) =>
-        t.id === aiConfigTenantId ? { ...t, ai_config: { ...editingAIConfig } } : t
-      )
-    );
-    setAiConfigTenantId(null);
-    setEditingAIConfig(null);
+    try {
+      await fetch("/api/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: aiConfigTenantId,
+          ai_config: editingAIConfig,
+        }),
+      });
+      setAiConfigTenantId(null);
+      setEditingAIConfig(null);
+      loadTenants();
+    } catch (error) {
+      console.error("Failed to save AI config:", error);
+    }
   };
 
   // --- Helpers ---
@@ -676,8 +586,47 @@ export default function TenantsPage() {
         />
       </div>
 
+      {/* Loading State */}
+      {isLoading && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="grid gap-3 md:grid-cols-2"
+        >
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="border-0 shadow-sm rounded-2xl backdrop-blur-sm bg-card/80">
+              <CardContent className="p-5">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="h-11 w-11 rounded-xl bg-muted/50 animate-pulse shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 w-32 bg-muted/50 rounded animate-pulse" />
+                    <div className="h-3 w-20 bg-muted/50 rounded animate-pulse" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {[1, 2, 3, 4].map((j) => (
+                    <div key={j} className="text-center space-y-1.5">
+                      <div className="h-2 w-10 bg-muted/50 rounded animate-pulse mx-auto" />
+                      <div className="h-3 w-8 bg-muted/50 rounded animate-pulse mx-auto" />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-1.5 mb-3">
+                  <div className="h-5 w-16 bg-muted/50 rounded-full animate-pulse" />
+                  <div className="h-5 w-14 bg-muted/50 rounded-full animate-pulse" />
+                </div>
+                <div className="pt-2.5 border-t border-border/40 flex justify-between">
+                  <div className="h-4 w-20 bg-muted/50 rounded-full animate-pulse" />
+                  <div className="h-3 w-16 bg-muted/50 rounded animate-pulse" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </motion.div>
+      )}
+
       {/* Tenant List */}
-      <AnimatePresence mode="popLayout">
+      {!isLoading && <AnimatePresence mode="popLayout">
         <motion.div
           className="grid gap-3 md:grid-cols-2"
           variants={containerVariants}
@@ -685,7 +634,7 @@ export default function TenantsPage() {
           animate="visible"
         >
           {filteredTenants.map((tenant) => {
-            const specialtyInfo = SPECIALTY_MAP[tenant.specialty];
+            const specialtyInfo = SPECIALTY_MAP[tenant.specialty] || SPECIALTY_MAP.general;
             const SpecialtyIcon = specialtyInfo.icon;
 
             return (
@@ -732,7 +681,7 @@ export default function TenantsPage() {
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <Badge
-                              className={`${SPECIALTY_BADGE_COLORS[tenant.specialty]} border-0 text-[10px] px-1.5 py-0 font-medium rounded-full`}
+                              className={`${SPECIALTY_BADGE_COLORS[tenant.specialty] || SPECIALTY_BADGE_COLORS.general} border-0 text-[10px] px-1.5 py-0 font-medium rounded-full`}
                             >
                               <SpecialtyIcon className="mr-0.5 h-2.5 w-2.5" />
                               {specialtyInfo.label}
@@ -906,10 +855,10 @@ export default function TenantsPage() {
             );
           })}
         </motion.div>
-      </AnimatePresence>
+      </AnimatePresence>}
 
       {/* Empty State */}
-      {filteredTenants.length === 0 && tenants.length > 0 && (
+      {!isLoading && filteredTenants.length === 0 && tenants.length > 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -928,7 +877,7 @@ export default function TenantsPage() {
         </motion.div>
       )}
 
-      {tenants.length === 0 && (
+      {!isLoading && tenants.length === 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
