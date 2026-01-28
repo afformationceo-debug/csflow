@@ -1265,3 +1265,101 @@ fetch(`/api/conversations/${selectedConversation.id}/ai-suggest`, {...})
 ⏳ Git commit 준비 중...
 ⏳ CLAUDE.md / claude.ai.md 업데이트 완료
 
+
+---
+
+## 21. 프로덕션 핫픽스 (2026-01-29)
+
+### 이슈 #1: RAG 메타데이터 저장 ✅
+- 인박스에서 RAG 로그 UI 표시 안됨
+- 해결: AI 메시지 전송 시 metadata.ai_sources, metadata.ai_logs 저장
+- Commit: `3c56e31`
+
+### 이슈 #2: Unknown 고객 삭제 ✅
+- LINE 테스트 고객 (name=null) 삭제
+- FK 순서: escalations → messages → conversation → customer_channels → customer
+- 검증 완료
+
+### 이슈 #3: LINE 대화 미표시 (심각) ✅
+**근본 원인:** `/api/conversations` API에서 존재하지 않는 `users!assigned_to` FK join
+**에러:** PGRST200 - "Could not find a relationship between 'conversations' and 'users'"
+**결과:** API가 0건 반환
+
+**해결:**
+```typescript
+// Before (broken)
+.select(`
+  *,
+  customer:customers(...),
+  assigned_agent:users!assigned_to(id, name, email)  // ❌ FK 미존재
+`)
+
+// After (fixed)
+.select(`
+  *,
+  customer:customers(...)
+  // assigned_agent join 제거 ✅
+`)
+```
+
+**검증:**
+- Before: `curl https://csflow.vercel.app/api/conversations` → 0건
+- After: 1건 (LINE 대화 정상 반환)
+
+**Commit:** `6ef3cb3`
+
+### 이슈 #4: 1초 지연 해결 ✅
+**문제:** 모든 메뉴 클릭 시 1초 지연 발생
+
+**근본 원인:** 8개 API 라우트에 `export const revalidate = 30` 설정
+- 30초 캐시로 인해 오래된 데이터 표시
+- Vercel Edge 캐시 활성화로 지연 발생
+
+**해결:** `revalidate = 30` → `dynamic = "force-dynamic"`
+
+**수정된 파일:**
+1. conversations/route.ts
+2. dashboard/stats/route.ts
+3. analytics/route.ts
+4. escalations/route.ts
+5. settings/route.ts
+6. tenants/route.ts
+7. team/route.ts
+8. knowledge/documents/route.ts
+
+**효과:**
+- ✅ 즉시 최신 데이터 표시
+- ✅ 1초 지연 완전 제거
+- ✅ 실시간 대화 반영
+
+**Commit:** `53c2f15`
+
+### RAG 로그 보안 확인 ✅
+**질문:** "rag 로그가 고객한테 전송되면 안되는데 그렇게 되었겠죠?"
+
+**답변:** ✅ 안전합니다.
+
+**구조:**
+```typescript
+// DB 저장 (관리자만 조회)
+metadata: {
+  ai_confidence: 0.92,
+  ai_sources: [...],  // 내부용
+  ai_logs: [...]      // 내부용
+}
+
+// 채널 발송 (고객에게 전송)
+outboundContent = translatedContent || content  // 텍스트만
+```
+
+**검증:**
+- `messages/route.ts` Line 210: `content` 필드만 전송
+- Lines 256-268: metadata 미포함
+
+### 배포 상태
+- ✅ 3개 커밋 프로덕션 배포 완료
+- ✅ Vercel 빌드 검증 통과
+- ✅ LINE 대화 정상 표시
+- ✅ 모든 페이지 즉시 로딩
+- ✅ RAG 로그 보안 확인
+

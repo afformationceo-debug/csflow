@@ -617,6 +617,558 @@ class LearningAgent {
 
 ---
 
+### 3.4 알림 통합 아키텍처 (Notification Integration)
+
+**목적**: 예약 승인 요청 시 담당자에게 실시간 알림을 전송하는 멀티채널 알림 시스템
+
+#### 3.4.1 알림 서비스 추상화 레이어
+
+```typescript
+// 알림 서비스 인터페이스
+interface NotificationService {
+  send(notification: NotificationPayload): Promise<NotificationResult>;
+  sendBatch(notifications: NotificationPayload[]): Promise<NotificationResult[]>;
+  getStatus(notificationId: string): Promise<NotificationStatus>;
+}
+
+interface NotificationPayload {
+  channel: "kakao_alimtalk" | "slack" | "email" | "sms";
+  recipient: string; // 전화번호, Slack channel ID, 이메일 주소 등
+  templateId?: string; // 템플릿 ID (KakaoTalk Alimtalk용)
+  data: Record<string, any>; // 템플릿 변수
+  priority?: "urgent" | "high" | "normal" | "low";
+  retryPolicy?: {
+    maxRetries: number;
+    backoffMs: number;
+  };
+}
+
+interface NotificationResult {
+  success: boolean;
+  notificationId?: string;
+  error?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+  };
+  deliveredAt?: Date;
+}
+```
+
+#### 3.4.2 KakaoTalk Alimtalk 서비스 구현
+
+```typescript
+class KakaoAlimtalkService implements NotificationService {
+  private apiKey: string;
+  private senderId: string; // 알림톡 발신 프로필 키
+
+  constructor(config: { apiKey: string; senderId: string }) {
+    this.apiKey = config.apiKey;
+    this.senderId = config.senderId;
+  }
+
+  async send(notification: NotificationPayload): Promise<NotificationResult> {
+    const { recipient, templateId, data } = notification;
+
+    try {
+      // KakaoTalk Alimtalk API 호출
+      const response = await fetch("https://api.alimtalk.kakao.com/v2/send", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          senderKey: this.senderId,
+          templateCode: templateId, // 사전 등록된 템플릿 코드
+          recipientNo: recipient, // 수신자 전화번호 (01012345678)
+          templateParameter: data, // 템플릿 변수 (#{customerName}, #{bookingDate} 등)
+          buttons: [
+            {
+              name: "승인하기",
+              type: "WL", // Web Link
+              urlMobile: data.approvalLink,
+              urlPc: data.approvalLink,
+            },
+            {
+              name: "거절하기",
+              type: "WL",
+              urlMobile: data.rejectionLink,
+              urlPc: data.rejectionLink,
+            },
+          ],
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: {
+            code: result.code,
+            message: result.message,
+            retryable: this.isRetryableError(result.code),
+          },
+        };
+      }
+
+      return {
+        success: true,
+        notificationId: result.messageId,
+        deliveredAt: new Date(),
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: "NETWORK_ERROR",
+          message: error.message,
+          retryable: true,
+        },
+      };
+    }
+  }
+
+  private isRetryableError(code: string): boolean {
+    // 재시도 가능한 에러 코드 목록
+    const retryableCodes = [
+      "RATE_LIMIT_EXCEEDED", // 요청 한도 초과
+      "SERVER_ERROR", // 서버 오류
+      "TIMEOUT", // 타임아웃
+    ];
+    return retryableCodes.includes(code);
+  }
+
+  async sendBatch(notifications: NotificationPayload[]): Promise<NotificationResult[]> {
+    // 배치 전송은 순차 처리 (KakaoTalk API 제한)
+    const results: NotificationResult[] = [];
+    for (const notification of notifications) {
+      const result = await this.send(notification);
+      results.push(result);
+
+      // Rate limiting 방지 (초당 10건 제한)
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return results;
+  }
+
+  async getStatus(notificationId: string): Promise<NotificationStatus> {
+    // KakaoTalk API로 메시지 상태 조회
+    const response = await fetch(
+      `https://api.alimtalk.kakao.com/v2/messages/${notificationId}`,
+      {
+        headers: { "Authorization": `Bearer ${this.apiKey}` },
+      }
+    );
+    const data = await response.json();
+
+    return {
+      status: data.status, // "PENDING", "SENT", "DELIVERED", "FAILED"
+      deliveredAt: data.deliveredAt,
+      failureReason: data.failureReason,
+    };
+  }
+}
+```
+
+#### 3.4.3 Slack 웹훅 서비스 구현
+
+```typescript
+class SlackNotificationService implements NotificationService {
+  private webhookUrl: string;
+
+  constructor(config: { webhookUrl: string }) {
+    this.webhookUrl = config.webhookUrl;
+  }
+
+  async send(notification: NotificationPayload): Promise<NotificationResult> {
+    const { recipient, data } = notification; // recipient = Slack channel name
+
+    try {
+      // Slack Block Kit 형식으로 메시지 구성
+      const message = {
+        channel: recipient, // "#booking-approvals"
+        username: "CS 자동화 봇",
+        icon_emoji: ":robot_face:",
+        blocks: [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "🔔 새로운 예약 승인 요청",
+              emoji: true,
+            },
+          },
+          {
+            type: "section",
+            fields: [
+              {
+                type: "mrkdwn",
+                text: `*고객명:*\n${data.customerName}`,
+              },
+              {
+                type: "mrkdwn",
+                text: `*예약 날짜:*\n${data.bookingDate}`,
+              },
+              {
+                type: "mrkdwn",
+                text: `*병원:*\n${data.hospitalName || "정보 없음"}`,
+              },
+              {
+                type: "mrkdwn",
+                text: `*요청 시간:*\n${new Date().toLocaleString("ko-KR")}`,
+              },
+            ],
+          },
+          {
+            type: "divider",
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "✅ 승인하기",
+                  emoji: true,
+                },
+                style: "primary",
+                url: data.approvalLink,
+                action_id: "approve_booking",
+              },
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "❌ 거절하기",
+                  emoji: true,
+                },
+                style: "danger",
+                url: data.rejectionLink,
+                action_id: "reject_booking",
+              },
+            ],
+          },
+        ],
+      };
+
+      const response = await fetch(this.webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(message),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        return {
+          success: false,
+          error: {
+            code: "SLACK_API_ERROR",
+            message: error,
+            retryable: response.status >= 500, // 5xx 에러는 재시도 가능
+          },
+        };
+      }
+
+      return {
+        success: true,
+        notificationId: `slack_${Date.now()}`, // Slack은 messageId를 반환하지 않음
+        deliveredAt: new Date(),
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: "NETWORK_ERROR",
+          message: error.message,
+          retryable: true,
+        },
+      };
+    }
+  }
+
+  async sendBatch(notifications: NotificationPayload[]): Promise<NotificationResult[]> {
+    // Slack은 병렬 전송 가능
+    return Promise.all(notifications.map(n => this.send(n)));
+  }
+
+  async getStatus(notificationId: string): Promise<NotificationStatus> {
+    // Slack 웹훅은 상태 조회를 지원하지 않음
+    return {
+      status: "UNKNOWN",
+      deliveredAt: undefined,
+      failureReason: "Slack webhooks do not support status tracking",
+    };
+  }
+}
+```
+
+#### 3.4.4 알림 전송 오케스트레이터
+
+```typescript
+class NotificationOrchestrator {
+  private services: Map<string, NotificationService>;
+  private retryQueue: Queue<NotificationPayload>;
+
+  constructor() {
+    this.services = new Map();
+    this.retryQueue = new Queue({ concurrency: 5 });
+
+    // 알림 서비스 등록
+    this.services.set("kakao_alimtalk", new KakaoAlimtalkService({
+      apiKey: process.env.KAKAO_API_KEY,
+      senderId: process.env.KAKAO_SENDER_ID,
+    }));
+
+    this.services.set("slack", new SlackNotificationService({
+      webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    }));
+  }
+
+  async sendNotification(notification: NotificationPayload): Promise<NotificationResult> {
+    const service = this.services.get(notification.channel);
+    if (!service) {
+      return {
+        success: false,
+        error: {
+          code: "UNSUPPORTED_CHANNEL",
+          message: `Channel ${notification.channel} is not supported`,
+          retryable: false,
+        },
+      };
+    }
+
+    const result = await service.send(notification);
+
+    // 실패 시 재시도 큐에 추가
+    if (!result.success && result.error?.retryable) {
+      await this.enqueueRetry(notification);
+    }
+
+    // 알림 전송 로그 저장 (Supabase)
+    await this.logNotification({
+      channel: notification.channel,
+      recipient: notification.recipient,
+      success: result.success,
+      notificationId: result.notificationId,
+      error: result.error,
+      sentAt: new Date(),
+    });
+
+    return result;
+  }
+
+  private async enqueueRetry(notification: NotificationPayload) {
+    const retryPolicy = notification.retryPolicy || {
+      maxRetries: 3,
+      backoffMs: 1000,
+    };
+
+    this.retryQueue.add(async () => {
+      for (let attempt = 1; attempt <= retryPolicy.maxRetries; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, retryPolicy.backoffMs * attempt));
+
+        const result = await this.sendNotification(notification);
+        if (result.success) {
+          console.log(`[Retry Success] Attempt ${attempt}/${retryPolicy.maxRetries}`);
+          return;
+        }
+
+        console.warn(`[Retry Failed] Attempt ${attempt}/${retryPolicy.maxRetries}`, result.error);
+      }
+
+      // 최종 실패 시 에스컬레이션 생성
+      await this.createNotificationFailureEscalation(notification);
+    });
+  }
+
+  private async logNotification(log: NotificationLog) {
+    await supabase.from("notification_logs").insert(log);
+  }
+
+  private async createNotificationFailureEscalation(notification: NotificationPayload) {
+    // 알림 전송 실패 시 에스컬레이션 생성
+    await supabase.from("escalations").insert({
+      reason: `알림 전송 실패: ${notification.channel}`,
+      priority: "high",
+      metadata: {
+        channel: notification.channel,
+        recipient: notification.recipient,
+        failedAt: new Date().toISOString(),
+      },
+    });
+  }
+}
+```
+
+#### 3.4.5 승인 웹훅 핸들러 (Admin Portal API)
+
+```typescript
+// Admin Portal에서 승인/거절 시 호출하는 API
+class ApprovalWebhookHandler {
+  async handleApproval(req: Request, res: Response) {
+    const { approvalId } = req.params;
+    const { action, userId, reason } = req.body; // action: "approve" | "reject"
+
+    try {
+      // 1. 승인 상태 업데이트 (Supabase)
+      const { data: approval, error } = await supabase
+        .from("booking_approvals")
+        .update({
+          status: action === "approve" ? "approved" : "rejected",
+          [`${action}ed_at`]: new Date().toISOString(),
+          [`${action}ed_by`]: userId,
+          rejection_reason: action === "reject" ? reason : null,
+        })
+        .eq("id", approvalId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // 2. Workflow 재개 (polling 메커니즘이 자동으로 감지)
+      // 또는 명시적으로 이벤트 발행
+      await this.notifyWorkflowResumption(approval.workflow_id, {
+        approved: action === "approve",
+        approvedBy: userId,
+        approvedAt: new Date(),
+      });
+
+      // 3. 승인 결과 로그 저장
+      await supabase.from("approval_logs").insert({
+        approval_id: approvalId,
+        action,
+        user_id: userId,
+        reason,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({
+        success: true,
+        message: action === "approve" ? "승인되었습니다" : "거절되었습니다",
+        approval,
+      });
+
+    } catch (error) {
+      console.error("[Approval Webhook Error]", error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+
+  private async notifyWorkflowResumption(workflowId: string, result: any) {
+    // Message Bus로 워크플로우 재개 이벤트 발행
+    await messageBus.publish("workflow.approval.completed", {
+      workflowId,
+      result,
+    });
+  }
+}
+
+// Express 라우트 등록
+app.post("/api/approvals/:approvalId/approve", (req, res) =>
+  new ApprovalWebhookHandler().handleApproval(req, res)
+);
+
+app.post("/api/approvals/:approvalId/reject", (req, res) =>
+  new ApprovalWebhookHandler().handleApproval(req, res)
+);
+```
+
+#### 3.4.6 KakaoTalk Alimtalk 템플릿 예시
+
+**템플릿 등록 (카카오 비즈니스 채널 관리자 화면)**:
+```
+템플릿 코드: booking_approval_request
+템플릿 이름: 예약 승인 요청
+템플릿 내용:
+---
+안녕하세요, #{hospitalName} 담당자님.
+
+새로운 예약 승인 요청이 접수되었습니다.
+
+고객명: #{customerName}
+예약 날짜: #{bookingDate}
+시술 종류: #{procedureType}
+
+아래 버튼을 클릭하여 승인 또는 거절해주세요.
+---
+
+버튼:
+1. [승인하기] - 웹링크 (#{approvalLink})
+2. [거절하기] - 웹링크 (#{rejectionLink})
+
+변수: hospitalName, customerName, bookingDate, procedureType, approvalLink, rejectionLink
+```
+
+#### 3.4.7 데이터베이스 스키마 (Supabase)
+
+```sql
+-- 알림 로그 테이블
+CREATE TABLE notification_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  channel TEXT NOT NULL, -- 'kakao_alimtalk', 'slack', 'email', 'sms'
+  recipient TEXT NOT NULL, -- 전화번호, Slack channel, 이메일 등
+  notification_id TEXT, -- 외부 서비스의 메시지 ID
+  success BOOLEAN NOT NULL,
+  error_code TEXT,
+  error_message TEXT,
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  delivered_at TIMESTAMPTZ,
+
+  -- 연관 정보
+  booking_id UUID REFERENCES bookings(id),
+  workflow_id UUID REFERENCES workflows(id),
+
+  -- 메타데이터
+  metadata JSONB DEFAULT '{}'
+);
+
+-- 예약 승인 테이블
+CREATE TABLE booking_approvals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_id UUID REFERENCES bookings(id) NOT NULL,
+  workflow_id UUID NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'rejected', 'expired'
+
+  -- 승인 정보
+  approved_at TIMESTAMPTZ,
+  approved_by UUID REFERENCES users(id),
+
+  -- 거절 정보
+  rejected_at TIMESTAMPTZ,
+  rejected_by UUID REFERENCES users(id),
+  rejection_reason TEXT,
+
+  -- 타임아웃
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 hours'),
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  -- 인덱스
+  INDEX idx_booking_approvals_status (status),
+  INDEX idx_booking_approvals_workflow (workflow_id)
+);
+
+-- 승인 로그 테이블
+CREATE TABLE approval_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  approval_id UUID REFERENCES booking_approvals(id) NOT NULL,
+  action TEXT NOT NULL, -- 'approve', 'reject'
+  user_id UUID REFERENCES users(id) NOT NULL,
+  reason TEXT,
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+---
+
 ## 4. 온톨로지 기반 지식 관리 시스템
 
 ### 4.1 왜 온톨로지가 필요한가?

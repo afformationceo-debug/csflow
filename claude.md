@@ -6195,3 +6195,172 @@ Resolves: User request "ai가 추천답변에 대한 rag어디서 어떻게 했�
 
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ```
+
+---
+
+## Section 25: 프로덕션 이슈 수정 (2026-01-29)
+
+### 25.1 사용자 보고 이슈 (3개)
+
+#### Issue #1: RAG 메타데이터 저장 및 표시 ✅ 완료
+**문제:** 통합인박스에서 RAG 로그가 UI에 표시되지 않음
+
+**원인:** AI 제안 메시지 전송 시 RAG 메타데이터(sources, logs)가 DB에 저장되지 않음
+
+**해결:**
+- `inbox/page.tsx` - "바로 전송" 버튼에 RAG 메타데이터 포함 (lines 2145-2161)
+- `messages/route.ts` - `senderType`, `aiMetadata` 파라미터 추가 (lines 63-73, 196-211)
+- 메시지 로드 시 metadata에서 sources 추출 (lines 877-890, 924-932)
+- TypeScript 타입 에러 수정 (aiSuggestion 인터페이스)
+
+**파일:**
+- `/web/src/app/(dashboard)/inbox/page.tsx`
+- `/web/src/app/api/messages/route.ts`
+
+**커밋:** `3c56e31` - "Store RAG metadata when sending AI suggestions"
+
+#### Issue #2: Unknown 고객 삭제 ✅ 완료
+**문제:** 통합인박스에 "Unknown" 고객이 있으며, 클릭 시 목록으로 돌아가고 삭제 불가
+
+**원인:** LINE 테스트 사용자 데이터 (name=null, Utest_user_1769583787275)
+
+**해결:**
+- 진단 스크립트로 고객 ID 확인: `10ef7284-55b3-4df6-bf7f-655d4c0ae496`
+- FK 순서에 따라 삭제: escalations → messages → conversation → customer_channels → customer
+- 검증: 대화 0건 확인
+
+**도구:** `delete-unknown-customer.js` (임시 스크립트, 삭제 후 제거됨)
+
+#### Issue #3: LINE 대화 미표시 (심각한 오류) ✅ 완료
+**문제:** LINE으로 대화 중이었는데 메신저 인박스에 아무것도 대화목록에 뜨지 않음
+
+**근본 원인:** `/api/conversations` API 쿼리에서 존재하지 않는 `users!assigned_to` FK join으로 인해 PostgreSQL 에러 발생
+- 에러 코드: `PGRST200`
+- 에러 메시지: "Could not find a relationship between 'conversations' and 'users'"
+- 결과: API가 0건의 대화를 반환
+
+**해결:**
+- `/web/src/app/api/conversations/route.ts` - 잘못된 `assigned_agent:users!assigned_to(...)` join 제거
+- 쿼리 정상화 후 LINE 대화 1건 반환 확인
+
+**검증:**
+```bash
+# Before fix
+curl -s https://csflow.vercel.app/api/conversations | jq '.conversations | length'
+# Output: 0
+
+# After fix
+curl -s https://csflow.vercel.app/api/conversations | jq '.conversations | length'
+# Output: 1
+```
+
+**대화 정보:**
+- 대화 ID: `b269bb05-36d5-4f27-82d3-14ea48e57e86`
+- 고객: CHATDOC CEO (EN)
+- 채널: LINE (CS Command LINE)
+- 상태: escalated
+- 미읽음: 8개 메시지
+
+**커밋:** `6ef3cb3` - "Fix LINE conversations not appearing in inbox"
+
+### 25.2 RAG 로그 보안 확인
+
+**사용자 질문:** "rag 로그가 생성된 문장에 떠서 전송할때 고객한테 그거까지 같이 전송되면 안됩니다. 그렇게 당연히 되었겠죠?"
+
+**답변:** ✅ **안전합니다.** RAG 로그는 절대 고객에게 전송되지 않습니다.
+
+**구현 확인:**
+- `messages/route.ts` Line 210: `content: content` - 오직 AI 응답 텍스트만 전송
+- Lines 199-203: RAG 메타데이터는 `metadata` JSONB 필드에만 저장
+- Lines 256-268: 채널 발송 시 `outboundContent`만 전송, metadata 미포함
+
+**메타데이터 저장 구조:**
+```typescript
+const metadata: Record<string, unknown> = {};
+if (aiMetadata) {
+  metadata.ai_confidence = aiMetadata.confidence;  // 내부용
+  metadata.ai_sources = aiMetadata.sources;        // 내부용
+  metadata.ai_logs = aiMetadata.logs;              // 내부용
+}
+
+// DB 저장 (관리자만 조회 가능)
+insertData.metadata = metadata;
+
+// 채널 발송 (고객에게 전송)
+const outboundContent = translatedContent || content;  // 텍스트만
+```
+
+### 25.3 API 캐싱 제거로 1초 지연 해결 ✅ 완료
+
+**문제:** 대시보드, 거래처 관리, 메신저, 에스컬레이션, 지식베이스 등 모든 메뉴 클릭 시 1초 지연 발생
+
+**근본 원인:** 8개 API 라우트에 `export const revalidate = 30` 설정
+- 이는 30초 캐시 설정으로, Next.js가 이전 응답을 캐시하여 사용
+- 실시간 데이터가 필요한 API에서 오래된 데이터 표시
+- Vercel Edge Network에서 캐시된 응답 반환으로 인한 지연
+
+**해결:**
+- `revalidate = 30` → `dynamic = "force-dynamic"` 변경
+- 모든 API 호출이 항상 최신 데이터 반환
+- 캐시 완전 비활성화
+
+**수정된 파일 (8개):**
+1. `/web/src/app/api/conversations/route.ts`
+2. `/web/src/app/api/dashboard/stats/route.ts`
+3. `/web/src/app/api/analytics/route.ts`
+4. `/web/src/app/api/escalations/route.ts`
+5. `/web/src/app/api/settings/route.ts`
+6. `/web/src/app/api/tenants/route.ts`
+7. `/web/src/app/api/team/route.ts`
+8. `/web/src/app/api/knowledge/documents/route.ts`
+
+**변경 내용:**
+```typescript
+// Before
+// 30초 캐시 허용 (클라이언트 + CDN)
+export const revalidate = 30;
+
+// After
+// Force dynamic - no caching for real-time data
+export const dynamic = "force-dynamic";
+```
+
+**효과:**
+- ✅ 모든 페이지에서 즉시 최신 데이터 표시
+- ✅ 1초 지연 완전 제거
+- ✅ 실시간 대화, 통계, 에스컬레이션 반영
+- ✅ Vercel Edge 캐시 우회
+
+**커밋:** `53c2f15` - "Fix 1-second delay: Remove all API caching"
+
+### 25.4 배포 상태
+
+#### 완료된 커밋 (3개)
+1. `3c56e31` - RAG 메타데이터 저장 및 표시
+2. `6ef3cb3` - LINE 대화 표시 수정
+3. `53c2f15` - API 캐싱 제거 (1초 지연 해결)
+
+#### 프로덕션 검증
+- ✅ Vercel 자동 배포 완료
+- ✅ 빌드 검증 통과 (0 errors)
+- ✅ LINE 대화 정상 표시: https://csflow.vercel.app/inbox
+- ✅ 모든 페이지 즉시 로딩 확인
+- ✅ RAG 로그 보안 확인 (고객에게 미전송)
+
+### 25.5 주요 학습 사항
+
+#### Next.js API Routes 캐싱
+- `revalidate = N`: ISR용 설정으로 N초 동안 캐시
+- API Routes에서는 실시간 데이터 제공 시 부적합
+- `dynamic = "force-dynamic"`: 모든 캐싱 비활성화, 항상 fresh data
+
+#### Supabase PostgREST 에러
+- FK join 시 테이블 관계 확인 필수
+- `users!assigned_to` 같은 존재하지 않는 관계는 PGRST200 에러 발생
+- 진단 스크립트로 빠른 원인 파악
+
+#### RAG 메타데이터 보안
+- `content` 필드: 고객에게 전송되는 텍스트
+- `metadata` 필드: 내부용 데이터 (sources, logs, confidence)
+- 채널 발송 시 metadata 절대 포함 안됨
+
