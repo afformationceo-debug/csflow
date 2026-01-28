@@ -50,8 +50,12 @@ import {
   Search,
   TrendingUp,
   Zap,
+  Download,
+  Upload,
+  FileText,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 // --- Types ---
 
@@ -263,6 +267,11 @@ export default function TenantsPage() {
 
   const [editingAIConfig, setEditingAIConfig] = useState<TenantAIConfig | null>(null);
 
+  // CSV Upload State
+  const [isCsvUploadDialogOpen, setIsCsvUploadDialogOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
   // --- Data Fetching ---
   const loadTenants = useCallback(async () => {
     try {
@@ -395,8 +404,70 @@ export default function TenantsPage() {
       setAiConfigTenantId(null);
       setEditingAIConfig(null);
       loadTenants();
+      toast.success("✅ AI 설정이 저장되었습니다");
     } catch (error) {
       console.error("Failed to save AI config:", error);
+      toast.error("AI 설정 저장에 실패했습니다");
+    }
+  };
+
+  // --- CSV Handlers ---
+
+  const handleCsvDownload = async () => {
+    try {
+      const response = await fetch("/api/tenants/bulk");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tenants-${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success("✅ CSV 템플릿 다운로드 완료");
+    } catch (error: any) {
+      toast.error(error.message || "다운로드에 실패했습니다");
+    }
+  };
+
+  const handleCsvUpload = async () => {
+    if (!csvFile) {
+      toast.error("CSV 파일을 선택해주세요");
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", csvFile);
+
+      const response = await fetch("/api/tenants/bulk", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        toast.error(
+          `⚠️ 일부 오류 발생\n성공: ${result.successCount}개\n실패: ${result.errorCount}개`,
+          {
+            description: result.errors.slice(0, 3).join("\n"),
+          }
+        );
+      } else {
+        toast.success(`✅ 거래처 업로드 완료\n성공: ${result.successCount}개`);
+      }
+
+      setIsCsvUploadDialogOpen(false);
+      setCsvFile(null);
+      loadTenants();
+    } catch (error: any) {
+      toast.error(error.message || "CSV 업로드에 실패했습니다");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -431,13 +502,95 @@ export default function TenantsPage() {
             소중한 파트너 병원과 클리닉을 한눈에 관리하세요
           </p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1.5 shadow-sm">
-              <Plus className="h-3.5 w-3.5" />
-              거래처 추가
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          {/* CSV Download Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 shadow-sm"
+            onClick={handleCsvDownload}
+          >
+            <Download className="h-3.5 w-3.5" />
+            CSV 다운로드
+          </Button>
+
+          {/* CSV Upload Button */}
+          <Dialog open={isCsvUploadDialogOpen} onOpenChange={setIsCsvUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 shadow-sm">
+                <Upload className="h-3.5 w-3.5" />
+                CSV 업로드
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[450px]">
+              <DialogHeader>
+                <DialogTitle>거래처 CSV 일괄 업로드</DialogTitle>
+                <DialogDescription>
+                  CSV 파일을 업로드하여 여러 거래처를 한 번에 등록하세요
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+                    CSV 파일 선택
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                      className="border-0 bg-muted/50 shadow-sm text-sm file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                    />
+                  </div>
+                  {csvFile && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>{csvFile.name}</span>
+                      <span className="text-[10px]">({(csvFile.size / 1024).toFixed(1)}KB)</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+                  <p className="font-medium mb-1.5">📋 CSV 형식 안내</p>
+                  <ul className="space-y-0.5 text-[11px] leading-relaxed">
+                    <li>• 필수 컬럼: name, name_en, specialty</li>
+                    <li>• 선택 컬럼: default_language, system_prompt, model</li>
+                    <li>• specialty: ophthalmology, dentistry, plastic_surgery, dermatology, general</li>
+                  </ul>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setIsCsvUploadDialogOpen(false);
+                    setCsvFile(null);
+                  }}
+                  disabled={isUploading}
+                >
+                  취소
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleCsvUpload}
+                  disabled={!csvFile || isUploading}
+                >
+                  {isUploading ? "업로드 중..." : "업로드"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Add Tenant Button */}
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1.5 shadow-sm">
+                <Plus className="h-3.5 w-3.5" />
+                거래처 추가
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>새 거래처 추가</DialogTitle>
@@ -541,6 +694,7 @@ export default function TenantsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Summary Stats */}
