@@ -5127,3 +5127,168 @@ Files modified:
 - 실제 데이터 업로드 테스트
 - RAG 응답 품질 검증 및 개선
 
+
+---
+
+## 21. 프로덕션 이슈 수정 (2026-01-28)
+
+### 21.1 사용자 요청 (4가지 이슈)
+
+사용자가 실제 메신저 사용 중 발견한 4가지 이슈:
+
+0. **번역 방향 수정**: 담당자가 답장한 번역이 한국어로 잘못 표시되는 문제
+1. **LINE 메시지 잘림**: 전송한 전체 메시지가 LINE에서 일부만 수신되는 문제
+2. **RAG 소스 명확히 표시**: AI가 어떤 데이터를 RAG했는지 메타데이터로 별도 표시 필요
+3. **채널-거래처 매핑**: 채널 추가 시 거래처 선택 필수화 + DB 반영 확인
+4. **DB 스키마 검증**: Supabase/Upstash 전체 검증
+
+### 21.2 Issue #0: 번역 방향 수정 (✅ 완료)
+
+**문제**: 인박스에서 담당자가 보낸 메시지의 번역 라벨이 명확하지 않음. "번역"이라고만 표시되어 고객에게 전송되는 내용인지 불명확.
+
+**원인 분석**:
+- UI에서 번역 라벨이 "번역"으로 통일되어 있음
+- 담당자 메시지의 경우 `translated_content` 필드는 **고객 언어로 번역된 내용** (예: 일본어)
+- 고객 메시지의 경우 `translated_content` 필드는 **한국어로 번역된 내용**
+
+**수정 내용**:
+1. 인박스 메시지 표시 로직 수정 (`web/src/app/(dashboard)/inbox/page.tsx` line 1872)
+   ```typescript
+   // Before
+   번역
+   
+   // After
+   {msg.sender === "agent" ? "고객에게 전송" : "번역"}
+   ```
+
+2. 번역 API에 디버그 로깅 추가 (`web/src/app/api/messages/route.ts`)
+   ```typescript
+   console.log("[Messages API] Translation context:", {
+     customerLanguage,
+     translateToCustomerLanguage,
+     contentPreview: content.substring(0, 50),
+   });
+   ```
+
+**결과**: 담당자 메시지 번역이 "고객에게 전송"으로 명확히 표시되어 고객이 받을 내용임을 명시함.
+
+**Commit**: `be4e3e5` - "fix: Clarify agent message translation label and add debug logging"
+
+### 21.3 Issue #1: LINE 메시지 잘림 (🔍 조사 중)
+
+**문제**: 
+- **전송한 메시지**: "リジュランについてのご関心ありがとうございます。リジュランは肌の再生を促進する治療法で、通常数回の施術が推奨されます。詳細な情報や料金については、ぜひカウンセリングをご予約ください。"
+- **LINE 수신 메시지**: "リジュランは皮膚の再生を促進する治療法で、通常は数回の施術が推奨されます。"
+
+**특징**:
+- 단순 잘림이 아님 — 전혀 다른 번역문이 수신됨
+- 원문: "감사" + "재생 촉진" + "상담 예약 권유"
+- 수신: "재생 촉진" 부분만 수신
+
+**가설**:
+1. DeepL 번역 시 여러 번역 옵션 중 잘못된 것 선택
+2. AI RAG 응답이 원래 짧았지만 UI에는 긴 버전 표시
+3. LINE API 호출 시 payload에 잘못된 필드 전송
+4. 캐시된 이전 번역 사용
+
+**디버깅 작업**:
+1. LINE 메시지 전송 로깅 추가 (`web/src/services/channels/line.ts`)
+   ```typescript
+   console.log("[LINE] Sending message:", {
+     channelUserId: message.channelUserId,
+     contentType: message.contentType,
+     textLength: message.text?.length || 0,
+     textPreview: message.text?.substring(0, 100) || "",
+     lineMessagePreview: JSON.stringify(lineMessage).substring(0, 200),
+   });
+   ```
+
+2. 번역 API 로깅 추가 (이미 완료)
+
+**다음 단계**:
+- 사용자가 실제 메시지 전송 시 로그 확인
+- DeepL API 응답 내용 검증
+- LINE API payload 확인
+
+**Commit**: `de22294` - "debug: Add logging to LINE message sending to track truncation issue"
+
+### 21.4 Issue #2: RAG 소스 명확히 표시 (⏳ Pending)
+
+**요구사항**:
+- AI 응답 생성 시 어떤 소스를 RAG했는지 메타데이터로 표시
+- 소스 종류: 시스템 프롬프트, 지식베이스 문서, 거래처 정보, 대화 히스토리, 피드백 DB
+- 실제 전송 메시지가 아닌 별도 UI 영역에 표시
+
+**구현 계획**:
+1. RAG 파이프라인에서 사용된 소스 추적 및 메타데이터 저장
+2. 인박스 UI에 RAG 소스 표시 컴포넌트 추가 (접을 수 있는 디버그 패널)
+3. 메시지 DB 스키마에 `rag_metadata` JSONB 필드 추가
+
+### 21.5 Issue #3: 채널-거래처 매핑 (⏳ Pending)
+
+**요구사항**:
+- 채널 추가 시 거래처 선택 필수
+- 백엔드 DB (`channel_accounts.tenant_id`)에 올바르게 저장
+- 채널 관리 UI에서 거래처별 채널 표시
+
+**현재 상태 확인 필요**:
+- `/api/channels POST` 엔드포인트에서 `tenant_id` 필수 검증 여부
+- 채널 추가 UI에서 거래처 선택 드롭다운 존재 여부
+- DB에 저장 후 실제 반영 확인
+
+### 21.6 Issue #4: DB 스키마 전체 검증 (⏳ Pending)
+
+**요구사항**:
+- Supabase와 Upstash의 모든 스키마가 프론트엔드 구현과 일치하는지 검증
+- MCP 또는 API를 활용하여 직접 확인
+- 불일치 발견 시 사용자에게 필요한 값 요청
+
+**검증 대상**:
+- Supabase: 20+ 테이블, pgvector 인덱스, RLS 정책, RPC 함수
+- Upstash Redis: 캐시 키 구조, TTL 설정
+- Upstash Vector: 임베딩 차원, 네임스페이스 격리
+
+### 21.7 변경 파일 (2026-01-28)
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `web/src/app/(dashboard)/inbox/page.tsx` | 번역 라벨 "고객에게 전송"으로 변경 (담당자 메시지) |
+| `web/src/app/api/messages/route.ts` | 번역 컨텍스트 및 결과 로깅 추가 |
+| `web/src/services/channels/line.ts` | LINE 메시지 전송 시 상세 로깅 추가 |
+
+### 21.8 Commit 로그
+
+```
+commit be4e3e5
+Author: 지현근
+Date: 2026-01-28
+
+fix: Clarify agent message translation label and add debug logging
+
+- Change translation label from '번역' to '고객에게 전송' for agent messages
+- Add console logging to track translation context and results
+- Helps debug issue where translation might not be working correctly
+
+commit de22294
+Author: 지현근
+Date: 2026-01-28
+
+debug: Add logging to LINE message sending to track truncation issue
+```
+
+### 21.9 배포 상태
+
+- ✅ GitHub 푸시 완료: `origin/main`
+- ✅ Vercel 자동 배포 시작됨
+- ✅ 빌드 검증 통과 (Next.js 16.1.4 Turbopack, 0 errors)
+
+### 21.10 현재 진행 상황 요약
+
+| 이슈 | 상태 | 비고 |
+|------|------|------|
+| 0. 번역 방향 수정 | ✅ 완료 | 라벨 명확화, 로깅 추가 |
+| 1. LINE 메시지 잘림 | 🔍 조사 중 | 로깅 추가, 실제 전송 시 확인 필요 |
+| 2. RAG 소스 표시 | ⏳ Pending | 설계 및 구현 예정 |
+| 3. 채널-거래처 매핑 | ⏳ Pending | 현재 상태 확인 후 수정 |
+| 4. DB 스키마 검증 | ⏳ Pending | 체계적 검증 예정 |
+
