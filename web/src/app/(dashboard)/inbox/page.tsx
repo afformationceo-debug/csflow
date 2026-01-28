@@ -1869,7 +1869,7 @@ export default function InboxPage() {
                                         msg.sender === "agent" ? "text-primary-foreground/70" : "text-muted-foreground"
                                       )}>
                                         <Globe className="h-2.5 w-2.5" />
-                                        번역
+                                        {msg.sender === "agent" ? "고객에게 전송" : "번역"}
                                       </div>
                                       <p className={cn(
                                         "text-xs leading-relaxed",

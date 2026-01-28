@@ -157,6 +157,12 @@ export async function POST(request: NextRequest) {
     let translatedContent: string | undefined;
     let translatedLanguage: string | undefined;
 
+    console.log("[Messages API] Translation context:", {
+      customerLanguage,
+      translateToCustomerLanguage,
+      contentPreview: content.substring(0, 50),
+    });
+
     if (translateToCustomerLanguage && customerLanguage !== "KO") {
       try {
         const translation = await translationService.translateForCS(
@@ -166,10 +172,20 @@ export async function POST(request: NextRequest) {
         );
         translatedContent = translation.text;
         translatedLanguage = customerLanguage;
+
+        console.log("[Messages API] Translation result:", {
+          originalPreview: content.substring(0, 50),
+          translatedPreview: translatedContent.substring(0, 50),
+          targetLang: translatedLanguage,
+        });
       } catch (translationError) {
         console.error("Translation failed, sending original:", translationError);
         // Continue without translation - agent message will be sent in original language
       }
+    } else {
+      console.log("[Messages API] Skipping translation:", {
+        reason: customerLanguage === "KO" ? "Customer language is Korean" : "Translation disabled",
+      });
     }
 
     // 4. Save the agent message to the database
