@@ -10,6 +10,7 @@ import {
   Building2,
   BookOpen,
   Users,
+  UserCircle,
   AlertTriangle,
   BarChart3,
   Settings,
@@ -32,6 +33,11 @@ const navigation = [
     href: "/inbox",
     icon: MessageSquare,
     badge: 23,
+  },
+  {
+    name: "고객 관리",
+    href: "/customers",
+    icon: UserCircle,
   },
   {
     name: "채널 관리",
