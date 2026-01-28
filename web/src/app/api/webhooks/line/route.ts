@@ -8,6 +8,7 @@ import { translationService, SupportedLanguage } from "@/services/translation";
 import { ragPipeline } from "@/services/ai";
 import { serverEscalationService } from "@/services/escalations";
 import { enqueueJob } from "@/lib/upstash/qstash";
+import { sendChannelMessage } from "@/services/channels";
 import { analyzeImage } from "@/services/ai/image-analysis";
 import { transcribeVoiceFromUrl } from "@/services/ai/voice-processing";
 
@@ -115,7 +116,7 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
   let userProfile: { displayName?: string; pictureUrl?: string } = {};
   try {
     userProfile = await lineAdapter.getUserProfile(
-      message.channelAccountId,
+      channelAccountData.id,
       message.channelUserId
     );
   } catch (e) {
@@ -353,7 +354,8 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
       // Send response to LINE
       const responseText = ragResult.translatedResponse || ragResult.response;
 
-      await enqueueJob({
+      // Try QStash first, fallback to direct send
+      const enqueued = await enqueueJob({
         type: "send_message",
         data: {
           messageId: aiMessage.id,
@@ -363,6 +365,29 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
           content: responseText,
         },
       });
+
+      // If QStash not configured, send directly
+      if (!enqueued) {
+        console.log("[LINE] QStash not available, sending directly");
+        try {
+          const sendResult = await sendChannelMessage("line", channelAccountData.id, {
+            channelType: "line",
+            channelUserId: message.channelUserId,
+            contentType: "text",
+            text: responseText,
+          });
+          if (sendResult.success) {
+            await serverMessageService.updateMessageStatus(aiMessage.id, "sent", sendResult.messageId);
+            console.log("[LINE] AI response sent directly");
+          } else {
+            console.error("[LINE] Direct send failed:", sendResult.error);
+            await serverMessageService.updateMessageStatus(aiMessage.id, "failed");
+          }
+        } catch (sendErr) {
+          console.error("[LINE] Direct send error:", sendErr);
+          await serverMessageService.updateMessageStatus(aiMessage.id, "failed");
+        }
+      }
     }
   } catch (e) {
     console.error("[LINE] RAG pipeline failed:", e);

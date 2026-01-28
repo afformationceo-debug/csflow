@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { translationService, SupportedLanguage } from "@/services/translation";
 import { enqueueJob } from "@/lib/upstash/qstash";
+import { sendChannelMessage } from "@/services/channels";
+import { ChannelType } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 
@@ -152,7 +154,7 @@ export async function POST(request: NextRequest) {
       // Send the translated content if available, otherwise the original
       const outboundContent = translatedContent || content;
 
-      await enqueueJob({
+      const enqueued = await enqueueJob({
         type: "send_message",
         data: {
           messageId: message.id,
@@ -164,6 +166,33 @@ export async function POST(request: NextRequest) {
           mediaUrl: mediaUrl || undefined,
         },
       });
+
+      // If QStash not configured, send directly
+      if (!enqueued) {
+        console.log("[Messages] QStash not available, sending directly");
+        try {
+          const sendResult = await sendChannelMessage(channelType as ChannelType, channelAccountId, {
+            channelType: channelType as ChannelType,
+            channelUserId,
+            contentType: (contentType || "text") as "text" | "image",
+            text: outboundContent,
+            mediaUrl: mediaUrl || undefined,
+          });
+          if (sendResult.success) {
+            // Update message status to sent
+            await (supabase.from("messages") as any)
+              .update({ status: "sent", external_id: sendResult.messageId })
+              .eq("id", message.id);
+          } else {
+            console.error("[Messages] Direct send failed:", sendResult.error);
+            await (supabase.from("messages") as any)
+              .update({ status: "failed" })
+              .eq("id", message.id);
+          }
+        } catch (sendErr) {
+          console.error("[Messages] Direct send error:", sendErr);
+        }
+      }
     } else {
       console.warn(
         `No channel info found for conversation ${conversationId}, message saved but not sent`

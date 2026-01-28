@@ -448,15 +448,9 @@ export class LineAdapter implements ChannelAdapter {
       const supabase = await createServiceClient();
 
       const { data: channelAccount } = await (supabase
-        .from("channel_accounts") as unknown as {
-          select: (cols: string) => {
-            eq: (col: string, val: string) => {
-              single: () => Promise<{ data: { credentials?: Record<string, unknown> } | null }>;
-            };
-          };
-        })
+        .from("channel_accounts") as any)
         .select("credentials")
-        .eq("account_id", channelAccountId)
+        .eq("id", channelAccountId)
         .single();
 
       if (channelAccount && channelAccount.credentials) {
@@ -466,10 +460,11 @@ export class LineAdapter implements ChannelAdapter {
         }
       }
     } catch (error) {
-      console.error("Failed to get channel credentials from DB:", error);
+      console.error("[LINE] Failed to get channel credentials from DB:", error);
     }
 
     // Fallback to environment variable
+    console.warn("[LINE] Using fallback LINE_CHANNEL_ACCESS_TOKEN from env");
     return process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
   }
 
@@ -482,15 +477,9 @@ export class LineAdapter implements ChannelAdapter {
       const supabase = await createServiceClient();
 
       const { data: channelAccount } = await (supabase
-        .from("channel_accounts") as unknown as {
-          select: (cols: string) => {
-            eq: (col: string, val: string) => {
-              single: () => Promise<{ data: { credentials?: Record<string, unknown> } | null }>;
-            };
-          };
-        })
+        .from("channel_accounts") as any)
         .select("credentials")
-        .eq("account_id", channelAccountId)
+        .eq("id", channelAccountId)
         .single();
 
       if (channelAccount && channelAccount.credentials) {
@@ -500,9 +489,10 @@ export class LineAdapter implements ChannelAdapter {
         }
       }
     } catch (error) {
-      console.error("Failed to get channel secret from DB:", error);
+      console.error("[LINE] Failed to get channel secret from DB:", error);
     }
 
+    console.warn("[LINE] Using fallback LINE_CHANNEL_SECRET from env");
     return process.env.LINE_CHANNEL_SECRET || "";
   }
 }
