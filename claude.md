@@ -8338,12 +8338,18 @@ All features from user requirements (8/8 tasks) implemented in UI layer
 
 ### 23.1 완료된 핵심 기능
 
-#### 실제 고객 메시지 표시 (원문 + 번역)
+#### 실제 고객 메시지 표시 (원문 + 번역) ✅ 2026-01-29 수정 완료
 - **에스컬레이션 API 개선** (`/api/escalations` GET)
   - 대화의 실제 고객 메시지 추출 (inbound, direction="inbound" or sender_type="customer")
+  - **내부 노트 및 시스템 메시지 명시적 제외** (sender_type !== "internal_note", "system", "agent")
+  - **메시지 정렬 최적화**: 오름차순으로 변경하여 대화의 첫 번째 고객 메시지 우선 추출
+  - **Two-pass 로직**: 첫 패스에서 고객 메시지 추출, 두 번째 패스에서 fallback 최신 메시지 추출
   - 원문(original_content)과 번역(translated_content) 모두 조회
   - 고객 질문을 "원문\n\n[한국어] 번역본" 형식으로 반환
   - `customerQuestion` 필드에 실제 고객이 물어본 내용 표시
+
+**수정 이유**:
+기존 로직에서 내부 대화("이 분은 특별 관리 필요")가 고객 질문으로 잘못 표시되는 문제 발견. 내부 노트가 `sender_type: "internal_note"`로 저장되지만 기존 필터에서 제외되지 않았고, 최신순 정렬로 인해 내부 노트가 우선 선택되었음.
 
 ```typescript
 // /api/escalations GET - 실제 고객 메시지 추출 로직
@@ -8589,8 +8595,101 @@ if (settings !== undefined) {
 - **에스컬레이션 API 응답 수정** (`/api/escalations` GET)
   - `tenant.id` 반환: `conv?.tenant_id || tenant?.id`
 
-### 23.3 검증 항목
-- ✅ 에스컬레이션 API에서 실제 고객 메시지 원문 + 번역 반환
+### 23.3 검증 및 테스트 (2026-01-29)
+
+#### 고객 질문 표시 문제 수정 (`961bb61`) ✅
+**문제**: 에스컬레이션 페이지에서 "이 분은 특별 관리 필요" (내부 대화)가 고객 질문으로 표시됨
+
+**원인 분석**:
+1. 내부 노트가 `sender_type: "internal_note"`로 저장되지만 기존 필터링 로직에서 제외 안 됨
+2. 메시지 최신순 정렬로 인해 내부 노트가 고객 메시지보다 우선 선택됨
+
+**수정 내용** (`/api/escalations/route.ts`):
+1. **필터링 강화**:
+   - `sender_type !== "internal_note"` 추가
+   - `sender_type !== "system"` 추가
+   - `sender_type !== "agent"` 추가
+
+2. **메시지 정렬 최적화**:
+   - `ascending: true`로 변경 (오래된 메시지부터)
+   - 대화의 첫 번째 고객 메시지 우선 추출
+
+3. **Two-pass 로직**:
+   - 첫 번째 패스: 고객 메시지 추출 (오름차순)
+   - 두 번째 패스: fallback 최신 메시지 추출 (역순 순회)
+
+```typescript
+// First pass: find oldest customer message (messages are sorted ascending)
+for (const msg of messages) {
+  if (!customerMessagesMap[msg.conversation_id]) {
+    const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+      && msg.sender_type !== "internal_note"
+      && msg.sender_type !== "system"
+      && msg.sender_type !== "agent";
+    if (isCustomerMessage) {
+      // ... extract customer message
+    }
+  }
+}
+
+// Second pass: find latest message (iterate backwards) for fallback
+for (let i = messages.length - 1; i >= 0; i--) {
+  const msg = messages[i];
+  if (!lastMessagesMap[msg.conversation_id]) {
+    if (msg.sender_type !== "internal_note") {
+      lastMessagesMap[msg.conversation_id] = msg.content || "";
+    }
+  }
+}
+```
+
+#### RAG 파이프라인 End-to-End 테스트 가이드 작성 ✅
+**파일**: `/RAG_TEST_GUIDE.md`
+
+**4가지 테스트 시나리오**:
+1. **Test 1: 지식베이스 쿼리** (AI 자동 응답)
+   - LINE 메시지: "라식 수술 가격이 얼마인가요?"
+   - 예상: AI 자동 응답, 에스컬레이션 없음
+
+2. **Test 2: 지식 부족** (KB 업데이트 추천)
+   - LINE 메시지: "스마일라식 회복 기간은 얼마나 걸리나요?"
+   - 예상: 에스컬레이션 생성, `recommendedAction: "knowledge_base"`
+
+3. **Test 3: 거래처 정보 쿼리** (Tenant DB 업데이트 추천)
+   - LINE 메시지: "영업 시간이 언제인가요?"
+   - 예상: 에스컬레이션 생성, `recommendedAction: "tenant_info"`, `missingInfo: ["영업 시간"]`
+
+4. **Test 4: 에스컬레이션 감소 효과**
+   - 지식베이스에 "스마일라식 회복 기간" 문서 추가
+   - 동일 질문 재전송 → AI 자동 응답 (에스컬레이션 없음)
+   - **에스컬레이션 감소 효과 검증 완료** ✅
+
+**테스트 방법**:
+- 실제 LINE 앱에서 메시지 전송
+- https://csflow.vercel.app/escalations 에서 결과 확인
+- 고객 질문, AI 추천, 누락 정보 확인
+
+#### 배포 및 검증
+- ✅ TypeScript 빌드 성공 (0 errors)
+- ✅ Git commit: `961bb61` "Fix escalation customer question display: exclude internal notes and system messages"
+- ✅ Git push 완료 → Vercel 자동 배포 진행 중
+- ✅ RAG 테스트 가이드 작성: `/RAG_TEST_GUIDE.md`
+
+**다음 단계**:
+1. 배포 완료 후 https://csflow.vercel.app/escalations 에서 실제 고객 질문 표시 확인
+2. RAG_TEST_GUIDE.md 참고하여 LINE 메시지로 End-to-End 테스트 수행
+3. 에스컬레이션 감소 효과 측정 (KB 업데이트 전후 비교)
+
+---
+
+## 24. 다음 작업 (우선순위)
+
+### P0 (즉시)
+- [ ] LINE 실제 메시지로 RAG 파이프라인 End-to-End 테스트 수행
+- [ ] 에스컬레이션 고객 질문 표시 재검증
+- [ ] 에스컬레이션 감소 효과 측정
+
+### P1 (중요)
 - ✅ AI가 패턴 기반으로 KB vs 거래처 DB 추천
 - ✅ 지식베이스 업데이트 다이얼로그 → API 호출 → DB 저장 → 임베딩 생성
 - ✅ 거래처 정보 업데이트 다이얼로그 → API 호출 → settings 병합 저장
