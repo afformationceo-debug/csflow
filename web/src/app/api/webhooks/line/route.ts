@@ -351,12 +351,14 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
 
     // 8. Handle escalation or send AI response
     if (ragResult.shouldEscalate) {
-      // Create escalation
+      // Create escalation with AI recommendations
       await serverEscalationService.createEscalation({
         conversationId: conversation.id,
         messageId: savedMessage.id,
         reason: ragResult.escalationReason || "AI 신뢰도 미달",
         aiConfidence: ragResult.confidence,
+        recommendedAction: ragResult.recommendedAction,
+        missingInfo: ragResult.missingInfo,
       });
 
       // Update conversation status

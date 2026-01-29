@@ -35,6 +35,9 @@ export interface RAGOutput {
   shouldEscalate: boolean;
   escalationReason?: string;
   processingTimeMs: number;
+  // AI recommendations for escalations
+  recommendedAction?: "knowledge_base" | "tenant_info";
+  missingInfo?: string[];
 }
 
 export interface EscalationDecision {
@@ -138,6 +141,91 @@ function checkSensitiveTopics(query: string): EscalationDecision | null {
   }
 
   return null;
+}
+
+/**
+ * Analyze what type of information is missing and recommend which DB to update
+ * Returns recommendedAction and list of missing information
+ */
+async function analyzeRequiredUpdate(
+  query: string,
+  retrievedDocs: RetrievedDocument[],
+  escalationReason: string | undefined,
+  tenant: any
+): Promise<{ recommendedAction: "knowledge_base" | "tenant_info"; missingInfo: string[] }> {
+  // Patterns that suggest tenant info needs updating
+  const tenantInfoPatterns = [
+    /영업.*시간|운영.*시간|몇.*시|언제.*열|언제.*문|when.*open|opening.*hours/i,
+    /가격|비용|얼마|price|cost|how much/i,
+    /위치|주소|어디|where|location|address/i,
+    /연락|전화|이메일|contact|phone|email/i,
+    /의사|doctor|선생님|staff|팀/i,
+    /장비|시설|equipment|facility/i,
+    /서비스|시술|treatment|procedure|surgery/i,
+  ];
+
+  // Check if query is about tenant-specific operational information
+  let isTenantInfo = false;
+  let detectedTopics: string[] = [];
+
+  for (const pattern of tenantInfoPatterns) {
+    if (pattern.test(query)) {
+      isTenantInfo = true;
+
+      // Identify specific missing info
+      if (/영업.*시간|운영.*시간|몇.*시|언제.*열|언제.*문|when.*open|opening.*hours/i.test(query)) {
+        detectedTopics.push("영업 시간");
+      }
+      if (/가격|비용|얼마|price|cost|how much/i.test(query)) {
+        detectedTopics.push("가격 정보");
+      }
+      if (/위치|주소|어디|where|location|address/i.test(query)) {
+        detectedTopics.push("위치/주소");
+      }
+      if (/연락|전화|이메일|contact|phone|email/i.test(query)) {
+        detectedTopics.push("연락처");
+      }
+      if (/의사|doctor|선생님|staff|팀/i.test(query)) {
+        detectedTopics.push("의료진 정보");
+      }
+      if (/장비|시설|equipment|facility/i.test(query)) {
+        detectedTopics.push("시설/장비 정보");
+      }
+      if (/서비스|시술|treatment|procedure|surgery/i.test(query)) {
+        detectedTopics.push("제공 서비스/시술 목록");
+      }
+    }
+  }
+
+  // If no documents found, likely missing KB content
+  if (retrievedDocs.length === 0) {
+    return {
+      recommendedAction: "knowledge_base",
+      missingInfo: [
+        "관련 FAQ 문서",
+        "일반적인 답변 가이드",
+        `'${query.slice(0, 50)}...'에 대한 표준 응답`,
+      ],
+    };
+  }
+
+  // If tenant-specific operational question
+  if (isTenantInfo) {
+    return {
+      recommendedAction: "tenant_info",
+      missingInfo: detectedTopics.length > 0 ? detectedTopics : ["거래처 기본 정보"],
+    };
+  }
+
+  // Default: suggest knowledge base update for general questions
+  return {
+    recommendedAction: "knowledge_base",
+    missingInfo: [
+      "관련 주제에 대한 상세 문서",
+      "유사 질문에 대한 답변 예시",
+      "고객 질문 패러프레이즈 모음",
+    ],
+  };
 }
 
 /**
@@ -304,7 +392,22 @@ export const ragPipeline = {
       });
     }
 
-    // 10. Log AI response for learning
+    // 10. Analyze what DB needs updating if escalating
+    let recommendedAction: "knowledge_base" | "tenant_info" | undefined;
+    let missingInfo: string[] | undefined;
+
+    if (escalationDecision) {
+      const analysis = await analyzeRequiredUpdate(
+        input.query,
+        documents,
+        escalationDecision.reason,
+        tenant
+      );
+      recommendedAction = analysis.recommendedAction;
+      missingInfo = analysis.missingInfo;
+    }
+
+    // 11. Log AI response for learning
     await this.logResponse({
       conversationId: input.conversationId,
       tenantId: input.tenantId,
@@ -327,6 +430,9 @@ export const ragPipeline = {
       shouldEscalate: !!escalationDecision,
       escalationReason: escalationDecision?.reason,
       processingTimeMs: Date.now() - startTime,
+      // AI recommendations
+      recommendedAction,
+      missingInfo,
     };
   },
 

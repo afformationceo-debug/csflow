@@ -315,8 +315,17 @@ export async function PATCH(request: NextRequest) {
       };
     }
 
+    // Merge settings with existing settings (not overwrite)
     if (settings !== undefined) {
-      updateData.settings = settings;
+      // Fetch current settings first
+      const { data: currentTenant } = await (supabase as any)
+        .from("tenants")
+        .select("settings")
+        .eq("id", id)
+        .single();
+
+      const currentSettings = (currentTenant?.settings as Record<string, unknown>) || {};
+      updateData.settings = { ...currentSettings, ...settings };
     }
 
     const { data, error } = await (supabase as any)

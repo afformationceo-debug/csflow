@@ -96,26 +96,59 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Collect all conversation IDs to fetch last messages
+    // Collect all conversation IDs to fetch customer messages (inbound only)
     const conversationIds = (escalations || [])
       .map((e: any) => e.conversation?.id)
       .filter(Boolean);
 
-    // Fetch the latest message for each conversation in a single query
+    // Fetch customer messages with original language + Korean translation
+    interface CustomerMessage {
+      original: string;          // Customer's native language
+      korean: string;           // Korean translation
+      originalLanguage: string; // Language code
+    }
+    let customerMessagesMap: Record<string, CustomerMessage> = {};
     let lastMessagesMap: Record<string, string> = {};
+
     if (conversationIds.length > 0) {
-      // Get last message per conversation via ordering
+      // Get all messages for these conversations
       const { data: messages } = await (supabase as any)
         .from("messages")
-        .select("conversation_id, content")
+        .select("conversation_id, content, original_content, translated_content, original_language, direction, sender_type, created_at")
         .in("conversation_id", conversationIds)
         .order("created_at", { ascending: false });
 
       if (messages) {
-        // Group by conversation_id, take first (latest)
         for (const msg of messages) {
+          // Latest message (any type) for fallback
           if (!lastMessagesMap[msg.conversation_id]) {
-            lastMessagesMap[msg.conversation_id] = msg.content;
+            lastMessagesMap[msg.conversation_id] = msg.content || "";
+          }
+
+          // Find first customer message (inbound)
+          if (!customerMessagesMap[msg.conversation_id]) {
+            const isCustomerMessage = msg.direction === "inbound" || msg.sender_type === "customer";
+            if (isCustomerMessage) {
+              // Determine original (customer language) and Korean translation
+              const originalLang = msg.original_language || "ko";
+
+              // If original_content exists, use it as customer's native text
+              // Otherwise, content is the customer's text
+              const customerNativeText = msg.original_content || msg.content || "";
+
+              // If original language is Korean, no translation needed
+              // If translated_content exists, use it as Korean
+              // Otherwise, content is Korean (default assumption)
+              const koreanText = originalLang === "ko"
+                ? customerNativeText
+                : (msg.translated_content || msg.content || "");
+
+              customerMessagesMap[msg.conversation_id] = {
+                original: customerNativeText,
+                korean: koreanText,
+                originalLanguage: originalLang,
+              };
+            }
           }
         }
       }
@@ -170,6 +203,17 @@ export async function GET(request: NextRequest) {
         esc.reason ||
         "";
 
+      // Get customer's actual question (original language + Korean translation)
+      const customerMsg = conv?.id ? customerMessagesMap[conv.id] : null;
+      const customerQuestion = customerMsg
+        ? `${customerMsg.original}${customerMsg.originalLanguage !== "ko" ? `\n\n[한국어] ${customerMsg.korean}` : ""}`
+        : lastMessage;
+
+      // Extract AI recommendations from metadata
+      const metadata = esc.metadata || {};
+      const recommendedAction = metadata.recommended_action as "knowledge_base" | "tenant_info" | undefined;
+      const missingInfo = metadata.missing_info as string[] | undefined;
+
       return {
         id: esc.id,
         conversationId: conv?.id || esc.conversation_id,
@@ -181,6 +225,7 @@ export async function GET(request: NextRequest) {
           phone: customer?.phone || undefined,
         },
         tenant: {
+          id: conv?.tenant_id || tenant?.id,
           name: tenant?.display_name || tenant?.name || "알 수 없는 거래처",
         },
         channel: channelAccount?.channel_type || "line",
@@ -193,6 +238,12 @@ export async function GET(request: NextRequest) {
         assignedTo,
         resolvedAt: esc.resolved_at || undefined,
         slaDeadline: computeSLADeadline(esc.created_at, pagePriority),
+        // NEW: Customer's actual question (original language + Korean)
+        customerQuestion,
+        aiReasoning: esc.reason || "충분한 정보가 없습니다",
+        // AI recommendations from metadata
+        recommendedAction,
+        missingInfo,
       };
     });
 

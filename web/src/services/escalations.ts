@@ -32,6 +32,9 @@ export interface CreateEscalationInput {
   reason: string;
   priority?: EscalationPriority;
   aiConfidence?: number;
+  // AI analysis results
+  recommendedAction?: "knowledge_base" | "tenant_info";
+  missingInfo?: string[];
 }
 
 // Client-side service
@@ -243,6 +246,15 @@ export const serverEscalationService = {
       .update({ status: "escalated" })
       .eq("id", input.conversationId);
 
+    // Store AI recommendation in metadata
+    const metadata: any = {};
+    if (input.recommendedAction) {
+      metadata.recommended_action = input.recommendedAction;
+    }
+    if (input.missingInfo && input.missingInfo.length > 0) {
+      metadata.missing_info = input.missingInfo;
+    }
+
     // Create escalation
     const { data: escalation, error } = await (supabase
       .from("escalations") as any)
@@ -253,6 +265,7 @@ export const serverEscalationService = {
         priority: input.priority || "medium",
         ai_confidence: input.aiConfidence,
         status: "pending",
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       })
       .select()
       .single();

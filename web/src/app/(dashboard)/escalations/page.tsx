@@ -71,6 +71,7 @@ interface Escalation {
     phone?: string;
   };
   tenant: {
+    id?: string;
     name: string;
   };
   channel: string;
@@ -489,6 +490,7 @@ function UpdateKnowledgeBaseDialog({
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("medical");
   const [tags, setTags] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Pre-fill with example based on escalation
   const handleOpen = () => {
@@ -502,9 +504,56 @@ function UpdateKnowledgeBaseDialog({
     setOpen(true);
   };
 
-  const handleSubmit = () => {
-    onUpdate({ title, content, category, tags });
-    setOpen(false);
+  const handleSubmit = async () => {
+    try {
+      setIsSubmitting(true);
+
+      // Call API to create knowledge base document
+      const response = await fetch("/api/knowledge/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: escalation.tenant.id || "default-tenant-id", // TODO: Get actual tenant ID
+          title,
+          content,
+          category,
+          tags,
+          metadata: {
+            source: "escalation",
+            escalation_id: escalation.id,
+            conversation_id: escalation.conversationId,
+            customer_question: escalation.customerQuestion || escalation.lastMessage,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create knowledge document");
+      }
+
+      const data = await response.json();
+      console.log("✅ Knowledge document created:", data.document.id);
+
+      // Generate embeddings
+      const embedResponse = await fetch(`/api/knowledge/documents/${data.document.id}/embed`, {
+        method: "POST",
+      });
+
+      if (!embedResponse.ok) {
+        console.warn("⚠️ Embedding generation failed, but document is saved");
+      } else {
+        console.log("✅ Embeddings generated successfully");
+      }
+
+      // Call parent onUpdate callback
+      onUpdate({ title, content, category, tags });
+      setOpen(false);
+    } catch (error) {
+      console.error("❌ Error creating knowledge document:", error);
+      alert("지식베이스 업데이트 실패: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -607,13 +656,15 @@ function UpdateKnowledgeBaseDialog({
             <div className="flex items-center gap-2 pt-2">
               <Button
                 onClick={handleSubmit}
-                className="flex-1 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white"
+                disabled={isSubmitting || !title || !content}
+                className="flex-1 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
               >
-                저장 및 해결 완료
+                {isSubmitting ? "저장 중..." : "저장 및 해결 완료"}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => setOpen(false)}
+                disabled={isSubmitting}
                 className="h-9 rounded-lg"
               >
                 취소
@@ -641,6 +692,7 @@ function UpdateTenantInfoDialog({
   const [field, setField] = useState("operating_hours");
   const [value, setValue] = useState("");
   const [notes, setNotes] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Pre-fill with example based on escalation
   const handleOpen = () => {
@@ -659,9 +711,44 @@ function UpdateTenantInfoDialog({
     setOpen(true);
   };
 
-  const handleSubmit = () => {
-    onUpdate({ field, value, notes });
-    setOpen(false);
+  const handleSubmit = async () => {
+    try {
+      setIsSubmitting(true);
+
+      // Get current tenant settings
+      const tenantId = escalation.tenant.id || "default-tenant-id"; // TODO: Get actual tenant ID
+
+      // Call API to update tenant settings
+      const response = await fetch("/api/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: tenantId,
+          settings: {
+            [field]: value,
+            [`${field}_updated_by`]: "escalation",
+            [`${field}_updated_at`]: new Date().toISOString(),
+            [`${field}_notes`]: notes,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update tenant info");
+      }
+
+      const data = await response.json();
+      console.log("✅ Tenant info updated:", tenantId, field);
+
+      // Call parent onUpdate callback
+      onUpdate({ field, value, notes });
+      setOpen(false);
+    } catch (error) {
+      console.error("❌ Error updating tenant info:", error);
+      alert("거래처 정보 업데이트 실패: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -754,13 +841,15 @@ function UpdateTenantInfoDialog({
             <div className="flex items-center gap-2 pt-2">
               <Button
                 onClick={handleSubmit}
-                className="flex-1 h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={isSubmitting || !value}
+                className="flex-1 h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
               >
-                저장 및 해결 완료
+                {isSubmitting ? "저장 중..." : "저장 및 해결 완료"}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => setOpen(false)}
+                disabled={isSubmitting}
                 className="h-9 rounded-lg"
               >
                 취소

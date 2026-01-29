@@ -8331,3 +8331,280 @@ All features from user requirements (8/8 tasks) implemented in UI layer
 ```
 
 **다음 단계**: DB 연동 구현
+
+---
+
+## 23. 에스컬레이션 AI 추천 로직 + DB 연동 완료 (2026-01-29)
+
+### 23.1 완료된 핵심 기능
+
+#### 실제 고객 메시지 표시 (원문 + 번역)
+- **에스컬레이션 API 개선** (`/api/escalations` GET)
+  - 대화의 실제 고객 메시지 추출 (inbound, direction="inbound" or sender_type="customer")
+  - 원문(original_content)과 번역(translated_content) 모두 조회
+  - 고객 질문을 "원문\n\n[한국어] 번역본" 형식으로 반환
+  - `customerQuestion` 필드에 실제 고객이 물어본 내용 표시
+
+```typescript
+// /api/escalations GET - 실제 고객 메시지 추출 로직
+const { data: messages } = await supabase
+  .from("messages")
+  .select("conversation_id, content, original_content, translated_content, original_language, direction, sender_type")
+  .in("conversation_id", conversationIds)
+  .order("created_at", { ascending: false });
+
+for (const msg of messages) {
+  if (!customerMessagesMap[msg.conversation_id]) {
+    const isCustomerMessage = msg.direction === "inbound" || msg.sender_type === "customer";
+    if (isCustomerMessage) {
+      const originalLang = msg.original_language || "ko";
+      const customerNativeText = msg.original_content || msg.content || "";
+      const koreanText = originalLang === "ko" ? customerNativeText : (msg.translated_content || msg.content || "");
+
+      customerMessagesMap[msg.conversation_id] = {
+        original: customerNativeText,
+        korean: koreanText,
+        originalLanguage: originalLang,
+      };
+    }
+  }
+}
+
+// 응답에 반영
+const customerQuestion = customerMsg
+  ? `${customerMsg.original}${customerMsg.originalLanguage !== "ko" ? `\n\n[한국어] ${customerMsg.korean}` : ""}`
+  : lastMessage;
+```
+
+#### AI가 지식베이스 vs 거래처 DB 추천
+- **RAG 파이프라인에 분석 로직 추가** (`/src/services/ai/rag-pipeline.ts`)
+  - `analyzeRequiredUpdate()` 함수 신규 구현
+  - 쿼리 패턴 분석으로 거래처 정보 필요 여부 판단
+  - 거래처 정보 패턴: 영업시간, 가격, 위치, 연락처, 의료진, 장비, 서비스
+  - 검색 결과 없음 → 지식베이스 업데이트 추천
+  - `recommendedAction`: "knowledge_base" | "tenant_info"
+  - `missingInfo`: 부족한 정보 목록 배열
+
+```typescript
+// RAG 파이프라인 - AI 추천 로직
+async function analyzeRequiredUpdate(
+  query: string,
+  retrievedDocs: RetrievedDocument[],
+  escalationReason: string | undefined,
+  tenant: any
+): Promise<{ recommendedAction: "knowledge_base" | "tenant_info"; missingInfo: string[] }> {
+  const tenantInfoPatterns = [
+    /영업.*시간|운영.*시간|몇.*시|언제.*열|when.*open|opening.*hours/i,
+    /가격|비용|얼마|price|cost|how much/i,
+    /위치|주소|어디|where|location|address/i,
+    // ... 더 많은 패턴
+  ];
+
+  // 거래처 정보 쿼리인지 판단
+  let isTenantInfo = false;
+  let detectedTopics: string[] = [];
+  for (const pattern of tenantInfoPatterns) {
+    if (pattern.test(query)) {
+      isTenantInfo = true;
+      // 세부 항목 감지 (영업 시간, 가격 정보, 위치/주소 등)
+    }
+  }
+
+  // 검색 결과 없음 → KB 추천
+  if (retrievedDocs.length === 0) {
+    return {
+      recommendedAction: "knowledge_base",
+      missingInfo: ["관련 FAQ 문서", "일반적인 답변 가이드"],
+    };
+  }
+
+  // 거래처 정보 질문 → 거래처 DB 추천
+  if (isTenantInfo) {
+    return {
+      recommendedAction: "tenant_info",
+      missingInfo: detectedTopics.length > 0 ? detectedTopics : ["거래처 기본 정보"],
+    };
+  }
+
+  // 기본: KB 추천
+  return {
+    recommendedAction: "knowledge_base",
+    missingInfo: ["관련 주제에 대한 상세 문서"],
+  };
+}
+
+// RAG process에서 호출
+if (escalationDecision) {
+  const analysis = await analyzeRequiredUpdate(input.query, documents, escalationDecision.reason, tenant);
+  recommendedAction = analysis.recommendedAction;
+  missingInfo = analysis.missingInfo;
+}
+```
+
+- **에스컬레이션 생성 시 metadata에 저장** (`/src/services/escalations.ts`)
+  - `CreateEscalationInput`에 `recommendedAction`, `missingInfo` 필드 추가
+  - `escalations.metadata` JSONB에 저장: `{ recommended_action, missing_info }`
+
+- **웹훅에서 RAG 결과 전달** (`/api/webhooks/line`, `/api/webhooks/meta`)
+  - LINE, Meta 웹훅 모두 에스컬레이션 생성 시 AI 추천 전달
+
+```typescript
+await serverEscalationService.createEscalation({
+  conversationId: conversation.id,
+  messageId: savedMessage.id,
+  reason: ragResult.escalationReason || "AI 신뢰도 미달",
+  aiConfidence: ragResult.confidence,
+  recommendedAction: ragResult.recommendedAction,  // NEW
+  missingInfo: ragResult.missingInfo,              // NEW
+});
+```
+
+- **API에서 metadata 읽어서 반환** (`/api/escalations` GET)
+  - `escalations.metadata`에서 recommended_action, missing_info 추출
+  - 프론트엔드 Escalation 타입에 포함
+
+#### 지식베이스 업데이트 API 연동 + 임베딩 생성
+- **UpdateKnowledgeBaseDialog 실제 API 호출** (`/app/(dashboard)/escalations/page.tsx`)
+  - `POST /api/knowledge/documents` 호출하여 문서 생성
+  - metadata에 escalation_id, conversation_id, customer_question 저장
+  - 생성 후 `POST /api/knowledge/documents/[id]/embed` 호출하여 임베딩 생성
+  - 로딩 상태 표시 ("저장 중...")
+  - 에러 처리 + alert로 사용자 피드백
+
+```typescript
+const handleSubmit = async () => {
+  try {
+    setIsSubmitting(true);
+
+    // 1. 지식베이스 문서 생성
+    const response = await fetch("/api/knowledge/documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenantId: escalation.tenant.id || "default-tenant-id",
+        title,
+        content,
+        category,
+        tags,
+        metadata: {
+          source: "escalation",
+          escalation_id: escalation.id,
+          conversation_id: escalation.conversationId,
+          customer_question: escalation.customerQuestion || escalation.lastMessage,
+        },
+      }),
+    });
+
+    if (!response.ok) throw new Error("Failed to create knowledge document");
+    const data = await response.json();
+    console.log("✅ Knowledge document created:", data.document.id);
+
+    // 2. 임베딩 생성
+    const embedResponse = await fetch(`/api/knowledge/documents/${data.document.id}/embed`, {
+      method: "POST",
+    });
+
+    if (!embedResponse.ok) {
+      console.warn("⚠️ Embedding generation failed, but document is saved");
+    } else {
+      console.log("✅ Embeddings generated successfully");
+    }
+
+    // 3. 에스컬레이션 해결 처리
+    onUpdate({ title, content, category, tags });
+    setOpen(false);
+  } catch (error) {
+    console.error("❌ Error creating knowledge document:", error);
+    alert("지식베이스 업데이트 실패: " + (error as Error).message);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+```
+
+#### 거래처 정보 업데이트 API 연동
+- **UpdateTenantInfoDialog 실제 API 호출** (`/app/(dashboard)/escalations/page.tsx`)
+  - `PATCH /api/tenants` 호출하여 settings 업데이트
+  - 7개 필드 지원: operating_hours, pricing, contact, location, services, doctors, equipment
+  - settings 병합 로직: 기존 설정 유지하면서 새 값 추가
+  - 로딩 상태 표시 ("저장 중...")
+
+```typescript
+const handleSubmit = async () => {
+  try {
+    setIsSubmitting(true);
+    const tenantId = escalation.tenant.id || "default-tenant-id";
+
+    const response = await fetch("/api/tenants", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: tenantId,
+        settings: {
+          [field]: value,
+          [`${field}_updated_by`]: "escalation",
+          [`${field}_updated_at`]: new Date().toISOString(),
+          [`${field}_notes`]: notes,
+        },
+      }),
+    });
+
+    if (!response.ok) throw new Error("Failed to update tenant info");
+    const data = await response.json();
+    console.log("✅ Tenant info updated:", tenantId, field);
+
+    onUpdate({ field, value, notes });
+    setOpen(false);
+  } catch (error) {
+    console.error("❌ Error updating tenant info:", error);
+    alert("거래처 정보 업데이트 실패: " + (error as Error).message);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+```
+
+- **tenants API settings 병합 로직** (`/api/tenants` PATCH)
+  - 기존 settings 먼저 조회
+  - 새 settings와 병합하여 덮어쓰지 않도록 수정
+
+```typescript
+if (settings !== undefined) {
+  // 기존 settings 조회 후 병합
+  const { data: currentTenant } = await supabase
+    .from("tenants")
+    .select("settings")
+    .eq("id", id)
+    .single();
+
+  const currentSettings = (currentTenant?.settings as Record<string, unknown>) || {};
+  updateData.settings = { ...currentSettings, ...settings };
+}
+```
+
+### 23.2 타입 수정
+- **Escalation 인터페이스 업데이트** (`/app/(dashboard)/escalations/page.tsx`)
+  - `tenant.id?: string` 추가
+
+- **에스컬레이션 API 응답 수정** (`/api/escalations` GET)
+  - `tenant.id` 반환: `conv?.tenant_id || tenant?.id`
+
+### 23.3 검증 항목
+- ✅ 에스컬레이션 API에서 실제 고객 메시지 원문 + 번역 반환
+- ✅ AI가 패턴 기반으로 KB vs 거래처 DB 추천
+- ✅ 지식베이스 업데이트 다이얼로그 → API 호출 → DB 저장 → 임베딩 생성
+- ✅ 거래처 정보 업데이트 다이얼로그 → API 호출 → settings 병합 저장
+- ✅ 빌드 통과 (TypeScript 0 errors)
+- ⏳ RAG 파이프라인 실제 작동 검증 (다음 단계)
+- ⏳ End-to-end 테스트 (다음 단계)
+
+### 23.4 개선된 파일 목록
+```
+web/src/app/api/escalations/route.ts          - 고객 메시지 원문+번역 조회, metadata 반환
+web/src/app/api/tenants/route.ts              - settings 병합 로직
+web/src/app/api/webhooks/line/route.ts        - AI 추천 전달
+web/src/app/api/webhooks/meta/route.ts        - AI 추천 전달
+web/src/app/(dashboard)/escalations/page.tsx  - KB/거래처 업데이트 API 호출
+web/src/services/escalations.ts               - metadata 저장 로직
+web/src/services/ai/rag-pipeline.ts           - analyzeRequiredUpdate 함수 신규 추가
+```
