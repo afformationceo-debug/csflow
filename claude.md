@@ -8877,12 +8877,14 @@ if (!existingEscalations || existingEscalations.length === 0) {
 **문제 1: 고객 질문 표시 오류**
 - 증상: "고객 질문" 섹션에 실제 고객 메시지 대신 AI 응답이 표시됨
   - 실제 고객 질문: "I would like to visit on February 16th."
-  - 표시된 내용: "Hi! Are you looking to come in on February 16th 😊..."
-- 근본 원인: API에서 메시지를 오름차순 정렬 → 최신 메시지로 덮어쓰는 로직 문제
-- 해결: `/src/app/api/escalations/route.ts` (lines 113-169)
-  - 메시지 정렬을 `ascending: false` (내림차순)로 변경
-  - 첫 번째 고객 메시지(=가장 최근)를 우선 추출
-  - 두 번째 패스(fallback)도 동일하게 내림차순 적용
+  - 표시된 내용: "Hi! Are you looking to come in on February 16th 😊..." (AI 응답)
+- 근본 원인:
+  - 첫 번째 시도: 내림차순 정렬 시 AI 응답이 고객 메시지보다 최근이라 덮어씌움
+  - **핵심 문제**: 에스컬레이션을 일으킨 **최초 고객 질문**을 찾아야 하는데, 최신 고객 메시지를 찾고 있었음
+- 해결: `/src/app/api/escalations/route.ts` (lines 113-170) — commit `296be14`
+  - 메시지 정렬을 `ascending: true` (오름차순)로 변경 — 가장 오래된 메시지부터
+  - 첫 번째 발견된 고객 메시지에서 `continue`로 즉시 중단 (덮어쓰기 방지)
+  - 두 번째 패스는 역순 반복(`for (let i = messages.length - 1; i >= 0; i--)`)으로 최신 고객 메시지 추출 (fallback용)
 
 **문제 2: AI 분석 메시지 불명확**
 - 증상: "답변하지 못한 이유"에 구체적 안내 없음
@@ -8929,27 +8931,40 @@ web/src/app/(dashboard)/inbox/page.tsx        — 번역 표시 수정 (content 
 
 ##### 18.13.4 기술 상세
 
-**메시지 정렬 수정**:
+**메시지 정렬 수정** (commit `296be14`):
 ```typescript
-// Before: ascending: true (oldest first)
-.order("created_at", { ascending: false }); // After: descending (newest first)
+// Sort ascending (oldest first) to get FIRST customer message
+.order("created_at", { ascending: true }); // Oldest first
 
-// First pass: find LAST (most recent) customer message
+// First pass: find FIRST customer message (original question)
 for (const msg of messages) {
-  if (!customerMessagesMap[msg.conversation_id]) {
-    const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
-      && msg.sender_type !== "internal_note"
-      && msg.sender_type !== "system"
-      && msg.sender_type !== "agent"
-      && msg.sender_type !== "ai";
-    if (isCustomerMessage) {
-      customerMessagesMap[msg.conversation_id] = {
-        original: customerNativeText,
-        korean: koreanText,
-        originalLanguage: originalLang,
-      };
-    }
+  // Skip if we already found a customer message for this conversation
+  if (customerMessagesMap[msg.conversation_id]) {
+    continue; // KEY FIX: Don't overwrite with newer messages
   }
+
+  const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+    && msg.sender_type !== "internal_note"
+    && msg.sender_type !== "system"
+    && msg.sender_type !== "agent"
+    && msg.sender_type !== "ai";
+
+  if (isCustomerMessage) {
+    customerMessagesMap[msg.conversation_id] = {
+      original: customerNativeText,
+      korean: koreanText,
+      originalLanguage: originalLang,
+    };
+  }
+}
+
+// Second pass: find LAST customer message for fallback (iterate backwards)
+for (let i = messages.length - 1; i >= 0; i--) {
+  const msg = messages[i];
+  if (lastMessagesMap[msg.conversation_id]) {
+    continue;
+  }
+  // ... find most recent customer message
 }
 ```
 
@@ -9006,12 +9021,19 @@ if (!existingEscalations || existingEscalations.length === 0) {
 ##### 18.13.5 배포 및 검증
 
 - ✅ TypeScript 빌드 성공 (0 errors)
-- ✅ Git commit: `b60dc40` "Fix critical escalation and inbox issues"
+- ✅ Git commit: `b60dc40` "Fix critical escalation and inbox issues" (초기 수정)
+- ✅ Git commit: `296be14` "fix: Escalation customer question - use FIRST customer message" (최종 수정)
 - ✅ Git push 완료 → Vercel 자동 배포
 - ✅ 전체 4+2=6개 버그 수정 완료
 
+**근본 원인 재분석** (commit `296be14`):
+- 문제: 내림차순 정렬 시 AI 응답이 고객 원래 질문보다 최근이라 덮어씌움
+- 해결: 오름차순 정렬 + `continue`로 첫 번째 고객 메시지 선택 (에스컬레이션을 일으킨 최초 질문)
+
 **검증 방법**:
 1. https://csflow.vercel.app/escalations → 고객 질문 정확히 표시 확인
+   - 실제 고객 질문: "I would like to visit on February 16th."
+   - ❌ AI 응답 표시 안 됨: "Hi! Are you looking to come in..."
 2. AI 분석 섹션 명확한 안내 메시지 확인
 3. https://csflow.vercel.app/inbox → AI 응답 전송 후 "원문 (한국어)" 한국어로 표시 확인
 4. 동일 대화 재테스트 시 중복 에스컬레이션 미생성 확인
