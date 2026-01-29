@@ -397,14 +397,34 @@ export default function ChannelsPage() {
               <DialogTitle>새 채널 추가</DialogTitle>
               <DialogDescription>
                 연결할 메신저 채널 정보를 입력하세요.
-                {!selectedTenantId && (
-                  <span className="block mt-2 text-red-600 dark:text-red-400 font-medium">
-                    ⚠️ 먼저 상단에서 거래처를 선택해주세요.
-                  </span>
-                )}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              {/* 거래처 선택 */}
+              <div className="grid gap-2">
+                <Label className="text-sm font-medium">
+                  거래처 선택 <span className="text-destructive">*</span>
+                </Label>
+                <Select value={selectedTenantId} onValueChange={(v) => { setSelectedTenantId(v); setSubmitError(""); }}>
+                  <SelectTrigger className="w-full rounded-lg">
+                    <SelectValue placeholder="거래처를 선택하세요" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenants.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                        {t.specialty ? ` (${t.specialty})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!selectedTenantId && (
+                  <p className="text-xs text-destructive">
+                    ⚠️ 거래처를 선택해야 채널을 추가할 수 있습니다.
+                  </p>
+                )}
+              </div>
+
               <div className="grid gap-2">
                 <Label>채널 유형</Label>
                 <Select value={newChannelType} onValueChange={(v) => { setNewChannelType(v as ChannelType); setSubmitError(""); }}>
