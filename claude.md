@@ -8870,3 +8870,149 @@ if (!existingEscalations || existingEscalations.length === 0) {
 }
 ```
 
+#### 18.13 치명적 버그 수정 (2026-01-29) ✅ CRITICAL
+
+##### 18.13.1 에스컬레이션 페이지 문제 (4개)
+
+**문제 1: 고객 질문 표시 오류**
+- 증상: "고객 질문" 섹션에 실제 고객 메시지 대신 AI 응답이 표시됨
+  - 실제 고객 질문: "I would like to visit on February 16th."
+  - 표시된 내용: "Hi! Are you looking to come in on February 16th 😊..."
+- 근본 원인: API에서 메시지를 오름차순 정렬 → 최신 메시지로 덮어쓰는 로직 문제
+- 해결: `/src/app/api/escalations/route.ts` (lines 113-169)
+  - 메시지 정렬을 `ascending: false` (내림차순)로 변경
+  - 첫 번째 고객 메시지(=가장 최근)를 우선 추출
+  - 두 번째 패스(fallback)도 동일하게 내림차순 적용
+
+**문제 2: AI 분석 메시지 불명확**
+- 증상: "답변하지 못한 이유"에 구체적 안내 없음
+- 해결: `/src/app/(dashboard)/escalations/page.tsx` (lines 1073-1120)
+  - metadata 없을 때 fallback 로직 추가
+  - 고객 질문 패턴 매칭으로 스마트 추천
+  - 6가지 패턴: 영업시간, 가격, 위치, 연락처, 예약, 기타
+  - 명확한 문구: "💡 거래처정보에 영업시간 정보가 있어야 합니다"
+
+**문제 3 & 4: KB/Tenant 다이얼로그 예시 값**
+- 증상: 다이얼로그에 잘못된 예시 값 표시
+- 확인 결과: 이미 `escalation.customerQuestion` 사용 중 (line 499, 798)
+- 해결: 문제 1 수정으로 자동 해결 (API에서 올바른 고객 질문 반환)
+
+##### 18.13.2 통합인박스 문제 (2개)
+
+**문제 1: 번역 표시 오류**
+- 증상: AI 응답 전송 후 "원문 (한국어)" 섹션이 영어로 표시됨
+  - 전송된 메시지: "Hi! Are you looking to come in..."
+  - 원문 (한국어)도: "Hi! Are you looking to come in..." (한국어 아님!)
+- 근본 원인: 메시지 데이터 구조 오해
+  - AI/agent 메시지: `content` = 한국어 원문, `translatedContent` = 고객 언어
+  - customer 메시지: `content` = 고객 언어, `translatedContent` = 한국어
+- 해결: `/src/app/(dashboard)/inbox/page.tsx` (line 2053)
+  - AI/agent 메시지는 `msg.content` 표시 (한국어 원문)
+  - customer 메시지는 `msg.translatedContent` 표시 (한국어 번역)
+
+**문제 2: 중복 에스컬레이션 생성**
+- 증상: 동일 대화에 중복 에스컬레이션 계속 생성
+- 근본 원인: 중복 체크 시 'open' 상태 누락
+  - DB에는 'open' 상태 존재하지만 체크 로직은 ['pending', 'assigned', 'in_progress']만 확인
+- 해결: `/src/app/api/webhooks/line/route.ts` (line 359)
+  - 'open' 상태를 duplicate check 배열에 추가
+  - 수정 후: `['open', 'pending', 'assigned', 'in_progress']`
+
+##### 18.13.3 파일 변경 목록
+
+```
+web/src/app/api/escalations/route.ts          — 메시지 정렬 내림차순, 최신 고객 메시지 우선
+web/src/app/api/webhooks/line/route.ts        — 'open' 상태 중복 체크 추가
+web/src/app/(dashboard)/escalations/page.tsx  — AI 분석 fallback 로직, 패턴 매칭 추천
+web/src/app/(dashboard)/inbox/page.tsx        — 번역 표시 수정 (content vs translatedContent)
+```
+
+##### 18.13.4 기술 상세
+
+**메시지 정렬 수정**:
+```typescript
+// Before: ascending: true (oldest first)
+.order("created_at", { ascending: false }); // After: descending (newest first)
+
+// First pass: find LAST (most recent) customer message
+for (const msg of messages) {
+  if (!customerMessagesMap[msg.conversation_id]) {
+    const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+      && msg.sender_type !== "internal_note"
+      && msg.sender_type !== "system"
+      && msg.sender_type !== "agent"
+      && msg.sender_type !== "ai";
+    if (isCustomerMessage) {
+      customerMessagesMap[msg.conversation_id] = {
+        original: customerNativeText,
+        korean: koreanText,
+        originalLanguage: originalLang,
+      };
+    }
+  }
+}
+```
+
+**중복 에스컬레이션 방지**:
+```typescript
+// Check if escalation already exists for this conversation
+const { data: existingEscalations } = await (supabase as any)
+  .from("escalations")
+  .select("id")
+  .eq("conversation_id", conversation.id)
+  .in("status", ["open", "pending", "assigned", "in_progress"]) // Added "open"
+  .limit(1);
+
+if (!existingEscalations || existingEscalations.length === 0) {
+  // Create escalation
+}
+```
+
+**번역 표시 수정**:
+```typescript
+<p className={cn(
+  "text-xs leading-relaxed",
+  msg.sender === "agent" ? "text-primary-foreground" :
+  msg.sender === "ai" ? "text-violet-800 dark:text-violet-300" :
+  "text-muted-foreground"
+)}>
+  {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
+  {/* AI/agent: msg.content (Korean), customer: msg.translatedContent (Korean) */}
+</p>
+```
+
+**AI 분석 fallback 로직**:
+```typescript
+{escalation.recommendedAction && escalation.missingInfo ? (
+  // Show metadata recommendations
+) : (
+  // Fallback: Pattern matching on customer question
+  <div className="space-y-1.5 pt-1">
+    <p className="text-xs text-muted-foreground ml-5">
+      {(() => {
+        const q = (escalation.customerQuestion || "").toLowerCase();
+        if (/영업.*시간|운영.*시간|몇.*시|언제.*열|when.*open|opening.*hours/i.test(q)) {
+          return "💡 거래처정보에 영업시간 정보가 있어야 합니다";
+        } else if (/가격|비용|price|cost|얼마|how.*much/i.test(q)) {
+          return "💡 거래처정보에 가격 정보가 있어야 합니다";
+        }
+        // ... 6 patterns total
+      })()}
+    </p>
+  </div>
+)}
+```
+
+##### 18.13.5 배포 및 검증
+
+- ✅ TypeScript 빌드 성공 (0 errors)
+- ✅ Git commit: `b60dc40` "Fix critical escalation and inbox issues"
+- ✅ Git push 완료 → Vercel 자동 배포
+- ✅ 전체 4+2=6개 버그 수정 완료
+
+**검증 방법**:
+1. https://csflow.vercel.app/escalations → 고객 질문 정확히 표시 확인
+2. AI 분석 섹션 명확한 안내 메시지 확인
+3. https://csflow.vercel.app/inbox → AI 응답 전송 후 "원문 (한국어)" 한국어로 표시 확인
+4. 동일 대화 재테스트 시 중복 에스컬레이션 미생성 확인
+
