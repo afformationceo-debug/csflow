@@ -342,28 +342,41 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
     return;
   }
 
-  // 6.6. Check if AI already responded to this customer message - prevent duplicate responses
-  // Get messages newer than or equal to the current customer message
-  const { data: recentMessages } = await (supabase as any)
-    .from("messages")
-    .select("id, sender_type, created_at, direction")
-    .eq("conversation_id", conversation.id)
-    .gte("created_at", savedMessage.created_at)
-    .order("created_at", { ascending: true });
+  // 6.6. IDEMPOTENCY CHECK - Prevent duplicate webhook processing using distributed lock
+  const { acquireLock, releaseLock } = await import("@/lib/upstash/redis");
+  const lockKey = `webhook:line:processing:${conversation.id}:${savedMessage.id}`;
+  const lockAcquired = await acquireLock(lockKey, 300); // 5 minute lock
 
-  if (recentMessages && recentMessages.length > 0) {
-    // Check if there's already an AI response after this customer message
-    const hasAIResponse = recentMessages.some((msg: any) =>
-      msg.id !== savedMessage.id && msg.sender_type === "ai"
-    );
-    if (hasAIResponse) {
-      console.log(`[LINE] AI already responded to this message, skipping duplicate response`);
-      return;
-    }
+  if (!lockAcquired) {
+    console.log(`[LINE] Message ${savedMessage.id} is already being processed by another webhook, skipping`);
+    return;
   }
 
-  // 7. Process through RAG pipeline
+  console.log(`[LINE] Lock acquired for message ${savedMessage.id}, processing...`);
+
   try {
+    // 6.7. Check if AI already responded to this customer message - prevent duplicate responses
+    // Get messages newer than or equal to the current customer message
+    const { data: recentMessages } = await (supabase as any)
+      .from("messages")
+      .select("id, sender_type, created_at, direction")
+      .eq("conversation_id", conversation.id)
+      .gte("created_at", savedMessage.created_at)
+      .order("created_at", { ascending: true });
+
+    if (recentMessages && recentMessages.length > 0) {
+      // Check if there's already an AI response after this customer message
+      const hasAIResponse = recentMessages.some((msg: any) =>
+        msg.id !== savedMessage.id && msg.sender_type === "ai"
+      );
+      if (hasAIResponse) {
+        console.log(`[LINE] AI already responded to this message, skipping duplicate response`);
+        await releaseLock(lockKey);
+        return;
+      }
+    }
+
+    // 7. Process through RAG pipeline
     const queryText = translatedText || messageText;
     console.log(`[LINE] Processing RAG query: "${queryText.slice(0, 50)}..."`);
     const ragResult = await ragPipeline.process({
@@ -375,8 +388,10 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
 
     console.log(`[LINE] RAG result: confidence=${ragResult.confidence}, escalate=${ragResult.shouldEscalate}`);
 
-    // 8. Handle escalation or send AI response
+    // 8. CRITICAL FIX: Check escalation FIRST before sending any AI response
     if (ragResult.shouldEscalate) {
+      console.log(`[LINE] Escalation required (reason: ${ragResult.escalationReason}), NOT sending AI response`);
+
       // Check if escalation already exists for this conversation to prevent duplicates
       const { data: existingEscalations } = await (supabase as any)
         .from("escalations")
@@ -406,7 +421,16 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
         .from("conversations") as unknown as { update: (data: unknown) => { eq: (col: string, val: string) => unknown } })
         .update({ status: "escalated" })
         .eq("id", conversation.id);
-    } else if (ragResult.response) {
+
+      // Release lock and RETURN - DO NOT send AI response
+      await releaseLock(lockKey);
+      return;
+    }
+
+    // 9. Only send AI response if NOT escalating
+    if (ragResult.response) {
+      console.log(`[LINE] Confidence ${(ragResult.confidence * 100).toFixed(1)}% above threshold, sending AI response`);
+
       // Save AI response
       const aiMessage = await serverMessageService.createAIMessage({
         conversationId: conversation.id,
@@ -456,8 +480,13 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
         }
       }
     }
+
+    // Release lock after successful processing
+    await releaseLock(lockKey);
   } catch (e) {
     console.error("[LINE] RAG pipeline failed:", e);
+    // Release lock on error
+    await releaseLock(lockKey);
     // Mark conversation as waiting for agent if RAG fails
     await (supabase
       .from("conversations") as unknown as { update: (data: unknown) => { eq: (col: string, val: string) => unknown } })

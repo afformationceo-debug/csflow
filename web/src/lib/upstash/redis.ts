@@ -72,3 +72,34 @@ export async function invalidatePattern(pattern: string): Promise<void> {
     console.error("Cache invalidate error:", error);
   }
 }
+
+/**
+ * Acquire a distributed lock (for preventing duplicate operations)
+ * Returns true if lock was acquired, false if already locked
+ */
+export async function acquireLock(
+  key: string,
+  ttl: number = 300
+): Promise<boolean> {
+  if (!redis) return true; // If Redis not available, allow operation (fail-open)
+  try {
+    // SET with NX (only if not exists) and EX (expiry)
+    const result = await redis.set(key, "locked", { nx: true, ex: ttl });
+    return result === "OK";
+  } catch (error) {
+    console.error("Lock acquire error:", error);
+    return true; // Fail-open: allow operation if Redis error
+  }
+}
+
+/**
+ * Release a distributed lock
+ */
+export async function releaseLock(key: string): Promise<void> {
+  if (!redis) return;
+  try {
+    await redis.del(key);
+  } catch (error) {
+    console.error("Lock release error:", error);
+  }
+}

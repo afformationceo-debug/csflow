@@ -1247,18 +1247,30 @@ export default function InboxPage() {
   }, []);
 
   // Auto-scroll on conversation select or new message (only if user is not manually scrolling)
+  // Track previous message count to detect NEW messages (not just updates)
+  const prevMessageCountRef = useRef(0);
+
   useEffect(() => {
+    const currentMessageCount = dbMessages.length;
+    const isNewMessage = currentMessageCount > prevMessageCountRef.current;
+
     // Always scroll when conversation changes
-    if (selectedConversation) {
+    if (selectedConversation && prevMessageCountRef.current === 0) {
       isUserScrollingRef.current = false; // Reset scroll state
       scrollToBottom("instant");
+      prevMessageCountRef.current = currentMessageCount;
       return;
     }
 
-    // Don't auto-scroll if user is manually scrolling up
-    if (isUserScrollingRef.current) return;
+    // Auto-scroll only if:
+    // 1. There's a NEW message (not just a polling update)
+    // 2. User is NOT manually scrolling up
+    if (isNewMessage && !isUserScrollingRef.current) {
+      scrollToBottom("smooth");
+    }
 
-    scrollToBottom("instant");
+    // Update previous count
+    prevMessageCountRef.current = currentMessageCount;
   }, [selectedConversation, dbMessages, scrollToBottom]);
 
   // Detect scroll position for "scroll to bottom" button
