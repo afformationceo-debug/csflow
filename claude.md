@@ -7606,3 +7606,361 @@ CREATE TABLE channel_accounts (
 - ✅ Vercel 자동 배포 진행 중
 
 ---
+
+## 21. 거래처/채널/담당자 관리 UI 고도화 (2026-01-28 17:00)
+
+### 21.1 채널 관리 페이지 거래처별 뷰 및 수정 기능 ✅
+
+#### 21.1.1 거래처별 채널 그룹화
+
+**파일**: `web/src/app/(dashboard)/channels/page.tsx`
+
+**변경 사항**:
+
+1. **거래처별 그룹화 로직 추가** (channelsByTenant):
+   ```typescript
+   const channelsByTenant = channels.reduce((acc, channel) => {
+     const tenantId = channel.tenantId || "unknown";
+     if (!acc[tenantId]) {
+       acc[tenantId] = [];
+     }
+     acc[tenantId].push(channel);
+     return acc;
+   }, {} as Record<string, ConnectedChannel[]>);
+   ```
+
+2. **거래처 헤더 표시**:
+   - 거래처명 + 국가 (예: 힐링안과의원 (일본))
+   - 채널 개수 표시 (예: 3개 채널)
+   - Badge로 시각적 구분
+
+3. **국가 정보 추가**:
+   - Tenant interface에 `country?: string | null` 필드 추가
+   - 거래처 선택 드롭다운에 국가 표시: `{t.name} {t.country ? ` (${t.country})` : ""}`
+
+#### 21.1.2 채널 수정 기능
+
+1. **Edit Dialog 추가**:
+   - Settings2 버튼 클릭 시 채널 수정 다이얼로그 표시
+   - 거래처 변경, 계정명 변경 가능
+   - 상태 변경 가능 (활성/비활성)
+
+2. **새 API 엔드포인트 생성**:
+   **파일**: `web/src/app/api/channels/[id]/route.ts` (신규 생성)
+   ```typescript
+   export async function PATCH(
+     request: NextRequest,
+     { params }: { params: Promise<{ id: string }> }
+   ) {
+     const { id } = await params;
+     const body = await request.json();
+     const { tenantId, accountName, isActive } = body;
+
+     // Update channel_accounts table
+     const { data, error } = await (supabase as any)
+       .from("channel_accounts")
+       .update({
+         tenant_id: tenantId,
+         account_name: accountName,
+         is_active: isActive ?? true,
+         updated_at: new Date().toISOString(),
+       })
+       .eq("id", id)
+       .select()
+       .single();
+
+     return NextResponse.json({ channel: data });
+   }
+   ```
+
+3. **핸들러 함수**:
+   ```typescript
+   const handleEditChannel = (channel: ConnectedChannel) => {
+     setEditingChannel(channel);
+     setNewChannelType(channel.channelType);
+     setNewAccountName(channel.accountName);
+     setNewAccountId(channel.accountId);
+     setSelectedTenantId(channel.tenantId || "");
+     setEditDialogOpen(true);
+   };
+
+   const handleUpdateChannel = async () => {
+     const response = await fetch(`/api/channels/${editingChannel.id}`, {
+       method: "PATCH",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({
+         tenantId: selectedTenantId,
+         accountName: newAccountName,
+         isActive: editingChannel.isActive,
+       }),
+     });
+     // Update local state...
+   };
+   ```
+
+### 21.2 거래처 관리 페이지 테이블 뷰 ✅
+
+#### 21.2.1 카드/테이블 뷰 토글
+
+**파일**: `web/src/app/(dashboard)/tenants/page.tsx`
+
+**추가된 컴포넌트**:
+
+1. **뷰 모드 상태**:
+   ```typescript
+   const [viewMode, setViewMode] = useState<"card" | "table">("table");
+   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+   ```
+
+2. **뷰 토글 버튼**:
+   ```typescript
+   <div className="flex items-center gap-1 rounded-lg bg-muted/40 p-1">
+     <Button
+       variant={viewMode === "card" ? "secondary" : "ghost"}
+       onClick={() => setViewMode("card")}
+       title="카드 뷰"
+     >
+       <Grid3x3 className="h-4 w-4" />
+     </Button>
+     <Button
+       variant={viewMode === "table" ? "secondary" : "ghost"}
+       onClick={() => setViewMode("table")}
+       title="테이블 뷰"
+     >
+       <List className="h-4 w-4" />
+     </Button>
+   </div>
+   ```
+
+#### 21.2.2 테이블 뷰 구현
+
+**주요 컬럼**:
+1. 거래처명 (아바타 + 이름 + ID)
+2. 진료과목 (Badge)
+3. 국가 (MapPin 아이콘 + 텍스트)
+4. 상태 (활성/중지)
+5. AI 정확도 (링 차트 + 퍼센트)
+6. 대화 수 (숫자)
+7. 에스컬레이션율 (퍼센트)
+8. 월간 문의 (숫자)
+9. 채널 (아이콘 표시)
+10. 액션 (보기/AI설정/삭제 버튼)
+
+**코드 구조**:
+```typescript
+{!isLoading && viewMode === "table" && filteredTenants.length > 0 && (
+  <Card className="border-0 shadow-sm rounded-2xl">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>거래처명</TableHead>
+          <TableHead>진료과목</TableHead>
+          <TableHead>국가</TableHead>
+          <TableHead>상태</TableHead>
+          <TableHead className="text-center">AI 정확도</TableHead>
+          {/* ... more columns */}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {filteredTenants.map((tenant) => (
+          <TableRow key={tenant.id}>
+            <TableCell>
+              <div className="flex items-center gap-2.5">
+                <div className="avatar">{tenant.display_name.charAt(0)}</div>
+                <div>
+                  <div className="text-sm font-semibold">{tenant.display_name}</div>
+                  <div className="text-[10px] text-muted-foreground">{tenant.name}</div>
+                </div>
+              </div>
+            </TableCell>
+            {/* ... more cells */}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </Card>
+)}
+```
+
+#### 21.2.3 거래처 상세 정보 다이얼로그
+
+**컴포넌트**: Detail/Edit Dialog
+
+**표시 정보**:
+1. **기본 정보** (2x2 그리드):
+   - 거래처 ID (font-mono)
+   - 표시 이름
+   - 진료과목 (Badge)
+   - 국가
+
+2. **운영 통계** (2x2 그리드):
+   - AI 정확도 (보라색 그라디언트)
+   - 총 대화 수 (파란색 그라디언트)
+   - 에스컬레이션율 (앰버색 그라디언트)
+   - 월간 문의 (에메랄드색 그라디언트)
+
+3. **연결된 채널** (flex-wrap):
+   - 채널 아이콘 + 타입 + 계정명
+   - 채널 없으면 "연결된 채널이 없습니다" 표시
+
+4. **AI 설정 요약**:
+   - 사용 모델
+   - 신뢰도 임계값
+   - 자동 응답 활성/비활성
+
+5. **등록일**:
+   - toLocaleString("ko-KR")
+
+**액션 버튼**:
+- **닫기**: 다이얼로그 닫기
+- **AI 설정 수정**: AI Config Dialog로 전환
+
+#### 21.2.4 국가 필드 지원
+
+1. **Tenant Interface 업데이트**:
+   ```typescript
+   interface Tenant {
+     id: string;
+     name: string;
+     display_name: string;
+     specialty: Specialty;
+     country?: string | null;  // 신규 추가
+     status: TenantStatus;
+     default_language: string;
+     ai_config: TenantAIConfig;
+     stats: TenantStats;
+     channels: TenantChannel[];
+     created_at: string;
+   }
+   ```
+
+2. **거래처 추가 폼에 국가 필드 추가**:
+   ```typescript
+   <div className="space-y-2">
+     <Label className="text-[11px]">국가 (선택)</Label>
+     <Input
+       placeholder="예: 일본, 대만, 베트남"
+       value={newTenant.country}
+       onChange={(e) => setNewTenant({ ...newTenant, country: e.target.value })}
+     />
+   </div>
+   ```
+
+3. **API 업데이트**:
+   - `GET /api/tenants`: country 필드 반환 (line 196)
+   - `POST /api/tenants`: country 필드 저장 (line 243)
+   - `PATCH /api/tenants`: country 필드 수정 (line 302)
+
+### 21.3 담당자 관리 국가 구분 표시 ✅
+
+**파일**: `web/src/app/(dashboard)/team/page.tsx`
+
+#### 21.3.1 Tenant Interface 업데이트
+
+```typescript
+interface Tenant {
+  id: string;
+  name: string;
+  specialty?: string;
+  country?: string;  // 신규 추가
+}
+```
+
+#### 21.3.2 TenantMultiSelect 국가 표시
+
+**변경 전**:
+```typescript
+<div className="flex items-center gap-2">
+  <span>{tenant.name}</span>
+  {tenant.specialty && (
+    <span className="text-xs text-muted-foreground">
+      ({tenant.specialty})
+    </span>
+  )}
+</div>
+```
+
+**변경 후**:
+```typescript
+<div className="flex items-center gap-2">
+  <span>{tenant.name}</span>
+  {tenant.country && (
+    <span className="text-xs text-muted-foreground">
+      ({tenant.country})
+    </span>
+  )}
+  {tenant.specialty && !tenant.country && (
+    <span className="text-xs text-muted-foreground">
+      ({tenant.specialty})
+    </span>
+  )}
+</div>
+```
+
+**결과**:
+- 국가가 있으면 국가 우선 표시 (힐링안과의원 (일본))
+- 국가가 없으면 진료과목 표시 (서울성형외과 (성형외과))
+
+#### 21.3.3 Tenant 데이터 매핑 업데이트
+
+```typescript
+const tenantObjects: Tenant[] = tenantsData.tenants.map((t: any) => ({
+  id: t.id,
+  name: t.name || t.display_name || "Unknown",
+  specialty: t.specialty,
+  country: t.country,  // 신규 추가
+}));
+```
+
+### 21.4 변경 파일 요약
+
+1. **`web/src/app/(dashboard)/channels/page.tsx`** (+180 lines):
+   - 거래처별 그룹화 로직
+   - Edit Dialog 추가
+   - 국가 표시 추가
+   - handleEditChannel, handleUpdateChannel 함수
+
+2. **`web/src/app/api/channels/[id]/route.ts`** (신규, 53 lines):
+   - PATCH 엔드포인트 생성
+   - tenant_id, account_name, is_active 업데이트
+
+3. **`web/src/app/api/tenants/route.ts`** (+3 lines):
+   - GET에 country 필드 반환
+   - POST에 country 필드 저장
+   - PATCH에 country 필드 수정
+
+4. **`web/src/app/(dashboard)/tenants/page.tsx`** (+430 lines):
+   - 카드/테이블 뷰 토글
+   - 테이블 뷰 전체 구현 (10개 컬럼)
+   - 상세 정보 다이얼로그 (6개 섹션)
+   - 국가 필드 추가 (Interface, Form, API)
+
+5. **`web/src/app/(dashboard)/team/page.tsx`** (+4 lines):
+   - Tenant Interface에 country 추가
+   - TenantMultiSelect 국가 표시
+   - tenantObjects 매핑에 country 추가
+
+### 21.5 커밋 및 배포
+
+**커밋 메시지**:
+```
+Add table view to tenants page, country field support, and team page country display
+
+- Add table/card view toggle to tenants management page
+- Implement comprehensive table view with all columns visible
+- Add detail/edit dialog for viewing tenant information
+- Add country field to tenant creation and display
+- Show country in team management tenant selection
+- Update API to handle country field in GET/POST/PATCH
+- Add country column to tenant table view with MapPin icon
+- Improve channel editing with tenant country display
+```
+
+**커밋 해시**: `eca548d`
+
+**배포 상태**:
+- ✅ GitHub push 완료 (`origin/main`)
+- ✅ Vercel 자동 배포 진행 중
+
+---
