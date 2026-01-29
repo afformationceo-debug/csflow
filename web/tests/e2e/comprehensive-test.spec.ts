@@ -73,7 +73,8 @@ test.describe("2. 통합 인박스 전체 기능 테스트", () => {
 
   test("번역 토글 기능", async ({ page }) => {
     await page.goto(`${BASE_URL}/inbox`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("load");
+    await page.waitForTimeout(3000); // Wait for dynamic content
 
     // 번역 토글 버튼 찾기
     const translateButton = page.locator('button:has-text("번역")').or(page.locator('[aria-label*="번역"]'));
@@ -99,7 +100,8 @@ test.describe("2. 통합 인박스 전체 기능 테스트", () => {
 
   test("필터 기능 (거래처, 태그)", async ({ page }) => {
     await page.goto(`${BASE_URL}/inbox`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("load");
+    await page.waitForTimeout(3000); // Wait for dynamic content
 
     // 거래처 필터
     const hospitalFilter = page.locator('button:has-text("병원")').or(page.locator('[aria-label*="거래처"]'));
