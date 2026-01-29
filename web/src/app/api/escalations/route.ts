@@ -226,7 +226,9 @@ export async function GET(request: NextRequest) {
       // Get customer's actual question (original language + Korean translation)
       const customerMsg = conv?.id ? customerMessagesMap[conv.id] : null;
       const customerQuestion = customerMsg
-        ? `${customerMsg.original}${customerMsg.originalLanguage !== "ko" ? `\n\n[한국어] ${customerMsg.korean}` : ""}`
+        ? (customerMsg.originalLanguage !== "ko" && customerMsg.original !== customerMsg.korean
+            ? `${customerMsg.original}\n\n[한국어] ${customerMsg.korean}`
+            : customerMsg.original)
         : lastMessage;
 
       // Extract AI recommendations from metadata

@@ -2031,6 +2031,263 @@ USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 - [x] 패널 크기: 좌측 28% (대화목록) / 중앙 44% (채팅) / 우측 28% (고객프로필) ✅
 - [x] Playwright 검증: 456px / 716px / 456px (1920x1080 기준) ✅
 
+---
+
+## 20. 치명적 버그 수정 - 데이터베이스 스키마 및 UX 문제 (2026-01-29)
+
+### 20.1 버그 개요
+
+사용자 리포트에 의해 발견된 3가지 치명적 버그:
+- **Bug 0**: 에스컬레이션 페이지 고객 질문 표시 오류 (이전 수정 시도 2회 실패)
+- **Bug 1**: 인박스 번역 표시 문제 (AI 응답이 현지 언어로 표시되어 한국어 원문 확인 불가)
+- **Bug 2**: 인박스 자동 스크롤 문제 (과거 메시지 확인 불가)
+
+### 20.2 버그 0: 에스컬레이션 고객 질문 표시 오류 ✅
+
+#### 증상
+- **기대값**: "I would like to visit on February 16th." (고객의 실제 질문)
+- **실제값**: "Hi! We'd love to help you schedule a visit on February 16 😊..." (AI의 응답)
+
+#### 근본 원인
+데이터베이스 스키마 불일치 — `messages` 테이블에 `original_content` 컬럼이 존재하지 않음.
+
+**API 코드 오류** (이전 `/api/escalations/route.ts` 라인 117):
+```typescript
+.select("conversation_id, content, original_content, translated_content, ...")
+```
+
+**실제 DB 스키마**:
+- **Inbound 메시지** (고객 → 우리): `content` = 고객 원문 언어, `translated_content` = 한국어 번역
+- **Outbound 메시지** (우리 → 고객): `content` = 한국어 원문, `translated_content` = 고객 언어 번역
+
+#### 조사 방법
+디버그 스크립트 생성 (`/web/scripts/debug-escalation-messages.ts`):
+```typescript
+const { data: messages } = await supabase
+  .from("messages")
+  .select("id, conversation_id, content, translated_content, original_language, direction, sender_type, created_at")
+  .eq("conversation_id", conversationId)
+  .order("created_at", { ascending: true });
+```
+
+**발견 사항**: 41개 메시지 중 `original_content` 컬럼 없음, 쿼리 실패로 인해 데이터 반환 불가.
+
+#### 수정 내용 (Commit `91c7c57`)
+
+**파일**: `/web/src/app/api/escalations/route.ts`
+
+**변경 사항** (라인 113-156):
+```typescript
+if (conversationIds.length > 0) {
+  // Get all messages for these conversations (ascending = oldest first)
+  const { data: messages } = await (supabase as any)
+    .from("messages")
+    .select("conversation_id, content, translated_content, original_language, direction, sender_type, created_at")
+    .in("conversation_id", conversationIds)
+    .order("created_at", { ascending: true }); // Oldest first to get initial customer message
+
+  if (messages) {
+    // First pass: find FIRST customer message (the original question that triggered escalation)
+    for (const msg of messages) {
+      // Skip if we already found a customer message for this conversation
+      if (customerMessagesMap[msg.conversation_id]) {
+        continue;
+      }
+
+      // Find first customer message (inbound) — exclude internal notes, system, agent, AI
+      const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+        && msg.sender_type !== "internal_note"
+        && msg.sender_type !== "system"
+        && msg.sender_type !== "agent"
+        && msg.sender_type !== "ai";
+
+      if (isCustomerMessage) {
+        // Determine original (customer language) and Korean translation
+        const originalLang = msg.original_language || "ko";
+
+        // For inbound messages:
+        // - content = customer's native language (original)
+        // - translated_content = Korean translation
+        const customerNativeText = msg.content || "";
+        const koreanText = originalLang === "ko"
+          ? customerNativeText
+          : (msg.translated_content || customerNativeText);
+
+        customerMessagesMap[msg.conversation_id] = {
+          original: customerNativeText,
+          korean: koreanText,
+          originalLanguage: originalLang,
+        };
+      }
+    }
+```
+
+**핵심 수정**:
+1. SELECT 쿼리에서 `original_content` 제거
+2. 데이터 추출 로직 단순화 — `content`와 `translated_content`만 사용
+3. 스키마 기반 올바른 데이터 매핑
+
+**검증**: curl로 프로덕션 API 테스트 → 첫 번째 고객 메시지 정확히 반환 확인
+
+### 20.3 버그 1: 인박스 번역 표시 문제 ✅
+
+#### 증상
+AI 어시스턴트가 고객 언어(영어)로 메시지 전송 시, "원문 (한국어)" 섹션도 영어로 표시됨.
+
+**예시**:
+- **전송 메시지**: "Hi! Are you looking to come in on February 16th 😊..."
+- **"원문 (한국어)"**: "Hi! Are you looking to come in on February 16th 😊..." (한국어 번역이 표시되어야 함)
+
+#### 근본 원인
+LLM이 한국어 대신 고객 언어로 응답을 생성함.
+
+**디버그 출력** (debug script):
+```
+📧 Message 30 (AI outbound):
+   Content: Hello! Thank you for your interest...
+   Translated Content: Hello! Thank you for your interest...
+```
+
+**분석**: 시스템 프롬프트에 "항상 한국어로 응답" 명시적 지시 없음 → LLM이 대화 컨텍스트(영어 메시지)를 보고 영어로 응답 생성
+
+#### 수정 내용 (Commit `c5d951e`)
+
+**파일**: `/web/src/services/ai/llm.ts`
+
+**변경 사항** (라인 82-97):
+```typescript
+return `${basePrompt}
+
+## 병원 정보
+- 병원명: ${config?.hospital_name || "정보 없음"}
+- 전문 분야: ${config?.specialty || "정보 없음"}
+
+## 참고 자료
+${context}
+
+## 응답 가이드라인
+1. **중요**: 항상 한국어로 응답하세요. 고객이 어떤 언어로 질문하든 상관없이 한국어로만 답변하세요.
+2. 반드시 참고 자료에 기반하여 답변하세요.
+3. 확실하지 않은 정보는 "담당자에게 확인 후 안내드리겠습니다"라고 말하세요.
+4. 의료적 조언은 직접 제공하지 말고, 상담 예약을 권유하세요.
+5. 친절하고 전문적인 톤을 유지하세요.
+6. 가격 정보는 정확한 경우에만 안내하세요.`;
+```
+
+**핵심 수정**:
+- 라인 1에 명시적 지시 추가: "**중요**: 항상 한국어로 응답하세요. 고객이 어떤 언어로 질문하든 상관없이 한국어로만 답변하세요."
+
+**효과**:
+- LLM이 이제 항상 한국어로 응답 생성 (`content` 필드)
+- DeepL이 한국어 원문을 고객 언어로 번역 (`translated_content` 필드)
+- 인박스 UI가 `content`를 "원문 (한국어)"로, `translated_content`를 고객에게 전송
+
+### 20.4 버그 2: 인박스 자동 스크롤 문제 ✅
+
+#### 증상
+과거 메시지 확인을 위해 위로 스크롤하면 자동으로 하단으로 스크롤됨 → 대화 히스토리 읽기 불가능
+
+#### 근본 원인
+`useEffect` (라인 1233-1236)가 `dbMessages` 변경 시 무조건 하단으로 스크롤 실행.
+
+#### 수정 내용 (Commit `c5d951e`)
+
+**파일**: `/web/src/app/(dashboard)/inbox/page.tsx`
+
+**변경 사항**:
+
+1. **스크롤 상태 추적 ref 추가** (라인 632):
+```typescript
+const isUserScrollingRef = useRef(false);
+```
+
+2. **스크롤 이벤트 리스너 추가** (라인 1233-1246):
+```typescript
+// Detect user manual scroll
+useEffect(() => {
+  const container = messagesContainerRef.current;
+  if (!container) return;
+
+  const handleScroll = () => {
+    // Check if user has scrolled up (not at bottom)
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+    isUserScrollingRef.current = !isAtBottom;
+  };
+
+  container.addEventListener("scroll", handleScroll);
+  return () => container.removeEventListener("scroll", handleScroll);
+}, []);
+```
+
+3. **자동 스크롤 로직 수정** (라인 1248-1258):
+```typescript
+// Auto-scroll on conversation select or new message (only if user is not manually scrolling)
+useEffect(() => {
+  // Always scroll when conversation changes
+  if (selectedConversation) {
+    isUserScrollingRef.current = false; // Reset scroll state
+    scrollToBottom("instant");
+    return;
+  }
+
+  // Don't auto-scroll if user is manually scrolling up
+  if (isUserScrollingRef.current) return;
+
+  scrollToBottom("instant");
+}, [selectedConversation, dbMessages, scrollToBottom]);
+```
+
+4. **스크롤 버튼에서 상태 리셋** (라인 1078-1081):
+```typescript
+const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+  if (messagesEndRef.current) {
+    isUserScrollingRef.current = false; // Reset manual scrolling state
+    messagesEndRef.current.scrollIntoView({ behavior });
+  }
+}, []);
+```
+
+**핵심 로직**:
+- 사용자가 위로 스크롤하면 `isUserScrollingRef.current = true` 설정
+- 하단에서 50px 이내면 `isUserScrollingRef.current = false` (자동 스크롤 허용)
+- 대화 전환 시 항상 스크롤 상태 리셋 후 하단으로 이동
+- 스크롤 버튼 클릭 시 상태 리셋
+
+**효과**:
+- 사용자가 수동으로 위로 스크롤 시 자동 스크롤 비활성화
+- 대화 전환 또는 하단 버튼 클릭 시 정상 동작
+- 새 메시지 도착 시 사용자가 하단에 있을 때만 자동 스크롤
+
+### 20.5 배포 및 검증
+
+**커밋 내역**:
+- `91c7c57`: "fix: Remove non-existent original_content column from escalations API"
+- `c5d951e`: "fix: Fix inbox translation display and auto-scroll issues"
+
+**빌드 결과**:
+```
+✓ Compiled successfully
+✓ Type checking completed
+✓ Linting completed with 0 errors
+```
+
+**배포**:
+- GitHub 푸시 완료
+- Vercel 자동 배포 트리거됨
+- 프로덕션 URL: https://csflow.vercel.app
+
+**검증 방법**:
+1. **에스컬레이션**: https://csflow.vercel.app/escalations → "고객 질문" 필드 확인
+2. **인박스 번역**: https://csflow.vercel.app/inbox → AI 응답 후 "원문 (한국어)" 섹션 확인
+3. **인박스 스크롤**: 인박스에서 위로 스크롤 → 자동으로 내려가지 않는지 확인
+
+### 20.6 교훈
+
+1. **데이터베이스 스키마 검증 중요성**: API 코드 작성 시 실제 DB 스키마 확인 필수
+2. **LLM 프롬프트 명시성**: "한국어 우선" 같은 암묵적 가정이 아닌 명시적 지시 필요
+3. **UX 버그는 작은 상태 관리로 해결 가능**: `useRef` 하나로 복잡한 스크롤 문제 해결
+4. **디버그 스크립트의 가치**: 프로덕션 DB 직접 조회로 근본 원인 빠르게 파악
+
 #### 7.19 메신저 채널 연동 가이드 (2026-01-28)
 
 ##### LINE 채널 연동 (완료)

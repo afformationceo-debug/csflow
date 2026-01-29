@@ -336,6 +336,29 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
     return;
   }
 
+  // 6.5. Check conversation status - skip AI if already escalated or waiting for agent
+  if (conversation.status === "escalated" || conversation.status === "waiting") {
+    console.log(`[LINE] Conversation ${conversation.id} is ${conversation.status}, skipping AI response`);
+    return;
+  }
+
+  // 6.6. Check if AI already responded recently - prevent duplicate responses
+  const { data: recentMessages } = await (supabase as any)
+    .from("messages")
+    .select("id, sender_type, created_at")
+    .eq("conversation_id", conversation.id)
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  if (recentMessages && recentMessages.length > 1) {
+    // Check if last message before current customer message was from AI
+    const lastMessage = recentMessages[1]; // [0] is current customer message, [1] is previous
+    if (lastMessage && lastMessage.sender_type === "ai") {
+      console.log(`[LINE] AI already responded recently, skipping duplicate response`);
+      return;
+    }
+  }
+
   // 7. Process through RAG pipeline
   try {
     const queryText = translatedText || messageText;
