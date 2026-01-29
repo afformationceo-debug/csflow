@@ -610,14 +610,17 @@ export default function InboxPage() {
   // Team members for assignment
   const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; role: string }[]>([]);
 
-  // AI recommendation state (Issue 1)
-  const [aiSuggestion, setAiSuggestion] = useState<{
+  // AI recommendation state - stored per conversation ID
+  const [aiSuggestionMap, setAiSuggestionMap] = useState<Record<string, {
     original: string;
     korean: string;
     confidence?: number;
     shouldEscalate?: boolean;
     escalationReason?: string;
-  } | null>(null);
+  }>>({});
+
+  // Derived state: current conversation's AI suggestion
+  const aiSuggestion = selectedConversation ? aiSuggestionMap[selectedConversation.id] : null;
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [ragLogs, setRagLogs] = useState<string[]>([]);
   const [ragSources, setRagSources] = useState<any[]>([]);
@@ -1131,17 +1134,21 @@ export default function InboxPage() {
     processedInboundsByConvRef.current[convId] = latestInbound.id;
 
     setIsAiGenerating(true);
-    setAiSuggestion(null);
+    // Don't clear existing suggestion, will be replaced when generation completes
     setRagLogs([]);
     setRagSources([]);
-    fetch(`/api/conversations/${selectedConversation.id}/ai-suggest`, {
+    fetch(`/api/conversations/${convId}/ai-suggest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     })
       .then(res => res.json())
       .then(data => {
         if (data.suggestion) {
-          setAiSuggestion(data.suggestion);
+          // Store suggestion for this conversation ID
+          setAiSuggestionMap(prev => ({
+            ...prev,
+            [convId]: data.suggestion
+          }));
         }
         if (data.logs) {
           setRagLogs(data.logs);
@@ -1159,9 +1166,9 @@ export default function InboxPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbMessages.length, aiAutoResponseEnabled, selectedConversation?.id]);
 
-  // Clear AI suggestion when switching conversations to prevent confusion
+  // Don't clear AI suggestion when switching conversations - it's persisted per conversation now
+  // Just reset loading states
   useEffect(() => {
-    setAiSuggestion(null);
     setIsAiGenerating(false);
     setRagLogs([]);
     setRagSources([]);
@@ -2043,7 +2050,7 @@ export default function InboxPage() {
                                         msg.sender === "ai" ? "text-violet-800 dark:text-violet-300" :
                                         "text-muted-foreground"
                                       )}>
-                                        {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
+                                        {(msg.sender === "agent" || msg.sender === "ai") ? msg.translatedContent : msg.translatedContent}
                                       </p>
                                     </div>
                                   )}
@@ -2216,9 +2223,14 @@ export default function InboxPage() {
                                 size="sm"
                                 className="h-5 text-[10px] px-2 rounded-md text-violet-600 hover:text-violet-700 dark:text-violet-400"
                                 onClick={() => {
-                                  if (aiSuggestion) {
+                                  if (aiSuggestion && selectedConversation) {
                                     setMessageInput(aiSuggestion.original);
-                                    setAiSuggestion(null);
+                                    // Remove suggestion for this conversation
+                                    setAiSuggestionMap(prev => {
+                                      const newMap = { ...prev };
+                                      delete newMap[selectedConversation.id];
+                                      return newMap;
+                                    });
                                   }
                                 }}
                               >
@@ -2232,7 +2244,12 @@ export default function InboxPage() {
                                 onClick={() => {
                                   if (aiSuggestion && selectedConversation) {
                                     const content = aiSuggestion.original;
-                                    setAiSuggestion(null);
+                                    // Remove suggestion for this conversation
+                                    setAiSuggestionMap(prev => {
+                                      const newMap = { ...prev };
+                                      delete newMap[selectedConversation.id];
+                                      return newMap;
+                                    });
                                     // Optimistic UI
                                     const now = new Date();
                                     const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -2272,7 +2289,15 @@ export default function InboxPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-5 text-[10px] px-1.5 rounded-md text-muted-foreground"
-                                onClick={() => setAiSuggestion(null)}
+                                onClick={() => {
+                                  if (selectedConversation) {
+                                    setAiSuggestionMap(prev => {
+                                      const newMap = { ...prev };
+                                      delete newMap[selectedConversation.id];
+                                      return newMap;
+                                    });
+                                  }
+                                }}
                               >
                                 <X className="h-2.5 w-2.5" />
                               </Button>
@@ -2429,7 +2454,12 @@ export default function InboxPage() {
                               const wasInternalNote = isInternalNote;
                               setMessageInput("");
                               setTranslationPreview("");
-                              setAiSuggestion(null); // Clear AI suggestion on send
+                              // Clear AI suggestion for this conversation on send
+                              setAiSuggestionMap(prev => {
+                                const newMap = { ...prev };
+                                delete newMap[selectedConversation.id];
+                                return newMap;
+                              });
 
                               // Optimistic UI: immediately show sent message
                               const now = new Date();
@@ -2510,7 +2540,12 @@ export default function InboxPage() {
                           const wasInternalNote = isInternalNote;
                           setMessageInput("");
                           setTranslationPreview("");
-                          setAiSuggestion(null); // Clear AI suggestion on send
+                          // Clear AI suggestion for this conversation on send
+                          setAiSuggestionMap(prev => {
+                            const newMap = { ...prev };
+                            delete newMap[selectedConversation.id];
+                            return newMap;
+                          });
 
                           // Optimistic UI: immediately show sent message
                           const now = new Date();

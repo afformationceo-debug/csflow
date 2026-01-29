@@ -498,22 +498,11 @@ function UpdateKnowledgeBaseDialog({
     // Use AI-detected questions if available, otherwise use customer question
     const detectedQ = escalation.detectedQuestions?.[0] || escalation.customerQuestion || escalation.lastMessage;
 
-    // Generate suggested title from detected question
-    const suggestedTitle = detectedQ.length > 50 ? detectedQ.slice(0, 50) + "..." : detectedQ;
+    // Generate short, clear title (RAG-optimized)
+    const suggestedTitle = generateKBTitle(detectedQ);
 
-    // Generate comprehensive example content with best-practice structure
-    const suggestedContent = `질문: ${detectedQ}
-
-답변:
-[여기에 구체적이고 정확한 답변을 작성해주세요]
-
-예시:
-${generateKBExample(detectedQ)}
-
-추가 정보:
-- 주의사항: [필요시 주의사항 작성]
-- 관련 링크: [필요시 관련 링크 추가]
-- 문의처: [추가 문의가 필요한 경우 연락처]`;
+    // Generate RAG-optimized content (clear, structured, query-friendly)
+    const suggestedContent = generateKBExample(detectedQ);
 
     setTitle(suggestedTitle);
     setContent(suggestedContent);
@@ -525,71 +514,75 @@ ${generateKBExample(detectedQ)}
     setOpen(true);
   };
 
-  // Helper: Generate KB example based on question pattern
+  // Helper: Generate short, clear KB title (RAG-optimized)
+  const generateKBTitle = (question: string): string => {
+    const q = question.toLowerCase();
+    const hospitalName = escalation.tenant.name || "OO병원";
+
+    if (/예약|booking|reservation|appointment/i.test(q)) return "예약가능날짜";
+    if (/가격|비용|price|cost|얼마/i.test(q)) return "시술가격";
+    if (/시간|영업|언제|when|hours/i.test(q)) return "영업시간";
+    if (/위치|주소|location|address|찾아오/i.test(q)) return "병원위치";
+    if (/의사|doctor|선생님/i.test(q)) return "의료진정보";
+    if (/회복|recovery|기간|period/i.test(q)) return "회복기간";
+
+    // Default: extract first meaningful noun
+    return question.length > 20 ? question.slice(0, 20) : question;
+  };
+
+  // Helper: Generate RAG-optimized KB content (clear, structured, query-friendly)
   const generateKBExample = (question: string): string => {
     const q = question.toLowerCase();
+    const hospitalName = escalation.tenant.name || "OO병원";
 
     if (/예약|booking|reservation|appointment/i.test(q)) {
-      return `예약은 다음 방법으로 가능합니다:
-1. 온라인 예약: [웹사이트 URL]
-2. 전화 예약: [전화번호]
-3. 카카오톡 상담을 통한 예약
+      return `${hospitalName} 예약가능 날짜는 월요일 오전 9시부터 오후 6시까지, 화요일 오전 9시부터 오후 6시까지, 수요일 오전 9시부터 오후 6시까지, 목요일 오전 9시부터 오후 6시까지, 금요일 오전 9시부터 오후 6시까지, 토요일 오전 9시부터 오후 1시까지입니다. 일요일과 공휴일은 휴무입니다.
 
-예약 가능 시간:
-- 평일: 오전 9시 ~ 오후 6시
-- 토요일: 오전 9시 ~ 오후 1시
-- 일요일/공휴일: 휴무
+예약 방법은 전화 [전화번호], 카카오톡 [채널명], 온라인 예약 [URL]로 가능합니다.
 
-예약 시 준비사항:
-- 신분증
-- [추가 필요 서류]`;
+예약시 신분증을 지참해주세요.`;
     }
 
     if (/가격|비용|price|cost|얼마/i.test(q)) {
-      return `가격 정보:
-- 기본 시술: [금액]원
-- 프리미엄 시술: [금액]원
-- 특별 패키지: [금액]원
+      return `${hospitalName} 라식 수술 가격은 양안 기준 150만원입니다. 라섹 수술 가격은 180만원, 스마일라식 가격은 250만원입니다.
 
-포함 사항:
-- 사전 검사
-- 시술 비용
-- 사후 관리 (1회)
+가격에는 정밀 검사, 시술 비용, 1개월 사후관리, 안약 처방이 포함됩니다.
 
-할인 혜택:
-- [이벤트/할인 정보]`;
+조기 예약 시 10% 할인, 학생은 5% 추가 할인됩니다.`;
     }
 
     if (/시간|영업|언제|when|hours/i.test(q)) {
-      return `운영 시간:
-- 평일: 오전 9시 ~ 오후 6시
-- 토요일: 오전 9시 ~ 오후 1시
-- 일요일/공휴일: 휴무
+      return `${hospitalName} 영업시간은 월요일부터 금요일까지 오전 9시부터 오후 6시까지이고, 토요일은 오전 9시부터 오후 1시까지입니다. 일요일과 공휴일은 휴무입니다.
 
-점심시간: 오후 12시 ~ 오후 1시
-(응급 상담은 점심시간에도 가능)`;
+점심시간은 오후 12시부터 오후 1시까지이며, 응급 상담은 점심시간에도 가능합니다.`;
     }
 
     if (/위치|주소|location|address|찾아오/i.test(q)) {
-      return `위치 정보:
-주소: [상세 주소]
-전화: [전화번호]
+      return `${hospitalName} 주소는 [시/도] [구/군] [도로명] [건물번호]입니다. [건물명] [층]에 위치해있습니다.
 
-찾아오시는 길:
-- 지하철: [역명] [번 출구]에서 도보 [분]
-- 버스: [버스 번호] → [정류장명] 하차
-- 주차: [주차 가능 여부 및 안내]
+지하철은 [호선] [역명] [번 출구]에서 도보 [분] 거리입니다. 버스는 [버스번호]를 타고 [정류장명]에서 하차하시면 됩니다.
 
-지도: [지도 링크]`;
+주차는 건물 지하 주차장 이용 가능하며, 2시간 무료입니다.`;
+    }
+
+    if (/의사|doctor|선생님|staff/i.test(q)) {
+      return `${hospitalName} 의료진은 [의사명] 원장 (전문 분야: [분야], 경력: [년]년), [의사명] 과장 (전문 분야: [분야], 경력: [년]년)입니다.
+
+모든 의료진은 [관련 학회] 정회원이며, [자격증/인증] 보유자입니다.`;
+    }
+
+    if (/회복|recovery|기간|period/i.test(q)) {
+      return `${hospitalName} 라식 수술 회복기간은 수술 당일 약간의 눈물과 이물감이 있을 수 있으며, 1~2일 후 대부분의 불편감이 사라집니다. 1주일 후 시력이 안정화되기 시작하고, 1개월 후 최종 시력에 도달합니다. 3개월 후 완전히 회복됩니다.
+
+수술 후 1주일간 눈에 물이 들어가지 않도록 주의하고, 정기 검진(1일, 1주일, 1개월, 3개월)을 받으셔야 합니다.`;
     }
 
     // Default template
-    return `[상세한 답변을 작성해주세요]
+    return `${hospitalName}에서 고객님의 질문 "${question}"에 대한 답변입니다.
 
-구체적인 정보:
-- 항목 1: [설명]
-- 항목 2: [설명]
-- 항목 3: [설명]`;
+[여기에 구체적이고 정확한 답변을 "OO병원의 XXX는 YYY입니다" 형식으로 작성해주세요]
+
+[추가 관련 정보가 있다면 같은 형식으로 계속 작성해주세요]`;
   };
 
   // Helper: Extract relevant tags from question
@@ -799,125 +792,38 @@ function UpdateTenantInfoDialog({
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Pre-fill with concrete example values based on escalation and AI-detected questions
+  // Pre-fill with RAG-optimized example values based on escalation and AI-detected questions
   const handleOpen = () => {
     // Use AI-detected questions if available
     const detectedQ = escalation.detectedQuestions?.[0] || escalation.customerQuestion || escalation.lastMessage;
     const suggestedNotes = `에스컬레이션: ${escalation.reason}\nAI 감지 질문: ${detectedQ}`;
     setNotes(suggestedNotes);
 
-    // Auto-detect field type from detected question
+    const hospitalName = escalation.tenant.name || "OO병원";
+
+    // Auto-detect field type from detected question and generate RAG-optimized values
     const q = detectedQ.toLowerCase();
     if (/예약|booking|reservation|appointment|언제.*가능|available/i.test(q)) {
       setField("operating_hours");
-      setValue(`예약 가능 시간:
-- 평일: 오전 9시 ~ 오후 6시 (점심시간: 12~1시)
-- 토요일: 오전 9시 ~ 오후 1시
-- 일요일/공휴일: 휴무
-
-예약 방법:
-- 전화: [전화번호]
-- 카카오톡: [카카오톡 채널]
-- 온라인: [예약 URL]`);
+      setValue(`${hospitalName} 예약가능 시간은 월요일 오전 9시부터 오후 6시, 화요일 오전 9시부터 오후 6시, 수요일 오전 9시부터 오후 6시, 목요일 오전 9시부터 오후 6시, 금요일 오전 9시부터 오후 6시, 토요일 오전 9시부터 오후 1시입니다. 일요일과 공휴일은 휴무입니다. 예약은 전화 [전화번호], 카카오톡 [채널명], 온라인 [URL]로 가능합니다.`);
     } else if (/가격|비용|price|cost|얼마|how much/i.test(q)) {
       setField("pricing");
-      setValue(`시술별 가격 (양안 기준):
-- 라식 (LASIK): 150만원
-- 라섹 (LASEK): 180만원
-- 스마일라식 (SMILE): 250만원
-- 노안라식: 300만원
-
-포함 사항:
-- 정밀 검사
-- 시술 비용
-- 1개월 사후관리
-- 안약 처방
-
-할인 정보:
-- 조기 예약 할인: 10%
-- 학생 할인: 5%
-- 재수술 보장 (10년)`);
+      setValue(`${hospitalName} 라식 수술 가격은 양안 기준 150만원, 라섹 수술은 180만원, 스마일라식은 250만원, 노안라식은 300만원입니다. 가격에는 정밀 검사, 시술 비용, 1개월 사후관리, 안약 처방이 포함됩니다. 조기 예약시 10% 할인, 학생 5% 추가 할인됩니다.`);
     } else if (/위치|주소|어디|where|location|address|찾아오/i.test(q)) {
       setField("location");
-      setValue(`주소: [시/도] [구/군] [상세주소]
-건물명: [건물명] [층]
-
-찾아오시는 길:
-- 지하철: [호선] [역명] [번 출구]에서 도보 [분]
-- 버스: [버스 번호들] → [정류장명] 하차
-- 자가용: 네비게이션 "[병원명]" 검색
-- 주차: 건물 지하 주차장 이용 가능 (2시간 무료)
-
-랜드마크: [근처 유명 건물/장소]`);
+      setValue(`${hospitalName} 주소는 [시/도] [구/군] [도로명] [번호] [건물명] [층]입니다. 지하철 [호선] [역명] [번 출구]에서 도보 [분] 거리이고, 버스 [번호]를 타고 [정류장명]에서 하차하시면 됩니다. 주차는 건물 지하 주차장 2시간 무료입니다.`);
     } else if (/연락|전화|이메일|contact|phone|email/i.test(q)) {
       setField("contact");
-      setValue(`전화번호:
-- 대표번호: 02-1234-5678
-- 예약 전용: 02-1234-5679
-- 응급 상담: 010-1234-5678
-
-이메일:
-- 일반 문의: info@example.com
-- 예약 문의: reservation@example.com
-
-카카오톡:
-- 채널명: [병원명]
-- 채널 ID: @example
-
-운영 시간:
-- 평일: 09:00 ~ 18:00
-- 토요일: 09:00 ~ 13:00
-- 일요일/공휴일: 휴무`);
+      setValue(`${hospitalName} 대표 전화번호는 02-1234-5678이고 예약 전용 번호는 02-1234-5679입니다. 응급 상담은 010-1234-5678로 가능합니다. 이메일은 일반 문의 info@example.com, 예약 문의 reservation@example.com입니다. 카카오톡 채널은 [병원명] 채널 ID @example입니다. 운영 시간은 평일 09:00~18:00, 토요일 09:00~13:00이며 일요일과 공휴일은 휴무입니다.`);
     } else if (/의사|doctor|선생님|staff/i.test(q)) {
       setField("doctors");
-      setValue(`의료진 소개:
-
-대표원장: [이름] 원장
-- 전문 분야: [전문 분야]
-- 경력: [주요 경력]
-- 학력: [학력 사항]
-
-진료 의사:
-1. [이름] 원장 - [전문 분야]
-2. [이름] 원장 - [전문 분야]
-
-수술 건수:
-- 연간 [건수]건 이상
-- 누적 [건수]건 이상
-
-의료진 상담 예약:
-- 전화: [전화번호]
-- 온라인: [예약 URL]`);
+      setValue(`${hospitalName} 대표원장은 [이름] 원장이며 전문 분야는 [전문분야]이고 경력은 [경력]입니다. 진료 의사는 [이름1] 원장(전문분야: [분야1]), [이름2] 원장(전문분야: [분야2])입니다. 수술 건수는 연간 [건수]건 이상, 누적 [건수]건 이상입니다. 의료진 상담 예약은 전화 [전화번호] 또는 온라인 [URL]로 가능합니다.`);
     } else if (/장비|시설|equipment|facility/i.test(q)) {
       setField("equipment");
-      setValue(`보유 장비:
-
-주요 장비:
-1. [장비명] - [제조사/모델명]
-   용도: [용도 설명]
-
-2. [장비명] - [제조사/모델명]
-   용도: [용도 설명]
-
-3. [장비명] - [제조사/모델명]
-   용도: [용도 설명]
-
-시설 특징:
-- 무균 수술실 [개]실
-- 회복실 [개]실
-- 대기실 [평수]평
-- 주차장 [대]대 수용
-
-인증:
-- [인증/수상 내역]`);
+      setValue(`${hospitalName} 보유 장비는 [장비명1] [제조사/모델](용도: [용도]), [장비명2] [제조사/모델](용도: [용도]), [장비명3] [제조사/모델](용도: [용도])입니다. 시설은 무균 수술실 [개]실, 회복실 [개]실, 대기실 [평수]평이며 주차장은 [대]대 수용 가능합니다. [인증/수상] 인증을 보유하고 있습니다.`);
     } else {
-      // Default - still provide example
-      setValue(`[여기에 구체적인 정보를 입력해주세요]
-
-예시:
-- 항목 1: [설명]
-- 항목 2: [설명]
-- 항목 3: [설명]`);
+      // Default - still provide RAG-optimized example
+      setValue(`${hospitalName}의 [정보 종류]는 [구체적인 값]입니다. [관련 정보1]은 [값1]이고, [관련 정보2]는 [값2]입니다. [추가 정보]는 [값]입니다.`);
     }
 
     setOpen(true);
@@ -1171,14 +1077,30 @@ function EscalationCard({
                     <p className="text-xs text-muted-foreground">
                       🎯 <span className="font-medium">AI 신뢰도:</span> <span className="tabular-nums">{(escalation.aiConfidence * 100).toFixed(1)}%</span>
                     </p>
-                    {escalation.missingInfo && escalation.missingInfo.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-foreground">📋 부족한 정보:</p>
-                        <ul className="text-xs text-muted-foreground space-y-0.5 ml-5">
-                          {escalation.missingInfo.map((info, idx) => (
-                            <li key={idx} className="list-disc">{info}</li>
-                          ))}
-                        </ul>
+
+                    {/* 명확한 업데이트 필요 정보 표시 */}
+                    {escalation.recommendedAction && (
+                      <div className="space-y-1.5 pt-1">
+                        <p className="text-xs font-semibold text-foreground">
+                          {escalation.recommendedAction === "tenant_info" ? "🏥 거래처 정보" : "📚 지식베이스"}에 다음 정보가 필요합니다:
+                        </p>
+                        {escalation.missingInfo && escalation.missingInfo.length > 0 ? (
+                          <ul className="text-xs text-muted-foreground space-y-0.5 ml-5">
+                            {escalation.missingInfo.map((info, idx) => (
+                              <li key={idx} className="list-disc">
+                                {escalation.recommendedAction === "tenant_info"
+                                  ? `거래처정보에 ${info} 정보가 있어야 합니다`
+                                  : `지식베이스에 ${info} 관련 정보가 필요합니다`}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-muted-foreground ml-5">
+                            {escalation.recommendedAction === "tenant_info"
+                              ? "거래처 운영 정보(영업시간, 가격, 위치 등)를 업데이트해주세요"
+                              : "관련 FAQ 및 상세 답변을 지식베이스에 추가해주세요"}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

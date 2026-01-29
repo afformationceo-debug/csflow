@@ -151,12 +151,16 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Second pass: find latest message (iterate backwards) for fallback
-        for (let i = messages.length - 1; i >= 0; i--) {
-          const msg = messages[i];
+        // Second pass: find first CUSTOMER message for fallback (iterate forward)
+        for (const msg of messages) {
           if (!lastMessagesMap[msg.conversation_id]) {
-            // Exclude internal notes from lastMessage fallback too
-            if (msg.sender_type !== "internal_note") {
+            // Find first customer message only (not agent/internal/system)
+            const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+              && msg.sender_type !== "internal_note"
+              && msg.sender_type !== "system"
+              && msg.sender_type !== "agent"
+              && msg.sender_type !== "ai";
+            if (isCustomerMessage) {
               lastMessagesMap[msg.conversation_id] = msg.content || "";
             }
           }
