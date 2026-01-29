@@ -819,117 +819,118 @@ export default function ChannelsPage() {
                         </div>
 
                         {/* 거래처의 채널 목록 */}
-                        {tenantChannels.map((channel) => {
-                    const Icon = CHANNEL_ICONS[channel.channelType];
-                    const style = CHANNEL_BADGE_STYLES[channel.channelType];
+                        <div className="space-y-2">
+                          {tenantChannels.map((channel) => {
+                            const Icon = CHANNEL_ICONS[channel.channelType];
+                            const style = CHANNEL_BADGE_STYLES[channel.channelType];
 
-                    return (
-                      <motion.div
-                        key={channel.id}
-                        variants={itemVariants}
-                        exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0, transition: { duration: 0.2 } }}
-                        layout
-                        whileHover={{ scale: 1.005 }}
-                        className={`group relative flex items-center gap-4 rounded-xl p-3.5 transition-colors ${
-                          channel.isActive
-                            ? `bg-gradient-to-br ${style.gradientFrom} ${style.gradientTo}`
-                            : "bg-muted/30"
-                        }`}
-                      >
-                        {/* 채널 아이콘 */}
-                        <div
-                          className="relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
-                          style={{ backgroundColor: `${style.color}15` }}
-                        >
-                          <Icon className="w-5 h-5" style={{ color: style.color === "#FEE500" ? "#B8A000" : style.color }} />
-                          {channel.isActive && (
-                            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background" style={{ backgroundColor: style.color }} />
-                          )}
-                        </div>
+                            return (
+                              <motion.div
+                                key={channel.id}
+                                variants={itemVariants}
+                                exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0, transition: { duration: 0.2 } }}
+                                layout
+                                whileHover={{ scale: 1.005 }}
+                                className={`group relative flex items-center gap-4 rounded-xl p-3.5 transition-colors ${
+                                  channel.isActive
+                                    ? `bg-gradient-to-br ${style.gradientFrom} ${style.gradientTo}`
+                                    : "bg-muted/30"
+                                }`}
+                              >
+                                {/* 채널 아이콘 */}
+                                <div
+                                  className="relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
+                                  style={{ backgroundColor: `${style.color}15` }}
+                                >
+                                  <Icon className="w-5 h-5" style={{ color: style.color === "#FEE500" ? "#B8A000" : style.color }} />
+                                  {channel.isActive && (
+                                    <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background" style={{ backgroundColor: style.color }} />
+                                  )}
+                                </div>
 
-                        {/* 채널 정보 */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span
-                              className="inline-flex items-center px-1.5 py-px rounded-md text-[10px] font-bold tracking-wide"
-                              style={{
-                                backgroundColor: `${style.color}20`,
-                                color: style.color === "#FEE500" ? "#B8A000" : style.color,
-                              }}
-                            >
-                              {CHANNEL_LABELS[channel.channelType]}
-                            </span>
-                            <span className="font-medium text-[13px] truncate">{channel.accountName}</span>
-                            {channel.tenantName && (
-                              <Badge variant="outline" className="text-[10px] h-[18px] px-1.5 font-medium rounded-full">
-                                {channel.tenantName}
-                              </Badge>
-                            )}
-                            {channel.isActive ? (
-                              <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 text-[10px] h-[18px] px-1.5 font-semibold border-0 rounded-full">
-                                <span className="live-dot mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                활성
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-muted text-muted-foreground text-[10px] h-[18px] px-1.5 font-medium border-0 rounded-full">
-                                비활성
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Hash className="w-3 h-3" />
-                              <span className="font-mono">{channel.accountId}</span>
-                            </span>
-                            <span className="hidden sm:inline text-muted-foreground/40">|</span>
-                            <span className="hidden sm:flex items-center gap-1">
-                              <MessageSquare className="w-3 h-3" />
-                              <span className="tabular-nums font-medium">{channel.messageCount.toLocaleString()}</span>
-                              건
-                            </span>
-                            <span className="hidden sm:inline text-muted-foreground/40">|</span>
-                            <span className="hidden sm:flex items-center gap-1">
-                              <TrendingUp className="w-3 h-3" />
-                              {channel.lastActiveAt}
-                            </span>
-                          </div>
-                          <div className="mt-2 hidden sm:block">
-                            <AnimatedBar
-                              value={channel.messageCount}
-                              max={maxMessages}
-                              color={style.color === "#FEE500" ? "#B8A000" : style.color}
-                              delay={0.2}
-                            />
-                          </div>
-                        </div>
+                                {/* 채널 정보 */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span
+                                      className="inline-flex items-center px-1.5 py-px rounded-md text-[10px] font-bold tracking-wide"
+                                      style={{
+                                        backgroundColor: `${style.color}20`,
+                                        color: style.color === "#FEE500" ? "#B8A000" : style.color,
+                                      }}
+                                    >
+                                      {CHANNEL_LABELS[channel.channelType]}
+                                    </span>
+                                    <span className="font-medium text-[13px] truncate">{channel.accountName}</span>
+                                    {channel.tenantName && (
+                                      <Badge variant="outline" className="text-[10px] h-[18px] px-1.5 font-medium rounded-full">
+                                        {channel.tenantName}
+                                      </Badge>
+                                    )}
+                                    {channel.isActive ? (
+                                      <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 text-[10px] h-[18px] px-1.5 font-semibold border-0 rounded-full">
+                                        <span className="live-dot mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                        활성
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="secondary" className="bg-muted text-muted-foreground text-[10px] h-[18px] px-1.5 font-medium border-0 rounded-full">
+                                        비활성
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <Hash className="w-3 h-3" />
+                                      <span className="font-mono">{channel.accountId}</span>
+                                    </span>
+                                    <span className="hidden sm:inline text-muted-foreground/40">|</span>
+                                    <span className="hidden sm:flex items-center gap-1">
+                                      <MessageSquare className="w-3 h-3" />
+                                      <span className="tabular-nums font-medium">{channel.messageCount.toLocaleString()}</span>
+                                      건
+                                    </span>
+                                    <span className="hidden sm:inline text-muted-foreground/40">|</span>
+                                    <span className="hidden sm:flex items-center gap-1">
+                                      <TrendingUp className="w-3 h-3" />
+                                      {channel.lastActiveAt}
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 hidden sm:block">
+                                    <AnimatedBar
+                                      value={channel.messageCount}
+                                      max={maxMessages}
+                                      color={style.color === "#FEE500" ? "#B8A000" : style.color}
+                                      delay={0.2}
+                                    />
+                                  </div>
+                                </div>
 
-                        {/* 액션 */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <Switch checked={channel.isActive} onCheckedChange={(checked) => handleToggle(channel.id, checked)} />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => handleEditChannel(channel)}
-                          >
-                            <Settings2 className="w-4 h-4 text-muted-foreground" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDelete(channel.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                                {/* 액션 */}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <Switch checked={channel.isActive} onCheckedChange={(checked) => handleToggle(channel.id, checked)} />
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => handleEditChannel(channel)}
+                                  >
+                                    <Settings2 className="w-4 h-4 text-muted-foreground" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => handleDelete(channel.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
                         </div>
-                      </motion.div>
+                      </div>
                     );
                   })}
-                </div>
-              </div>
-            );
-          })}
                 </AnimatePresence>
               </motion.div>
             )}

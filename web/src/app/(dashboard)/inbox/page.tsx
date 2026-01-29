@@ -987,6 +987,15 @@ export default function InboxPage() {
             const mapped: Message[] = rawMessages.map((msg: any) => {
               const createdAt = new Date(msg.created_at);
               const timeStr = `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
+
+              const metadata = msg.metadata || {};
+
+              // FIX: Infer direction from sender_type if direction is missing (for old messages)
+              let direction: "inbound" | "outbound" | undefined = msg.direction;
+              if (!direction && msg.sender_type) {
+                direction = msg.sender_type === "customer" ? "inbound" : "outbound";
+              }
+
               return {
                 id: msg.id,
                 sender: msg.sender_type as MessageType,
@@ -994,7 +1003,9 @@ export default function InboxPage() {
                 translatedContent: msg.translated_content || undefined,
                 time: timeStr,
                 language: msg.original_language || undefined,
-                confidence: msg.ai_confidence ? Math.round(msg.ai_confidence * 100) : undefined,
+                confidence: metadata.ai_confidence ? Math.round(metadata.ai_confidence * 100) : undefined,
+                sources: metadata.ai_sources || undefined,
+                direction,  // FIX: Include direction field in polling
               };
             });
             setDbMessages((prev) => {

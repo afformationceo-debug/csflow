@@ -83,6 +83,11 @@ interface Escalation {
   assignedTo: TeamMember | null;
   resolvedAt?: string;
   slaDeadline: string;
+  // NEW: Enhanced fields for AI request UI
+  customerQuestion?: string;
+  aiReasoning?: string;
+  recommendedAction?: "knowledge_base" | "tenant_info";
+  missingInfo?: string[];
 }
 
 // Mock data removed -- data is now fetched from /api/escalations
@@ -469,6 +474,306 @@ function AssignDialog({
 }
 
 // ────────────────────────────────────────────────────────────
+// Update Knowledge Base Dialog
+// ────────────────────────────────────────────────────────────
+
+function UpdateKnowledgeBaseDialog({
+  escalation,
+  onUpdate,
+}: {
+  escalation: Escalation;
+  onUpdate: (data: { title: string; content: string; category: string; tags: string[] }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [category, setCategory] = useState("medical");
+  const [tags, setTags] = useState<string[]>([]);
+
+  // Pre-fill with example based on escalation
+  const handleOpen = () => {
+    // Generate suggested title and content from escalation
+    const suggestedTitle = `${escalation.customer.name}님 문의: ${escalation.customerQuestion || escalation.lastMessage}`.slice(0, 100);
+    const suggestedContent = `질문: ${escalation.customerQuestion || escalation.lastMessage}\n\n답변: [여기에 정확한 답변을 작성해주세요]\n\n추가 정보:\n- 거래처: ${escalation.tenant.name}\n- 채널: ${escalation.channel}\n- 카테고리: [관련 카테고리 선택]`;
+
+    setTitle(suggestedTitle);
+    setContent(suggestedContent);
+    setTags([escalation.tenant.name, escalation.channel]);
+    setOpen(true);
+  };
+
+  const handleSubmit = () => {
+    onUpdate({ title, content, category, tags });
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={handleOpen}
+        className="h-8 gap-1.5 rounded-lg border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
+      >
+        <Hash className="h-3.5 w-3.5" />
+        지식베이스 업데이트
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/10">
+                <Hash className="h-4 w-4 text-amber-600" />
+              </div>
+              지식베이스에 추가
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            {/* Context */}
+            <div className="rounded-xl bg-gradient-to-r from-blue-500/5 to-violet-500/5 border border-blue-500/20 p-4 space-y-2">
+              <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">📋 에스컬레이션 컨텍스트</p>
+              <p className="text-xs text-muted-foreground">
+                고객: {escalation.customer.name} ({escalation.customer.country})
+              </p>
+              <p className="text-xs text-muted-foreground">
+                질문: {escalation.customerQuestion || escalation.lastMessage}
+              </p>
+            </div>
+
+            {/* Form */}
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="kb-title" className="text-sm font-medium">
+                  제목 <span className="text-xs text-muted-foreground">(지식베이스 문서 제목)</span>
+                </Label>
+                <Input
+                  id="kb-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="예: 라식 수술 가격 및 절차 안내"
+                  className="h-9 rounded-lg"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="kb-category" className="text-sm font-medium">
+                  카테고리
+                </Label>
+                <Select value={category} onValueChange={setCategory}>
+                  <SelectTrigger id="kb-category" className="h-9 rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="medical">의료/시술</SelectItem>
+                    <SelectItem value="pricing">가격 정보</SelectItem>
+                    <SelectItem value="booking">예약/일정</SelectItem>
+                    <SelectItem value="faq">자주 묻는 질문</SelectItem>
+                    <SelectItem value="policy">정책/규정</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="kb-content" className="text-sm font-medium">
+                  내용 <span className="text-xs text-muted-foreground">(예시가 포함되어 있습니다. 수정해주세요)</span>
+                </Label>
+                <textarea
+                  id="kb-content"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  rows={10}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  placeholder="질문과 답변을 자세히 작성해주세요..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="kb-tags" className="text-sm font-medium">
+                  태그 <span className="text-xs text-muted-foreground">(쉼표로 구분)</span>
+                </Label>
+                <Input
+                  id="kb-tags"
+                  value={tags.join(", ")}
+                  onChange={(e) => setTags(e.target.value.split(",").map(t => t.trim()).filter(Boolean))}
+                  placeholder="예: 라식, 가격, 일본"
+                  className="h-9 rounded-lg"
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                onClick={handleSubmit}
+                className="flex-1 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                저장 및 해결 완료
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setOpen(false)}
+                className="h-9 rounded-lg"
+              >
+                취소
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Update Tenant Info Dialog
+// ────────────────────────────────────────────────────────────
+
+function UpdateTenantInfoDialog({
+  escalation,
+  onUpdate,
+}: {
+  escalation: Escalation;
+  onUpdate: (data: { field: string; value: string; notes: string }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [field, setField] = useState("operating_hours");
+  const [value, setValue] = useState("");
+  const [notes, setNotes] = useState("");
+
+  // Pre-fill with example based on escalation
+  const handleOpen = () => {
+    const suggestedNotes = `에스컬레이션: ${escalation.reason}\n고객 질문: ${escalation.customerQuestion || escalation.lastMessage}`;
+    setNotes(suggestedNotes);
+
+    // Example values based on field
+    if (field === "operating_hours") {
+      setValue("평일 09:00-18:00, 토요일 09:00-13:00, 일요일 휴무");
+    } else if (field === "pricing") {
+      setValue("라식: 150만원, 라섹: 180만원 (양안 기준)");
+    } else if (field === "contact") {
+      setValue("전화: 02-1234-5678, 이메일: info@example.com");
+    }
+
+    setOpen(true);
+  };
+
+  const handleSubmit = () => {
+    onUpdate({ field, value, notes });
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={handleOpen}
+        className="h-8 gap-1.5 rounded-lg border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20"
+      >
+        <Shield className="h-3.5 w-3.5" />
+        거래처 정보 업데이트
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10">
+                <Shield className="h-4 w-4 text-emerald-600" />
+              </div>
+              거래처 정보 업데이트
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            {/* Context */}
+            <div className="rounded-xl bg-gradient-to-r from-emerald-500/5 to-teal-500/5 border border-emerald-500/20 p-4 space-y-2">
+              <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">🏥 거래처 정보</p>
+              <p className="text-xs text-muted-foreground">
+                거래처: {escalation.tenant.name}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                고객 질문: {escalation.customerQuestion || escalation.lastMessage}
+              </p>
+            </div>
+
+            {/* Form */}
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="tenant-field" className="text-sm font-medium">
+                  업데이트할 필드
+                </Label>
+                <Select value={field} onValueChange={setField}>
+                  <SelectTrigger id="tenant-field" className="h-9 rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="operating_hours">운영 시간</SelectItem>
+                    <SelectItem value="pricing">가격 정보</SelectItem>
+                    <SelectItem value="contact">연락처</SelectItem>
+                    <SelectItem value="location">위치/주소</SelectItem>
+                    <SelectItem value="services">제공 서비스</SelectItem>
+                    <SelectItem value="doctors">의료진 정보</SelectItem>
+                    <SelectItem value="equipment">장비/시설</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tenant-value" className="text-sm font-medium">
+                  값 <span className="text-xs text-muted-foreground">(예시가 포함되어 있습니다. 수정해주세요)</span>
+                </Label>
+                <textarea
+                  id="tenant-value"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  placeholder="업데이트할 정보를 입력해주세요..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tenant-notes" className="text-sm font-medium">
+                  메모 <span className="text-xs text-muted-foreground">(업데이트 사유)</span>
+                </Label>
+                <textarea
+                  id="tenant-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  placeholder="업데이트 사유를 작성해주세요..."
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                onClick={handleSubmit}
+                className="flex-1 h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                저장 및 해결 완료
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setOpen(false)}
+                className="h-9 rounded-lg"
+              >
+                취소
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
 // Escalation Card Component
 // ────────────────────────────────────────────────────────────
 
@@ -541,23 +846,47 @@ function EscalationCard({
                   </span>
                 </div>
 
-                {/* Last message */}
-                <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
-                  {escalation.lastMessage}
-                </p>
+                {/* Customer Question Box - Prominent Display */}
+                <div className="rounded-xl bg-gradient-to-r from-blue-500/5 via-violet-500/5 to-purple-500/5 border border-blue-500/20 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">고객 질문</span>
+                  </div>
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {escalation.customerQuestion || escalation.lastMessage}
+                  </p>
+                </div>
+
+                {/* AI Reasoning Section */}
+                <div className="rounded-xl bg-gradient-to-r from-violet-500/5 to-purple-500/5 border border-violet-500/20 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                    <span className="text-xs font-semibold text-violet-600 dark:text-violet-400">AI 분석</span>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      💡 <span className="font-medium">답변하지 못한 이유:</span> {escalation.aiReasoning || escalation.reason || "충분한 정보가 없습니다"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      🎯 <span className="font-medium">AI 신뢰도:</span> <span className="tabular-nums">{(escalation.aiConfidence * 100).toFixed(1)}%</span>
+                    </p>
+                    {escalation.missingInfo && escalation.missingInfo.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-foreground">📋 부족한 정보:</p>
+                        <ul className="text-xs text-muted-foreground space-y-0.5 ml-5">
+                          {escalation.missingInfo.map((info, idx) => (
+                            <li key={idx} className="list-disc">{info}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 {/* Badges row */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <PriorityBadge priority={escalation.priority} />
                   <StatusBadge status={escalation.status} />
-                  <span className="h-3.5 w-px bg-border" />
-                  <span className="text-[11px] text-muted-foreground">
-                    {escalation.reason}
-                  </span>
-                  <span className="h-3.5 w-px bg-border" />
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
-                    AI 신뢰도: {(escalation.aiConfidence * 100).toFixed(1)}%
-                  </span>
                 </div>
 
                 {/* Assignee row */}
@@ -579,6 +908,43 @@ function EscalationCard({
                     <span className="text-[10px] text-muted-foreground/60">
                       ({escalation.assignedTo.role})
                     </span>
+                  </div>
+                )}
+
+                {/* AI Request Section - Action Buttons */}
+                {escalation.status !== "resolved" && (
+                  <div className="mt-4 rounded-xl bg-gradient-to-r from-amber-500/5 to-orange-500/5 border border-amber-500/20 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                        🤖 AI가 도움을 요청합니다
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {escalation.recommendedAction === "knowledge_base"
+                        ? "지식베이스에 관련 정보를 추가하면 앞으로 같은 질문에 자동으로 답변할 수 있습니다."
+                        : escalation.recommendedAction === "tenant_info"
+                        ? "거래처 정보를 업데이트하면 더 정확한 답변을 제공할 수 있습니다."
+                        : "아래 버튼을 눌러 필요한 정보를 추가해주세요. DB에 반영되면 같은 에스컬레이션이 발생하지 않습니다."}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <UpdateKnowledgeBaseDialog
+                        escalation={escalation}
+                        onUpdate={(data) => {
+                          // TODO: Call API to update knowledge base
+                          console.log("Update KB:", data);
+                          onStatusChange(escalation.id, "resolved");
+                        }}
+                      />
+                      <UpdateTenantInfoDialog
+                        escalation={escalation}
+                        onUpdate={(data) => {
+                          // TODO: Call API to update tenant info
+                          console.log("Update Tenant:", data);
+                          onStatusChange(escalation.id, "resolved");
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
