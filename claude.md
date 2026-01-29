@@ -10930,3 +10930,238 @@ Route (app): 30 pages + 42 API routes
 
 ---
 
+
+
+## 29. 번역 표시 버그 수정: content/translatedContent 필드 교체 (2026-01-30)
+
+### 29.1 사용자 보고 문제
+
+**사용자 재보고 (2차):**
+> "통합 인박스에서 메세지 전송하면 실제 채팅로그에 현지언어로 잘 보내지는데, 원문 (한국어)가 한국어가아니라 영어로 표시되는 것 수정은 계속 안되는데 이것 수정은 언제 될지 확인부탁드립니다."
+
+**문제 증상:**
+- 담당자가 한국어로 메시지 작성 (예: "안녕하세요")
+- DeepL로 고객 언어(영어)로 번역되어 전송 (예: "Hello")
+- 인박스 UI에서:
+  - 메인 말풍선: "안녕하세요" (한국어) ← **잘못됨** (영어여야 함)
+  - 번역 토글 섹션 "원문 (한국어)": "Hello" (영어) ← **잘못됨** (한국어여야 함)
+
+**사용자 감정:**
+- "수정은 계속 안되는데" → 반복 보고에 대한 좌절감 표현
+- 이전 수정 시도들이 근본 원인을 해결하지 못함
+
+### 29.2 근본 원인 분석
+
+#### UI 코드 분석 (정상)
+
+**파일:** `/Users/hyunkeunji/Desktop/csautomation/web/src/app/(dashboard)/inbox/page.tsx`
+
+**Lines 2070-2095:**
+```typescript
+{/* Translation toggle: Show Korean version for reference */}
+{showTranslation && msg.translatedContent && (
+  <div className={cn(
+    "mt-2 pt-2 border-t",
+    msg.sender === "agent" ? "border-primary-foreground/20" : "border-border/40"
+  )}>
+    <div className="flex items-center gap-1 text-[9px] mb-0.5">
+      <Globe className="h-2.5 w-2.5" />
+      {(msg.sender === "agent" || msg.sender === "ai") ? "원문 (한국어)" : "번역 (한국어)"}
+    </div>
+    <p className="text-xs leading-relaxed">
+      {msg.translatedContent}  {/* ← 이 값이 영어가 아니라 한국어여야 함 */}
+    </p>
+  </div>
+)}
+```
+
+**UI 로직:**
+- 메인 말풍선: `msg.content` 표시
+- 번역 토글 섹션: `msg.translatedContent` 표시
+- **UI 코드는 정상** → 문제는 API에서 DB에 저장할 때 발생
+
+#### API 코드 분석 (버그 발견)
+
+**파일:** `/Users/hyunkeunji/Desktop/csautomation/web/src/app/api/messages/route.ts`
+
+**Lines 205-223 (수정 전):**
+```typescript
+const insertData: Record<string, unknown> = {
+  conversation_id: conversationId,
+  direction: "outbound",
+  sender_type: senderType,
+  content_type: contentType || "text",
+  content: content,  // ← 한국어 원문 저장 (잘못됨!)
+  original_language: "KO",
+  status: "pending",
+  metadata,
+};
+
+if (translatedContent) {
+  insertData.translated_content = translatedContent;  // ← 영어 번역 저장 (잘못됨!)
+  insertData.translated_language = translatedLanguage;
+}
+```
+
+**문제점:**
+- `content`: 한국어 원문 ("안녕하세요") 저장
+- `translated_content`: 영어 번역 ("Hello") 저장
+- **필드가 반대로 저장됨!**
+
+**기대 동작:**
+- `content`: 고객 언어(영어) — 메인 말풍선에 표시
+- `translated_content`: 한국어 원문 — "원문 (한국어)" 섹션에 표시
+
+### 29.3 해결 방법
+
+#### 필드 교체 로직
+
+**Lines 205-218 (수정 후):**
+```typescript
+// For outbound messages (agent/AI → customer):
+// - content: customer language (e.g., English) — shown in main bubble
+// - translated_content: Korean original — shown in "원문 (한국어)" section
+const insertData: Record<string, unknown> = {
+  conversation_id: conversationId,
+  direction: "outbound",
+  sender_type: senderType,
+  content_type: contentType || "text",
+  content: translatedContent || content, // Customer language (or Korean if no translation)
+  original_language: "KO",
+  translated_content: translatedContent ? content : undefined, // Korean original (only if translated)
+  translated_language: translatedContent ? "KO" : undefined,
+  status: "pending",
+  metadata,
+};
+
+if (mediaUrl) {
+  insertData.media_url = mediaUrl;
+}
+```
+
+**핵심 변경:**
+1. **`content`**: `translatedContent || content`
+   - 번역이 있으면 → 고객 언어(영어) 저장
+   - 번역이 없으면 (고객도 한국어) → 한국어 그대로 저장
+2. **`translated_content`**: `translatedContent ? content : undefined`
+   - 번역이 있으면 → 한국어 원문 저장
+   - 번역이 없으면 → `undefined` (DB에 저장 안 함)
+3. **`translated_language`**: `translatedContent ? "KO" : undefined`
+   - 번역이 있으면 → "KO" (번역 섹션이 한국어임을 명시)
+   - 번역이 없으면 → `undefined`
+
+### 29.4 데이터 흐름 (수정 후)
+
+```
+담당자 입력: "안녕하세요"
+    ↓
+POST /api/messages
+    content: "안녕하세요" (Korean)
+    translateToCustomerLanguage: true
+    customerLanguage: "EN"
+    ↓
+translationService.translateForCS()
+    → translatedContent: "Hello" (English)
+    ↓
+Database INSERT:
+    content: "Hello" (고객 언어)
+    translated_content: "안녕하세요" (한국어 원문)
+    translated_language: "KO"
+    original_language: "KO"
+    ↓
+채널 발송 (LINE/WhatsApp 등):
+    outboundContent: "Hello" (고객 언어)
+    ↓
+인박스 UI 표시:
+    - 메인 말풍선: msg.content = "Hello" ✓
+    - 번역 토글 섹션: msg.translatedContent = "안녕하세요" ✓
+```
+
+### 29.5 이전 수정 시도 분석
+
+**Commit `b16316a` (2026-01-29):**
+- UI 레이어에서 런타임 번역 fallback 추가
+- **문제**: API 레이어의 근본 원인을 해결하지 못함
+- **결과**: 새 메시지도 여전히 잘못된 필드에 저장됨
+
+**교훈:**
+- 표면적 증상(UI에서 번역 안 보임)만 보고 수정 X
+- 데이터 흐름 전체를 추적하여 **근본 원인** 파악 필요
+- "같은 문제 반복 보고" → 이전 수정이 근본 원인을 놓쳤다는 신호
+
+### 29.6 빌드 및 배포
+
+```bash
+$ cd /Users/hyunkeunji/Desktop/csautomation/web
+$ npm run build
+# ✓ Compiled successfully
+# 0 TypeScript errors
+
+$ git add -A
+$ git commit -m "Fix translation display bug: swap content/translatedContent for outbound messages"
+# [main c3f7828]
+# 1 file changed, 6 insertions(+), 6 deletions(-)
+
+$ git push origin main
+# (다음 단계)
+```
+
+### 29.7 검증 체크리스트
+
+- [x] TypeScript 빌드 성공 (0 errors)
+- [x] 코드 변경 커밋 완료 (`c3f7828`)
+- [x] claude.md 업데이트 완료 (Section 29)
+- [ ] Git push to origin/main
+- [ ] Vercel 자동 배포 확인
+- [ ] Production 테스트:
+  1. https://csflow.vercel.app/inbox 접속
+  2. 대화 선택 후 한국어 메시지 전송
+  3. 메인 말풍선에 영어 표시 확인
+  4. 번역 토글 → "원문 (한국어)"에 한국어 표시 확인
+
+### 29.8 기술 노트
+
+#### 아웃바운드 vs 인바운드 메시지
+
+**아웃바운드 (agent/AI → customer):**
+- `content`: 고객 언어 (번역 결과)
+- `translated_content`: 한국어 원문
+- `original_language`: "KO"
+- `translated_language`: "KO" (번역 섹션이 한국어)
+
+**인바운드 (customer → agent):**
+- `content`: 고객 언어 (원문)
+- `translated_content`: 한국어 번역
+- `original_language`: 고객 언어 코드 (EN, JA 등)
+- `translated_language`: "KO" (번역 섹션이 한국어)
+
+**일관성:**
+- 양방향 모두 **UI 메인 말풍선 = `content`**
+- 양방향 모두 **번역 토글 섹션 = `translated_content`**
+- 아웃바운드는 필드 의미가 반대이지만, UI 표시 로직은 동일
+
+#### 엣지 케이스 처리
+
+**케이스 1: 고객도 한국어**
+```typescript
+customerLanguage: "KO"
+translateToCustomerLanguage: false (Line 169 조건)
+→ translatedContent: undefined
+→ content: "안녕하세요" (한국어 그대로)
+→ translated_content: undefined (저장 안 함)
+→ UI: 번역 토글 버튼 표시 안 됨 (showTranslation && msg.translatedContent 조건)
+```
+
+**케이스 2: 번역 실패**
+```typescript
+try { ... } catch (translationError) {
+  console.error("Translation failed, sending original:", translationError);
+  // translatedContent remains undefined
+}
+→ content: "안녕하세요" (한국어 원문)
+→ translated_content: undefined
+→ 메시지는 한국어로 전송됨 (고객 언어 불일치 가능)
+```
+
+---
+
