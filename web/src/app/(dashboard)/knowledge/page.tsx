@@ -29,6 +29,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Search,
@@ -379,6 +380,35 @@ export default function KnowledgeBasePage() {
     }
   };
 
+  const handleTemplateDownload = async (specialty: string) => {
+    try {
+      const response = await fetch(`/api/knowledge/template?specialty=${specialty}`);
+
+      if (!response.ok) {
+        throw new Error("템플릿 다운로드 실패");
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+
+      // 파일명은 서버에서 Content-Disposition 헤더로 제공됨
+      const contentDisposition = response.headers.get("Content-Disposition");
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+      a.download = filenameMatch ? filenameMatch[1] : `template-${specialty}.csv`;
+
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+
+      toast.success(`✅ 진료과별 템플릿 다운로드 완료`);
+    } catch (error: any) {
+      toast.error(error.message || "템플릿 다운로드에 실패했습니다");
+    }
+  };
+
   const handleCsvUpload = async () => {
     if (!csvFile) {
       toast.error("CSV 파일을 선택해주세요");
@@ -495,7 +525,7 @@ export default function KnowledgeBasePage() {
                 CSV 다운로드
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => handleCsvDownload("knowledge")}>
                 <FileText className="h-4 w-4 mr-2" />
                 지식베이스 CSV
@@ -503,6 +533,30 @@ export default function KnowledgeBasePage() {
               <DropdownMenuItem onClick={() => handleCsvDownload("tenants")}>
                 <Building2 className="h-4 w-4 mr-2" />
                 거래처 CSV
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                진료과별 템플릿
+              </div>
+              <DropdownMenuItem onClick={() => handleTemplateDownload("ophthalmology")}>
+                <FileText className="h-4 w-4 mr-2 text-blue-500" />
+                안과 템플릿
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleTemplateDownload("dentistry")}>
+                <FileText className="h-4 w-4 mr-2 text-emerald-500" />
+                치과 템플릿
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleTemplateDownload("plastic_surgery")}>
+                <FileText className="h-4 w-4 mr-2 text-violet-500" />
+                성형외과 템플릿
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleTemplateDownload("dermatology")}>
+                <FileText className="h-4 w-4 mr-2 text-amber-500" />
+                피부과 템플릿
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleTemplateDownload("general")}>
+                <FileText className="h-4 w-4 mr-2 text-slate-500" />
+                일반 템플릿
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
