@@ -111,23 +111,22 @@ export async function GET(request: NextRequest) {
     let lastMessagesMap: Record<string, string> = {};
 
     if (conversationIds.length > 0) {
-      // Get all messages for these conversations
+      // Get all messages for these conversations (ascending = oldest first)
       const { data: messages } = await (supabase as any)
         .from("messages")
         .select("conversation_id, content, original_content, translated_content, original_language, direction, sender_type, created_at")
         .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       if (messages) {
+        // First pass: find oldest customer message (messages are sorted ascending)
         for (const msg of messages) {
-          // Latest message (any type) for fallback
-          if (!lastMessagesMap[msg.conversation_id]) {
-            lastMessagesMap[msg.conversation_id] = msg.content || "";
-          }
-
-          // Find first customer message (inbound)
+          // Find first customer message (inbound) — exclude internal notes and system messages
           if (!customerMessagesMap[msg.conversation_id]) {
-            const isCustomerMessage = msg.direction === "inbound" || msg.sender_type === "customer";
+            const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+              && msg.sender_type !== "internal_note"
+              && msg.sender_type !== "system"
+              && msg.sender_type !== "agent";
             if (isCustomerMessage) {
               // Determine original (customer language) and Korean translation
               const originalLang = msg.original_language || "ko";
@@ -148,6 +147,17 @@ export async function GET(request: NextRequest) {
                 korean: koreanText,
                 originalLanguage: originalLang,
               };
+            }
+          }
+        }
+
+        // Second pass: find latest message (iterate backwards) for fallback
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const msg = messages[i];
+          if (!lastMessagesMap[msg.conversation_id]) {
+            // Exclude internal notes from lastMessage fallback too
+            if (msg.sender_type !== "internal_note") {
+              lastMessagesMap[msg.conversation_id] = msg.content || "";
             }
           }
         }
