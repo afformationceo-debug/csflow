@@ -2873,7 +2873,7 @@ response.headers.set(
 - **통계 카드 스켈레톤**: 숫자 대신 펄스 애니메이션으로 로딩 표시
 - **채널 목록 스켈레톤**: 3개의 플레이스홀더 행으로 로딩 상태 표시
 
-#### 18.11 자동 감지 데이터 DB 저장 및 로딩 (2026-01-29) ✅ NEW
+#### 18.11 자동 감지 데이터 DB 저장 및 로딩 (2026-01-29) ✅
 - **DB 저장 구조 검증**: Supabase `customers.metadata` JSONB 필드에 다음 데이터 저장 확인
   - `interests`: 배열 형태로 감지된 관심 시술 저장 (예: `["라식", "백내장"]`)
   - `concerns`: 배열 형태로 감지된 고민 저장 (예: `["회복기간", "유지기간"]`)
@@ -2897,6 +2897,108 @@ response.headers.set(
   - 테이블 헤더 "관심시술", "고민" 표시 (lines 279-280)
   - 보라색 배지(interests), 앰버색 배지(concerns)로 시각화 (lines 402-433)
   - 검색 기능에도 포함 (placeholder: "관심시술, 고민 검색...")
+
+#### 18.12 에스컬레이션 및 인박스 치명적 버그 수정 (2026-01-29) ✅ NEW
+**커밋**: `b16316a` — 6개 치명적 버그 전체 수정 완료
+
+##### 18.12.1 에스컬레이션 페이지 수정 (4개 문제)
+1. **고객 질문 표시 오류 수정** (`escalations/route.ts` lines 154-163)
+   - **문제**: 에스컬레이션 페이지 "고객 질문" 섹션에 실제 고객 질문이 아닌 우리 답변이 표시됨
+   - **원인**: `lastMessagesMap` 로직이 역순 이터레이션으로 최신 메시지를 찾았는데, 이는 에이전트 응답일 수 있음
+   - **해결**: 순방향 이터레이션 + 첫 번째 고객 메시지만 필터링 (inbound, customer sender_type, excluding internal_note/system/agent/ai)
+   ```typescript
+   for (const msg of messages) {
+     const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+       && msg.sender_type !== "internal_note"
+       && msg.sender_type !== "system"
+       && msg.sender_type !== "agent"
+       && msg.sender_type !== "ai";
+     if (isCustomerMessage) {
+       lastMessagesMap[msg.conversation_id] = msg.content || "";
+     }
+   }
+   ```
+
+2. **AI 분석 메시지 명확화** (`escalations/page.tsx` lines 1161-1192)
+   - **문제**: AI 요청 섹션이 "지식베이스에 이게 부족하고 거래처정보에 이게 부족합니다"를 명확히 표시하지 않음
+   - **해결**: AI 분석 메시지를 명시적으로 표시
+   ```typescript
+   <p className="text-xs font-semibold text-foreground">
+     {escalation.recommendedAction === "tenant_info" ? "🏥 거래처 정보" : "📚 지식베이스"}에 다음 정보가 필요합니다:
+   </p>
+   <ul className="text-xs text-muted-foreground space-y-0.5 ml-5">
+     {escalation.missingInfo.map((info, idx) => (
+       <li key={idx} className="list-disc">
+         {escalation.recommendedAction === "tenant_info"
+           ? `거래처정보에 ${info} 정보가 있어야 합니다`
+           : `지식베이스에 ${info} 관련 정보가 필요합니다`}
+       </li>
+     ))}
+   </ul>
+   ```
+
+3. **지식베이스 다이얼로그 RAG 최적화** (`escalations/page.tsx` lines 497-593)
+   - **문제**: 제목과 내용 예시가 중구난방으로 들어가 있어 AI가 RAG하기 어려움
+   - **해결**: 명확하고 구조화된 예시 값 자동 생성
+   - **제목 생성** (`generateKBTitle`): "예약가능날짜", "시술가격", "영업시간", "병원위치" 등 짧고 명확한 제목
+   - **내용 생성** (`generateKBExample`): "OO병원 XXX는 YYY입니다" 형식의 문장형 답변
+   ```typescript
+   예시 (예약):
+   힐링안과 예약가능 날짜는 월요일 오전 9시부터 오후 6시까지, 화요일 오전 9시부터 오후 6시까지,
+   수요일 오전 9시부터 오후 6시까지, 목요일 오전 9시부터 오후 6시까지, 금요일 오전 9시부터 오후 6시까지,
+   토요일 오전 9시부터 오후 1시까지입니다. 일요일과 공휴일은 휴무입니다.
+   예약 방법은 전화 [전화번호], 카카오톡 [채널명], 온라인 [URL]로 가능합니다.
+   예약시 신분증을 지참해주세요.
+   ```
+
+4. **거래처정보 다이얼로그 RAG 최적화** (`escalations/page.tsx` lines 806-823)
+   - **문제**: 값들이 리스트 형태로 구조화되어 있어 AI RAG에 최적화되지 않음
+   - **해결**: 문장형 답변으로 변경 (하나의 연속된 텍스트)
+   ```typescript
+   예시 (영업시간):
+   힐링안과 예약가능 시간은 월요일 오전 9시부터 오후 6시, 화요일 오전 9시부터 오후 6시, ... 입니다.
+   예약은 전화 [전화번호], 카카오톡 [채널명], 온라인 [URL]로 가능합니다.
+
+   예시 (가격):
+   힐링안과 라식 수술 가격은 양안 기준 150만원, 라섹 수술은 180만원, 스마일라식은 250만원입니다.
+   가격에는 정밀 검사, 시술 비용, 1개월 사후관리, 안약 처방이 포함됩니다.
+   ```
+
+##### 18.12.2 통합인박스 수정 (2개 문제)
+1. **번역 표시 버그 수정** (`inbox/page.tsx` line 2046)
+   - **문제**: AI 어시스턴트 답변 전송 시, 하단의 "원문 (한국어)"가 현지 언어로 표시되어 우리가 무엇을 보냈는지 확인 불가
+   - **원인**: 에이전트/AI 메시지는 `msg.content`가 번역된 현지 언어이고, `msg.translatedContent`가 한국어 원문
+   - **해결**: 에이전트/AI 메시지의 번역 섹션에서 `msg.content` 대신 `msg.translatedContent` 표시
+   ```typescript
+   // Before: {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
+   // After:  {(msg.sender === "agent" || msg.sender === "ai") ? msg.translatedContent : msg.translatedContent}
+   ```
+
+2. **추천응답 유지 로직 구현** (`inbox/page.tsx` lines 613-625, 1136-1166)
+   - **문제**: AI 추천 응답이 페이지 이동 후 사라지고, 돌아오면 다시 생성됨. 전송하거나 새 고객 메시지 수신 시에만 재생성되어야 함
+   - **해결**: 대화별 맵으로 AI suggestion 관리
+   ```typescript
+   // Before: useState<SuggestionType | null>(null)
+   // After:  useState<Record<conversationId, SuggestionType>>({})
+
+   // Derived state: 현재 대화의 AI suggestion만 표시
+   const aiSuggestion = selectedConversation ? aiSuggestionMap[selectedConversation.id] : null;
+
+   // 대화 전환 시 AI suggestion 삭제 안함 (유지)
+   // useEffect에서 setAiSuggestion(null) 제거
+
+   // 전송/닫기 버튼: 해당 대화 ID의 suggestion만 삭제
+   setAiSuggestionMap(prev => {
+     const newMap = { ...prev };
+     delete newMap[selectedConversation.id];
+     return newMap;
+   });
+   ```
+
+**변경 파일 요약**:
+- `web/src/app/api/escalations/route.ts`: 고객 질문 추출 로직 수정
+- `web/src/app/(dashboard)/escalations/page.tsx`: AI 분석 명확화 + KB/거래처 예시 값 RAG 최적화
+- `web/src/app/(dashboard)/inbox/page.tsx`: 번역 표시 수정 + 추천응답 유지 로직
 
 ### 신규 API 엔드포인트
 
