@@ -2873,6 +2873,31 @@ response.headers.set(
 - **통계 카드 스켈레톤**: 숫자 대신 펄스 애니메이션으로 로딩 표시
 - **채널 목록 스켈레톤**: 3개의 플레이스홀더 행으로 로딩 상태 표시
 
+#### 18.11 자동 감지 데이터 DB 저장 및 로딩 (2026-01-29) ✅ NEW
+- **DB 저장 구조 검증**: Supabase `customers.metadata` JSONB 필드에 다음 데이터 저장 확인
+  - `interests`: 배열 형태로 감지된 관심 시술 저장 (예: `["라식", "백내장"]`)
+  - `concerns`: 배열 형태로 감지된 고민 저장 (예: `["회복기간", "유지기간"]`)
+  - `analyzed_at`: ISO 타임스탬프로 마지막 분석 시간 저장
+  - `memo`: 고객 메모 텍스트 저장
+- **DB 저장 검증 결과**: Node.js + Supabase REST API로 실제 DB 쿼리 수행
+  - 샘플 고객 데이터 확인: CHATDOC CEO (ID: 464674d5-ceee-4785-8055-49c00882c9ae)
+  - 메타데이터 구조: `{ memo: "테스트", concerns: ["회복기간", "유지기간"], interests: [], analyzed_at: "2026-01-29T02:37:34.206Z" }`
+  - 저장 확인 완료 ✅
+- **Upstash Redis 캐시 확인**: 현재 고객 데이터는 캐싱하지 않음 (DB 직접 조회)
+- **인박스 로딩 버그 수정**: `inbox/page.tsx` lines 1186-1209 수정
+  - **문제**: 대화 전환 시 저장된 관심시술/고민이 로드되지 않고, 새 메시지 수신 시에만 표시됨
+  - **원인**: `loadCustomerMeta` useEffect가 `memo`만 로드하고 `interests`/`concerns`는 로드하지 않음
+  - **해결**: 프로필 API 응답에서 `meta.interests`와 `meta.concerns`를 추출하여 state에 설정
+  ```typescript
+  setDetectedInterests(meta.interests || []);
+  setDetectedConcerns(meta.concerns || []);
+  ```
+- **고객 관리 페이지 연동 확인**: `customers/page.tsx`에서 이미 올바르게 표시됨
+  - `Customer` 인터페이스에 `interestedProcedures`, `concerns` 필드 존재 (lines 79-80)
+  - 테이블 헤더 "관심시술", "고민" 표시 (lines 279-280)
+  - 보라색 배지(interests), 앰버색 배지(concerns)로 시각화 (lines 402-433)
+  - 검색 기능에도 포함 (placeholder: "관심시술, 고민 검색...")
+
 ### 신규 API 엔드포인트
 
 ```
@@ -2892,6 +2917,8 @@ PATCH /api/customers/[id]/profile — 메타데이터 병합 방식 업데이트
 | 대화 삭제 | `DELETE /api/conversations/[id]` + 확인 UI | `conversations/[id]/route.ts` |
 | 관심/고민 감지 | 키워드 매칭 (20+ 시술, 14개 고민) | `customers/[id]/analyze/route.ts` |
 | 메모 저장 | `customers.metadata.memo` 메타데이터 병합 | `customers/[id]/profile/route.ts` |
+| **DB 저장 검증** | **Node.js + Supabase REST API 직접 쿼리** | **CLAUDE.md** |
+| **인박스 로딩 수정** | **`setDetectedInterests/Concerns(meta.*)` 추가** | **`inbox/page.tsx:1186-1209`** |
 
 ---
 
@@ -7218,8 +7245,203 @@ $ git push origin main
 #### 점진적 개선 전략
 1. **Phase 1:** 새 메시지부터 번역 저장 ✓ (`cd05da1`)
 2. **Phase 2:** 기존 메시지 런타임 fallback ✓ (`95896dd`)
-3. **Phase 3 (향후):** 배치 마이그레이션으로 DB 완전 정리
+3. **Phase 3:** AI 추천 응답 필드 수정 ✓ (`81d633c`)
+4. **Phase 4:** 메시지 카운트 방향 추론 ✓ (`c373e90`)
+5. **Phase 5 (향후):** 배치 마이그레이션으로 DB 완전 정리
 - channel_user_id 기준 고객 식별
 - 신규 고객 자동 생성 + 초기 프로필 설정
 - 대화 내용 분석으로 점진적 프로필 보강
+
+---
+
+## Section 28: AI 추천 응답 필드 수정 (2026-01-29)
+
+### 문제 상황
+사용자 보고: AI 추천 응답 박스에서 고객 언어와 한국어 의미가 거꾸로 표시됨
+- "고객 언어 (EN)" 섹션: 한국어 텍스트 표시 ❌
+- "한국어 의미" 섹션: 영어 텍스트 표시 ❌
+
+### 근본 원인 분석
+
+#### RAG Pipeline 응답 구조
+**`/web/src/services/ai/rag-pipeline.ts` (라인 320-330)**
+```typescript
+return {
+  response: llmResponse.content,          // 한국어 (AI 원본 응답)
+  translatedResponse,                     // 고객 언어 (번역됨)
+  confidence: llmResponse.confidence,
+  model: llmResponse.model,
+  retrievedDocuments: documents,
+  sources,
+  shouldEscalate: !!escalationDecision,
+  escalationReason: escalationDecision?.reason,
+  processingTimeMs: Date.now() - startTime,
+};
+```
+
+**RAG 응답 필드:**
+- `response`: **한국어** (LLM이 생성한 원본)
+- `translatedResponse`: **고객 언어** (한국어 → 고객 언어로 번역)
+
+#### AI Suggest API 매핑 버그
+**`/web/src/app/api/conversations/[id]/ai-suggest/route.ts` (라인 112-122)**
+
+**Before (잘못된 매핑):**
+```typescript
+return NextResponse.json({
+  suggestion: {
+    original: ragResult.response,  // 한국어 ❌
+    korean: ragResult.translatedResponse || ragResult.response,  // 영어 ❌
+    confidence: ragResult.confidence,
+    shouldEscalate: ragResult.shouldEscalate,
+    escalationReason: ragResult.escalationReason,
+  },
+  logs,
+  sources: ragResult.sources || [],
+});
+```
+
+**After (수정됨):**
+```typescript
+return NextResponse.json({
+  suggestion: {
+    // FIX: ragResult.response is KOREAN, translatedResponse is CUSTOMER LANGUAGE
+    original: ragResult.translatedResponse || ragResult.response,  // 고객 언어 ✅
+    korean: ragResult.response,  // 한국어 ✅
+    confidence: ragResult.confidence,
+    shouldEscalate: ragResult.shouldEscalate,
+    escalationReason: ragResult.escalationReason,
+  },
+  logs,
+  sources: ragResult.sources || [],
+});
+```
+
+### 해결 방법
+
+필드 매핑을 올바르게 수정:
+- `original`: `ragResult.translatedResponse` (고객 언어 - 영어)
+- `korean`: `ragResult.response` (한국어)
+
+### 검증 (E2E 브라우저 도구)
+
+**Production URL:** https://csflow.vercel.app/inbox
+
+**Before Fix:**
+- "고객 언어 (EN)": "안녕하세요..." (한국어) ❌
+- "한국어 의미": "Hello..." (영어) ❌
+
+**After Fix:**
+- "고객 언어 (EN)": "Hello..." (영어) ✅
+- "한국어 의미": "안녕하세요..." (한국어) ✅
+
+### 커밋
+- **Commit:** `81d633c`
+- **Title:** Fix AI suggestion reversed content (original/korean fields)
+
+---
+
+## Section 29: 메시지 카운트 0 표시 문제 수정 (2026-01-29)
+
+### 문제 상황
+사용자 보고: 인박스 우측 패널에서 수신/발신 메시지 카운트가 0으로 표시됨
+- 실제로는 대화창에 많은 메시지가 표시되고 있음
+- API는 정확한 데이터를 반환 (inbound: 9, outbound: 23)
+- UI에서만 0으로 표시
+
+### 근본 원인 분석
+
+#### 메시지 카운트 로직
+**`/web/src/app/(dashboard)/inbox/page.tsx` (라인 2932, 2938)**
+```typescript
+{dbMessages.filter(m => m.direction === "inbound").length}  // 0 표시
+{dbMessages.filter(m => m.direction === "outbound").length}  // 0 표시
+```
+
+#### 메시지 매핑 코드 (Before)
+**라인 887-903**
+```typescript
+const mapped: Message[] = rawMessages.map((msg: any) => {
+  const createdAt = new Date(msg.created_at);
+  const timeStr = `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
+
+  const metadata = msg.metadata || {};
+  return {
+    id: msg.id,
+    sender: msg.sender_type as MessageType,
+    content: msg.content || "",
+    translatedContent: msg.translated_content || undefined,
+    time: timeStr,
+    language: msg.original_language || undefined,
+    confidence: metadata.ai_confidence ? Math.round(metadata.ai_confidence * 100) : undefined,
+    sources: metadata.ai_sources || undefined,
+    direction: msg.direction as "inbound" | "outbound" | undefined,  // undefined일 수 있음 ❌
+  };
+});
+```
+
+**문제:**
+- DB의 기존 메시지는 `direction` 필드가 없음 (undefined)
+- `sender_type`만 있음 ("customer", "agent", "ai")
+- `direction === "inbound"` 필터가 undefined를 걸러냄 → 빈 배열 → 0
+
+### 해결 방법
+
+**sender_type에서 direction 추론:**
+- `sender_type === "customer"` → `direction: "inbound"`
+- `sender_type === "agent"` 또는 `"ai"` → `direction: "outbound"`
+
+#### 수정된 코드 (After)
+```typescript
+const mapped: Message[] = rawMessages.map((msg: any) => {
+  const createdAt = new Date(msg.created_at);
+  const timeStr = `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
+
+  const metadata = msg.metadata || {};
+
+  // FIX: Infer direction from sender_type if direction is missing (for old messages)
+  let direction: "inbound" | "outbound" | undefined = msg.direction;
+  if (!direction && msg.sender_type) {
+    direction = msg.sender_type === "customer" ? "inbound" : "outbound";
+  }
+
+  return {
+    id: msg.id,
+    sender: msg.sender_type as MessageType,
+    content: msg.content || "",
+    translatedContent: msg.translated_content || undefined,
+    time: timeStr,
+    language: msg.original_language || undefined,
+    confidence: metadata.ai_confidence ? Math.round(metadata.ai_confidence * 100) : undefined,
+    sources: metadata.ai_sources || undefined,
+    direction,  // FIX: Use inferred direction ✅
+  };
+});
+```
+
+### 검증 (E2E 브라우저 도구)
+
+**Before Fix:**
+- 수신 메시지: 0 ❌
+- 발신 메시지: 0 ❌
+
+**After Fix (예상):**
+- 수신 메시지: 9 ✅
+- 발신 메시지: 23 ✅
+
+### 왜 이런 일이 발생했나?
+
+**데이터베이스 스키마 변경 이력:**
+1. 초기: `sender_type` 필드만 존재
+2. 나중에: `direction` 필드 추가
+3. 기존 메시지는 마이그레이션되지 않음 → `direction: null`
+
+**향후 대책:**
+- 새 메시지: `/api/messages` POST 시 `direction` 자동 설정
+- 기존 메시지: 런타임에 `sender_type`에서 추론 (현재 수정)
+- 배치 마이그레이션 (향후): 모든 기존 메시지 업데이트
+
+### 커밋
+- **Commit:** `c373e90`
+- **Title:** Fix message count showing 0 - infer direction from sender_type
 

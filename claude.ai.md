@@ -2690,3 +2690,164 @@ $ git push origin main
 
 → 즉시 배포 가능한 해결책 우선
 → 완벽한 장기 솔루션은 단계적으로
+
+---
+
+## 22. 관심 시술/고민 자동 감지 시스템 검증 (2026-01-29) ✅
+
+### 목적
+사용자 요청에 따라 인박스에서 자동 감지된 관심 시술 및 고민이 DB에 제대로 저장되고, 고객 관리 페이지와 연동되는지 검증
+
+### 검증 항목
+
+#### 1. DB 저장 구조 ✅
+- **테이블**: `customers`
+- **필드**: `metadata` (JSONB)
+- **저장 데이터**:
+  ```json
+  {
+    "interests": ["라식", "백내장"],
+    "concerns": ["회복기간", "유지기간"],
+    "memo": "테스트",
+    "analyzed_at": "2026-01-29T02:37:34.206Z"
+  }
+  ```
+
+#### 2. Supabase REST API 쿼리 결과 ✅
+```javascript
+// Node.js + HTTPS로 직접 Supabase REST API 호출
+// 서비스 역할 키 사용
+GET /rest/v1/customers?select=id,name,country,language,metadata&limit=10
+
+// 실제 데이터 확인
+{
+  "id": "464674d5-ceee-4785-8055-49c00882c9ae",
+  "name": "CHATDOC CEO",
+  "country": null,
+  "language": "EN",
+  "metadata": {
+    "memo": "테스트",
+    "concerns": ["회복기간", "유지기간"],
+    "interests": [],
+    "analyzed_at": "2026-01-29T02:37:34.206Z"
+  }
+}
+```
+✅ **결과**: 메타데이터가 올바르게 저장됨
+
+#### 3. Upstash Redis 캐시 확인 ✅
+```bash
+GET https://grown-eft-57579.upstash.io/keys/customer:*
+→ {"result":[]}
+```
+✅ **결과**: 현재 고객 데이터는 캐싱하지 않음 (DB 직접 조회 방식)
+
+### 발견된 버그 및 수정
+
+#### 버그: 인박스에서 저장된 관심/고민이 로드되지 않음
+**문제**:
+- 대화 전환 시 DB에 저장된 `interests`/`concerns`가 표시되지 않음
+- 새 메시지가 수신되어 분석 API가 호출될 때만 표시됨
+
+**원인**:
+- `inbox/page.tsx` lines 1186-1209의 `loadCustomerMeta` useEffect가 `memo`만 로드
+- `metadata.interests`와 `metadata.concerns`를 state에 설정하지 않음
+
+**수정**:
+```typescript
+// Before: memo만 로드
+setMemoText(meta.memo || "");
+
+// After: interests와 concerns도 로드
+setMemoText(meta.memo || "");
+setDetectedInterests(meta.interests || []);  // ✅ 추가
+setDetectedConcerns(meta.concerns || []);    // ✅ 추가
+```
+
+**파일**: `web/src/app/(dashboard)/inbox/page.tsx`
+**라인**: 1186-1209
+
+### 고객 관리 페이지 연동 확인 ✅
+
+#### 인터페이스 정의
+```typescript
+// web/src/app/(dashboard)/customers/page.tsx:79-80
+interface Customer {
+  // ... 다른 필드
+  interestedProcedures: string[];  // metadata.interests
+  concerns: string[];              // metadata.concerns
+}
+```
+
+#### UI 표시
+- **테이블 헤더**: "관심시술", "고민" (lines 279-280)
+- **검색 기능**: placeholder에 "관심시술, 고민 검색..." 포함 (line 218)
+- **관심시술 배지**: 보라색 (violet-500/10), lines 402-416
+- **고민 배지**: 앰버색 (amber-500/10), lines 419-433
+- **빈 데이터**: "—" 표시
+- **다중 데이터**: 2개까지 표시 후 "+N" 카운트
+
+✅ **결과**: 이미 완벽하게 구현되어 있음
+
+### 자동 감지 API 동작 흐름
+
+```
+[대화 메시지 변경 감지]
+  └─ useEffect (dbMessages.length) → 500ms 디바운스
+      └─ POST /api/customers/[id]/analyze
+          ├─ 대화 메시지 텍스트 수집
+          ├─ PROCEDURE_KEYWORDS 매칭 (20+ 시술)
+          ├─ CONCERN_KEYWORDS 매칭 (14개 고민)
+          └─ Supabase UPDATE customers.metadata
+              ├─ interests: [...],
+              ├─ concerns: [...],
+              └─ analyzed_at: ISO timestamp
+
+[인박스 UI 표시]
+  ├─ setDetectedInterests(data.interests)
+  ├─ setDetectedConcerns(data.concerns)
+  └─ Badge 컴포넌트로 시각화 (자동감지 라벨 포함)
+
+[고객 관리 페이지 표시]
+  └─ GET /api/customers → customers.metadata 파싱
+      └─ 테이블에 Badge로 표시
+```
+
+### 키워드 사전 예시
+
+**시술 키워드** (web/src/app/api/customers/[id]/analyze/route.ts:7-28):
+- 라식: ["라식", "lasik", "ラシック", "レーシック", "近视手术"]
+- 백내장: ["백내장", "cataract", "白内障", "白內障"]
+- 코성형: ["코성형", "rhinoplasty", "鼻整形", "隆鼻"]
+- 보톡스: ["보톡스", "botox", "ボトックス", "肉毒素"]
+- ... (20+ 시술)
+
+**고민 키워드** (lines 31-46):
+- 비용/가격: ["가격", "비용", "얼마", "price", "cost", "値段", "价格"]
+- 통증: ["아프", "통증", "pain", "hurt", "痛い", "疼"]
+- 부작용: ["부작용", "side effect", "risk", "副作用", "风险"]
+- 회복기간: ["회복", "recovery", "다운타임", "downtime", "回復"]
+- ... (14개 고민)
+
+### 검증 결과 요약
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| DB 저장 | ✅ | Supabase `customers.metadata` JSONB 정상 저장 |
+| API 쿼리 | ✅ | Node.js + REST API로 실제 데이터 확인 |
+| Upstash 캐시 | ✅ | 현재 미사용 (DB 직접 조회) |
+| 인박스 표시 | ✅ | 버그 수정 후 정상 동작 |
+| 고객 관리 연동 | ✅ | 이미 완벽하게 구현됨 |
+| 다국어 키워드 | ✅ | 한/영/일/중 4개 언어 지원 |
+
+### 파일 변경
+- `web/src/app/(dashboard)/inbox/page.tsx` (lines 1186-1209) - interests/concerns 로딩 추가
+- `CLAUDE.md` - Section 18.11 추가 (DB 저장 검증 문서화)
+- `claude.ai.md` - Section 22 추가 (이 섹션)
+
+### 커밋
+- ⏳ 대기 중 (문서 업데이트 후 커밋 예정)
+
+### 배포
+- ⏳ 다음 배포 시 자동 반영
+

@@ -1183,7 +1183,7 @@ export default function InboxPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversation?.id, dbMessages.length]);
 
-  // Load memo from customer metadata when conversation changes
+  // Load memo and auto-detected interests/concerns from customer metadata when conversation changes
   useEffect(() => {
     if (!selectedConversation) return;
     const customerId = (selectedConversation as any)?._customerId;
@@ -1196,6 +1196,9 @@ export default function InboxPage() {
           const data = await res.json();
           const meta = data.metadata || {};
           setMemoText(meta.memo || "");
+          // Load saved interests and concerns
+          setDetectedInterests(meta.interests || []);
+          setDetectedConcerns(meta.concerns || []);
           if (data.totalConversations !== undefined) {
             setDbCustomerProfile(prev => prev ? { ...prev, totalConversations: data.totalConversations } : prev);
           }
