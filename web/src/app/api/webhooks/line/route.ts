@@ -342,19 +342,22 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
     return;
   }
 
-  // 6.6. Check if AI already responded recently - prevent duplicate responses
+  // 6.6. Check if AI already responded to this customer message - prevent duplicate responses
+  // Get messages newer than or equal to the current customer message
   const { data: recentMessages } = await (supabase as any)
     .from("messages")
-    .select("id, sender_type, created_at")
+    .select("id, sender_type, created_at, direction")
     .eq("conversation_id", conversation.id)
-    .order("created_at", { ascending: false })
-    .limit(3);
+    .gte("created_at", savedMessage.created_at)
+    .order("created_at", { ascending: true });
 
-  if (recentMessages && recentMessages.length > 1) {
-    // Check if last message before current customer message was from AI
-    const lastMessage = recentMessages[1]; // [0] is current customer message, [1] is previous
-    if (lastMessage && lastMessage.sender_type === "ai") {
-      console.log(`[LINE] AI already responded recently, skipping duplicate response`);
+  if (recentMessages && recentMessages.length > 0) {
+    // Check if there's already an AI response after this customer message
+    const hasAIResponse = recentMessages.some((msg: any) =>
+      msg.id !== savedMessage.id && msg.sender_type === "ai"
+    );
+    if (hasAIResponse) {
+      console.log(`[LINE] AI already responded to this message, skipping duplicate response`);
       return;
     }
   }
