@@ -10715,3 +10715,218 @@ web/
 
 ---
 
+## 28. 담당자 관리 UI 개선 및 메신저 연동 (2026-01-30)
+
+### 28.1 담당자 관리 페이지 UI 개선 ✅
+
+**사용자 요청**: https://csflow.vercel.app/team 페이지에서 "초대" → "등록"으로 변경
+
+**변경 사항**:
+1. **권한 테이블 라벨 수정** (line 175)
+   - Before: "팀원 초대/편집"
+   - After: "팀원 등록/편집"
+
+2. **다이얼로그 버튼 수정** (line 613-620)
+   - Before: `<Mail className="h-4 w-4" /> 초대 보내기`
+   - After: `<Plus className="h-4 w-4" /> 등록`
+   - 아이콘도 Mail → Plus로 변경
+
+3. **빈 상태 메시지 수정** (line 942)
+   - Before: "팀원 초대 버튼을 눌러 새로운 팀원을 추가하세요."
+   - After: "팀원 등록 버튼을 눌러 새로운 팀원을 추가하세요."
+
+**이미 올바른 항목**:
+- 다이얼로그 타이틀: "담당자 등록" (line 516)
+- 다이얼로그 설명: "새로운 담당자를 등록하고 역할 및 거래처를 할당합니다." (line 519)
+- 트리거 버튼: "담당자 등록" (line 507)
+
+**커밋**: `161957c` — "Change team member action from '초대' to '등록'"
+
+### 28.2 메신저 연동 현황 및 테스트 방법
+
+#### 28.2.1 현재 연동 상태
+
+**연동 완료된 채널** (6개):
+1. ✅ **LINE** — `/api/webhooks/line` (실 Webhook URL 등록 필요)
+2. ✅ **KakaoTalk** — `/api/webhooks/kakao` (i Open Builder 연동)
+3. ✅ **Facebook Messenger** — `/api/webhooks/meta` (Meta 통합 Webhook)
+4. ✅ **Instagram DM** — `/api/webhooks/meta` (Meta 통합 Webhook)
+5. ✅ **WhatsApp Business** — `/api/webhooks/meta` (Meta 통합 Webhook)
+6. ✅ **WeChat** — `/api/webhooks/wechat` (Official Account API)
+
+**DB 저장 확인**:
+- LINE 채널: Supabase `channel_accounts` 테이블에 등록됨
+  - Tenant ID: `8d3bd24e-0d74-4dc7-aa34-3e39d5821244`
+  - Channel ID: `dc37a525-0388-4fb0-8345-f9d1cece3171`
+  - Channel Type: `line`
+  - Account ID: `2008754781` (LINE Channel ID)
+  - Webhook URL: `https://csflow.vercel.app/api/webhooks/line`
+  - Is Active: `true`
+
+#### 28.2.2 LINE 메신저 실제 연동 테스트 방법
+
+**1단계: LINE Developers Console 설정**
+
+```
+1. https://developers.line.biz/ 접속
+2. 프로바이더 선택 → 채널 선택 (Channel ID: 2008754781)
+3. Messaging API 탭 클릭
+4. Webhook settings 섹션:
+   - Webhook URL: https://csflow.vercel.app/api/webhooks/line
+   - "Use webhook" 토글 ON
+   - "Verify" 버튼 클릭하여 연결 확인
+   - 성공 시 ✅ "Success" 표시
+```
+
+**2단계: LINE Bot 친구 추가**
+
+```
+1. LINE 앱 실행 (모바일)
+2. 친구 추가 → ID 검색
+3. Bot Basic ID 입력: @246kdolz
+4. 친구 추가 버튼 클릭
+```
+
+**3단계: 메시지 전송 테스트**
+
+```
+1. LINE 앱에서 @246kdolz 채팅방 열기
+2. 테스트 메시지 전송: "안녕하세요"
+3. 예상 동작:
+   a. Webhook → /api/webhooks/line POST 수신
+   b. Supabase DB에 customer, conversation, message 자동 생성
+   c. AI RAG 파이프라인 실행
+   d. 자동 응답 생성 (ai_enabled=true인 경우)
+   e. LINE Reply API로 응답 전송
+```
+
+**4단계: 인박스 UI에서 확인**
+
+```
+1. https://csflow.vercel.app/inbox 접속
+2. 좌측 대화 목록에서 새 대화 확인
+   - 고객명: LINE 프로필 이름
+   - 채널: LINE 배지 표시
+   - 병원: 등록된 거래처명
+3. 대화 선택하여 메시지 확인
+4. 우측 프로필 패널에서 고객 정보 확인
+```
+
+#### 28.2.3 메신저 연동 흐름도
+
+```
+[LINE 앱]
+  │ 사용자: "라식 수술 비용이 얼마인가요?"
+  ├─ HTTP POST → https://csflow.vercel.app/api/webhooks/line
+  │
+[Webhook Handler] /api/webhooks/line/route.ts
+  ├─ Step 1: 서명 검증 (X-Line-Signature)
+  ├─ Step 2: Payload 파싱 (lineAdapter.parseWebhook)
+  ├─ Step 3: Channel Account 조회 (channel_accounts 테이블)
+  ├─ Step 4: Customer 생성/조회 (customers 테이블)
+  ├─ Step 5: Conversation 생성/조회 (conversations 테이블)
+  ├─ Step 6: Message 저장 (messages 테이블)
+  │   ├─ direction: "inbound"
+  │   ├─ sender_type: "customer"
+  │   ├─ content: "라식 수술 비용이 얼마인가요?"
+  │   └─ channel_message_id: LINE 메시지 ID
+  │
+  ├─ Step 7: 번역 (DeepL API)
+  │   ├─ 언어 감지: 한국어
+  │   ├─ 번역 불필요 (이미 한국어)
+  │   └─ translated_content: null
+  │
+  ├─ Step 8: AI RAG 파이프라인 (ai_enabled=true 시)
+  │   ├─ 지식베이스 검색 (pgvector)
+  │   ├─ LLM 응답 생성 (GPT-4 or Claude)
+  │   ├─ 신뢰도 계산
+  │   ├─ 에스컬레이션 체크 (< 75%)
+  │   └─ AI 응답 로그 저장
+  │
+  ├─ Step 9: 응답 메시지 DB 저장
+  │   ├─ direction: "outbound"
+  │   ├─ sender_type: "ai"
+  │   ├─ content: "라식 수술 비용은 양안 기준..."
+  │   ├─ ai_confidence: 0.92
+  │   └─ translated_content: (고객 언어로 번역)
+  │
+  └─ Step 10: LINE Reply API 호출
+      ├─ sendChannelMessage(channelAccountId, customerId, message)
+      ├─ LINE Messaging API: POST /v2/bot/message/reply
+      └─ LINE 앱에 AI 응답 표시
+```
+
+#### 28.2.4 인박스 실시간 반영
+
+**Supabase Realtime 구독**:
+```typescript
+// /web/src/app/(dashboard)/inbox/page.tsx
+// lines 269-335
+
+// 1. conversations 테이블 구독 (새 대화 추가)
+supabase
+  .channel("conversations")
+  .on("postgres_changes", { event: "INSERT", schema: "public", table: "conversations" }, ...)
+
+// 2. messages 테이블 구독 (새 메시지 추가)
+supabase
+  .channel("messages")
+  .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages",
+      filter: `conversation_id=eq.${selectedConversation.id}` }, ...)
+```
+
+**동작 흐름**:
+```
+[LINE 메시지 수신]
+  ↓ Webhook 처리 → DB INSERT
+  ↓ Supabase Realtime Broadcast
+  ↓ 인박스 UI가 실시간 수신
+  ├─ 좌측 대화 목록 업데이트
+  ├─ 중앙 채팅창에 메시지 추가
+  ├─ 알림음 재생 (3음 차임벨)
+  └─ 자동 스크롤 (messagesEndRef)
+```
+
+#### 28.2.5 테스트 체크리스트
+
+**필수 확인 사항**:
+- [ ] LINE Developers Console에서 Webhook URL 검증 성공
+- [ ] LINE Bot 친구 추가 완료
+- [ ] 테스트 메시지 전송 시 자동 응답 수신
+- [ ] 인박스 UI에 대화 실시간 표시
+- [ ] 고객 프로필 자동 생성 (이름, 언어, 채널)
+- [ ] AI 응답 생성 및 신뢰도 표시
+- [ ] 번역 기능 작동 (고객 언어 ≠ 한국어 시)
+- [ ] 에스컬레이션 발생 시 담당자 알림
+
+**디버깅 로그 확인**:
+```bash
+# Vercel 배포 로그 확인
+vercel logs --production
+
+# 또는 로컬 테스트
+npm run dev
+# Webhook은 ngrok으로 터널링 필요
+```
+
+### 28.3 빌드 및 배포
+
+**빌드 검증** ✅:
+```bash
+$ npm run build
+✓ Compiled successfully in 2.3s
+✓ Generating static pages (31/31)
+Route (app): 30 pages + 42 API routes
+0 TypeScript errors
+```
+
+**커밋 정보**:
+- Commit: `161957c`
+- Message: "Change team member action from '초대' to '등록'"
+- Files Changed: 1 (`web/src/app/(dashboard)/team/page.tsx`)
+- Insertions: 4, Deletions: 4
+
+**배포**: 자동 배포 (Vercel)
+
+---
+
