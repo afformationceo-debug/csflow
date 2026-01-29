@@ -8707,3 +8707,64 @@ web/src/app/(dashboard)/escalations/page.tsx  - KB/거래처 업데이트 API �
 web/src/services/escalations.ts               - metadata 저장 로직
 web/src/services/ai/rag-pipeline.ts           - analyzeRequiredUpdate 함수 신규 추가
 ```
+
+#### 18.12 에스컬레이션 AI 추천 및 예시 값 개선 (2026-01-29) ✅ NEW
+- **AI 추천 로직 명확화**: RAG 파이프라인에서 지식베이스 vs 거래처DB 업데이트 명확한 판단
+  - 예약/가격/위치 등 운영 정보 → `tenant_info` 추천 우선
+  - 일반 FAQ → `knowledge_base` 추천
+  - 패턴 매칭: 예약(`/예약|booking|reservation|appointment/i`), 가격(`/가격|비용|price/i`) 등 7개 카테고리
+- **AI 생성 예시 질문**: `detectedQuestions` 배열로 각 주제별 구체적 예시 질문 제공
+  - 예: "예약 가능한 시간대는 언제인가요?", "라식 수술 비용이 얼마인가요?" 등
+  - RAGOutput, CreateEscalationInput 인터페이스에 `detectedQuestions?: string[]` 추가
+  - 에스컬레이션 metadata에 `detected_questions` JSONB 저장
+- **지식베이스 다이얼로그 예시 자동 생성**:
+  - `generateKBExample()`: 질문 패턴별 베스트 프랙티스 템플릿 자동 생성
+  - 예약 → 예약 방법/가능 시간/준비사항, 가격 → 가격표/포함사항/할인정보
+  - `extractTagsFromQuestion()`: 질문에서 관련 태그 자동 추출 (예약, 가격, 라식, 일본 등)
+  - 사용자는 변수값만 수정하고 바로 저장 가능
+- **거래처 정보 다이얼로그 예시 자동 생성**:
+  - 질문 패턴 자동 감지 → 적절한 필드 타입으로 자동 전환 (operating_hours, pricing, location 등)
+  - 각 필드별 완성된 예시 템플릿 제공 (영업시간, 가격표, 위치/찾아오는 길, 연락처, 의료진, 장비)
+  - 실제 사용 가능한 마크다운 구조로 작성 (리스트, 테이블 형식)
+- **중복 에스컬레이션 생성 방지**:
+  - LINE webhook에서 에스컬레이션 생성 전 기존 에스컬레이션 체크
+  - 동일 대화(conversation_id)에 활성 에스컬레이션(pending/assigned/in_progress)이 이미 있으면 스킵
+  - 메신저창 여러 번 열어도 중복 생성되지 않음
+  - 로그: `[LINE] Escalation already exists for conversation {id}, skipping`
+- **파일 변경**:
+  - `/src/services/ai/rag-pipeline.ts` - `analyzeRequiredUpdate()` 함수 강화, 예시 질문 생성
+  - `/src/services/escalations.ts` - `CreateEscalationInput` 인터페이스 확장
+  - `/src/app/api/webhooks/line/route.ts` - 중복 체크 로직 추가
+  - `/src/app/api/escalations/route.ts` - `detectedQuestions` API 응답에 포함
+  - `/src/app/(dashboard)/escalations/page.tsx` - 다이얼로그 예시 자동 생성 로직
+
+**기술 구현**:
+```typescript
+// RAG Pipeline - AI 추천 로직
+const tenantInfoPatterns = [
+  { pattern: /예약|booking|reservation|appointment/i, topic: "예약 가능 시간", field: "operating_hours" },
+  { pattern: /가격|비용|price|cost/i, topic: "가격 정보", field: "pricing" },
+  { pattern: /위치|주소|location|address/i, topic: "위치/주소", field: "location" },
+  // ... 7개 패턴
+];
+
+// 예시 질문 생성
+const examples: Record<string, string> = {
+  "operating_hours": "예약 가능한 시간대는 언제인가요?",
+  "pricing": "라식 수술 비용이 얼마인가요?",
+  // ...
+};
+
+// 중복 방지 체크
+const { data: existingEscalations } = await supabase
+  .from("escalations")
+  .select("id")
+  .eq("conversation_id", conversation.id)
+  .in("status", ["pending", "assigned", "in_progress"])
+  .limit(1);
+
+if (!existingEscalations || existingEscalations.length === 0) {
+  // 에스컬레이션 생성
+}
+```
+
