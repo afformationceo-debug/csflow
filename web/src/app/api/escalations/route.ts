@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
       // Get all messages for these conversations (ascending = oldest first)
       const { data: messages } = await (supabase as any)
         .from("messages")
-        .select("conversation_id, content, original_content, translated_content, original_language, direction, sender_type, created_at")
+        .select("conversation_id, content, translated_content, original_language, direction, sender_type, created_at")
         .in("conversation_id", conversationIds)
         .order("created_at", { ascending: true }); // Oldest first to get initial customer message
 
@@ -137,16 +137,13 @@ export async function GET(request: NextRequest) {
             // Determine original (customer language) and Korean translation
             const originalLang = msg.original_language || "ko";
 
-            // If original_content exists, use it as customer's native text
-            // Otherwise, content is the customer's text
-            const customerNativeText = msg.original_content || msg.content || "";
-
-            // If original language is Korean, no translation needed
-            // If translated_content exists, use it as Korean
-            // Otherwise, content is Korean (default assumption)
+            // For inbound messages:
+            // - content = customer's native language (original)
+            // - translated_content = Korean translation
+            const customerNativeText = msg.content || "";
             const koreanText = originalLang === "ko"
               ? customerNativeText
-              : (msg.translated_content || msg.content || "");
+              : (msg.translated_content || customerNativeText);
 
             customerMessagesMap[msg.conversation_id] = {
               original: customerNativeText,
