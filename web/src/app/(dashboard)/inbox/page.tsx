@@ -629,6 +629,7 @@ export default function InboxPage() {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isUserScrollingRef = useRef(false);
 
   // Translation language config
   const translationLanguages = [
@@ -1076,6 +1077,7 @@ export default function InboxPage() {
   // Scroll to bottom
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     if (messagesEndRef.current) {
+      isUserScrollingRef.current = false; // Reset manual scrolling state
       messagesEndRef.current.scrollIntoView({ behavior });
     }
   }, []);
@@ -1229,8 +1231,33 @@ export default function InboxPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversation?.id]);
 
-  // Auto-scroll on conversation select or new message
+  // Detect user manual scroll
   useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // Check if user has scrolled up (not at bottom)
+      const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+      isUserScrollingRef.current = !isAtBottom;
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-scroll on conversation select or new message (only if user is not manually scrolling)
+  useEffect(() => {
+    // Always scroll when conversation changes
+    if (selectedConversation) {
+      isUserScrollingRef.current = false; // Reset scroll state
+      scrollToBottom("instant");
+      return;
+    }
+
+    // Don't auto-scroll if user is manually scrolling up
+    if (isUserScrollingRef.current) return;
+
     scrollToBottom("instant");
   }, [selectedConversation, dbMessages, scrollToBottom]);
 
