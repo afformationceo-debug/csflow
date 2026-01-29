@@ -18,7 +18,7 @@ import * as path from "path";
 dotenv.config({ path: path.resolve(__dirname, "../.env.local") });
 
 import { ragPipeline } from "../src/services/ai/rag-pipeline";
-import { serverKnowledgeService } from "../src/services/ai/knowledge-base";
+import serverKnowledgeService from "../src/services/ai/knowledge-base";
 import { createClient } from "@supabase/supabase-js";
 
 interface TestResult {
@@ -80,6 +80,7 @@ async function testRAGPipeline() {
     const result1 = await ragPipeline.process({
       query: test1Query,
       tenantId: testTenant.id,
+      conversationId: "test-conversation-1",
       customerLanguage: "KO",
     });
 
@@ -125,6 +126,7 @@ async function testRAGPipeline() {
     const result2 = await ragPipeline.process({
       query: test2Query,
       tenantId: testTenant.id,
+      conversationId: "test-conversation-2",
       customerLanguage: "KO",
     });
 
@@ -168,6 +170,7 @@ async function testRAGPipeline() {
     const result3 = await ragPipeline.process({
       query: test3Query,
       tenantId: testTenant.id,
+      conversationId: "test-conversation-3",
       customerLanguage: "KO",
     });
 
@@ -224,17 +227,15 @@ async function testRAGPipeline() {
 - 정기 검진 필수 (1일, 1주일, 1개월, 3개월)`,
       category: "FAQ",
       tags: ["스마일라식", "회복기간", "수술후관리"],
-      metadata: {
-        source: "test_script",
-        test_id: "escalation_reduction_test",
-      },
+      sourceType: "manual",
+      sourceId: "test_script_escalation_reduction",
     });
 
     console.log(`✅ Document created: ${newDoc.id}`);
     console.log(`📊 Generating embeddings...\n`);
 
     // Generate embeddings
-    await serverKnowledgeService.generateEmbeddings(newDoc.id);
+    await serverKnowledgeService.regenerateEmbeddings(newDoc.id, newDoc.content);
     console.log(`✅ Embeddings generated successfully\n`);
 
     // Wait for embeddings to be indexed (2 seconds)
@@ -247,6 +248,7 @@ async function testRAGPipeline() {
     const result4 = await ragPipeline.process({
       query: test2Query,
       tenantId: testTenant.id,
+      conversationId: "test-conversation-4",
       customerLanguage: "KO",
     });
 

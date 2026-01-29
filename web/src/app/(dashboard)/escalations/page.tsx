@@ -87,6 +87,7 @@ interface Escalation {
   // NEW: Enhanced fields for AI request UI
   customerQuestion?: string;
   aiReasoning?: string;
+  detectedQuestions?: string[]; // Example questions from AI analysis
   recommendedAction?: "knowledge_base" | "tenant_info";
   missingInfo?: string[];
 }
@@ -492,16 +493,120 @@ function UpdateKnowledgeBaseDialog({
   const [tags, setTags] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Pre-fill with example based on escalation
+  // Pre-fill with example based on escalation and AI-detected questions
   const handleOpen = () => {
-    // Generate suggested title and content from escalation
-    const suggestedTitle = `${escalation.customer.name}님 문의: ${escalation.customerQuestion || escalation.lastMessage}`.slice(0, 100);
-    const suggestedContent = `질문: ${escalation.customerQuestion || escalation.lastMessage}\n\n답변: [여기에 정확한 답변을 작성해주세요]\n\n추가 정보:\n- 거래처: ${escalation.tenant.name}\n- 채널: ${escalation.channel}\n- 카테고리: [관련 카테고리 선택]`;
+    // Use AI-detected questions if available, otherwise use customer question
+    const detectedQ = escalation.detectedQuestions?.[0] || escalation.customerQuestion || escalation.lastMessage;
+
+    // Generate suggested title from detected question
+    const suggestedTitle = detectedQ.length > 50 ? detectedQ.slice(0, 50) + "..." : detectedQ;
+
+    // Generate comprehensive example content with best-practice structure
+    const suggestedContent = `질문: ${detectedQ}
+
+답변:
+[여기에 구체적이고 정확한 답변을 작성해주세요]
+
+예시:
+${generateKBExample(detectedQ)}
+
+추가 정보:
+- 주의사항: [필요시 주의사항 작성]
+- 관련 링크: [필요시 관련 링크 추가]
+- 문의처: [추가 문의가 필요한 경우 연락처]`;
 
     setTitle(suggestedTitle);
     setContent(suggestedContent);
-    setTags([escalation.tenant.name, escalation.channel]);
+
+    // Smart tag generation based on detected topic
+    const detectedTags = extractTagsFromQuestion(detectedQ);
+    setTags([escalation.tenant.name, escalation.channel, ...detectedTags]);
+
     setOpen(true);
+  };
+
+  // Helper: Generate KB example based on question pattern
+  const generateKBExample = (question: string): string => {
+    const q = question.toLowerCase();
+
+    if (/예약|booking|reservation|appointment/i.test(q)) {
+      return `예약은 다음 방법으로 가능합니다:
+1. 온라인 예약: [웹사이트 URL]
+2. 전화 예약: [전화번호]
+3. 카카오톡 상담을 통한 예약
+
+예약 가능 시간:
+- 평일: 오전 9시 ~ 오후 6시
+- 토요일: 오전 9시 ~ 오후 1시
+- 일요일/공휴일: 휴무
+
+예약 시 준비사항:
+- 신분증
+- [추가 필요 서류]`;
+    }
+
+    if (/가격|비용|price|cost|얼마/i.test(q)) {
+      return `가격 정보:
+- 기본 시술: [금액]원
+- 프리미엄 시술: [금액]원
+- 특별 패키지: [금액]원
+
+포함 사항:
+- 사전 검사
+- 시술 비용
+- 사후 관리 (1회)
+
+할인 혜택:
+- [이벤트/할인 정보]`;
+    }
+
+    if (/시간|영업|언제|when|hours/i.test(q)) {
+      return `운영 시간:
+- 평일: 오전 9시 ~ 오후 6시
+- 토요일: 오전 9시 ~ 오후 1시
+- 일요일/공휴일: 휴무
+
+점심시간: 오후 12시 ~ 오후 1시
+(응급 상담은 점심시간에도 가능)`;
+    }
+
+    if (/위치|주소|location|address|찾아오/i.test(q)) {
+      return `위치 정보:
+주소: [상세 주소]
+전화: [전화번호]
+
+찾아오시는 길:
+- 지하철: [역명] [번 출구]에서 도보 [분]
+- 버스: [버스 번호] → [정류장명] 하차
+- 주차: [주차 가능 여부 및 안내]
+
+지도: [지도 링크]`;
+    }
+
+    // Default template
+    return `[상세한 답변을 작성해주세요]
+
+구체적인 정보:
+- 항목 1: [설명]
+- 항목 2: [설명]
+- 항목 3: [설명]`;
+  };
+
+  // Helper: Extract relevant tags from question
+  const extractTagsFromQuestion = (question: string): string[] => {
+    const q = question.toLowerCase();
+    const tags: string[] = [];
+
+    if (/예약|booking|reservation/i.test(q)) tags.push("예약");
+    if (/가격|비용|price|cost/i.test(q)) tags.push("가격");
+    if (/시간|영업|hours/i.test(q)) tags.push("영업시간");
+    if (/위치|주소|location/i.test(q)) tags.push("위치");
+    if (/라식|lasik/i.test(q)) tags.push("라식");
+    if (/라섹|lasek/i.test(q)) tags.push("라섹");
+    if (/일본|japan/i.test(q)) tags.push("일본");
+    if (/중국|china/i.test(q)) tags.push("중국");
+
+    return tags;
   };
 
   const handleSubmit = async () => {
@@ -694,18 +799,125 @@ function UpdateTenantInfoDialog({
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Pre-fill with example based on escalation
+  // Pre-fill with concrete example values based on escalation and AI-detected questions
   const handleOpen = () => {
-    const suggestedNotes = `에스컬레이션: ${escalation.reason}\n고객 질문: ${escalation.customerQuestion || escalation.lastMessage}`;
+    // Use AI-detected questions if available
+    const detectedQ = escalation.detectedQuestions?.[0] || escalation.customerQuestion || escalation.lastMessage;
+    const suggestedNotes = `에스컬레이션: ${escalation.reason}\nAI 감지 질문: ${detectedQ}`;
     setNotes(suggestedNotes);
 
-    // Example values based on field
-    if (field === "operating_hours") {
-      setValue("평일 09:00-18:00, 토요일 09:00-13:00, 일요일 휴무");
-    } else if (field === "pricing") {
-      setValue("라식: 150만원, 라섹: 180만원 (양안 기준)");
-    } else if (field === "contact") {
-      setValue("전화: 02-1234-5678, 이메일: info@example.com");
+    // Auto-detect field type from detected question
+    const q = detectedQ.toLowerCase();
+    if (/예약|booking|reservation|appointment|언제.*가능|available/i.test(q)) {
+      setField("operating_hours");
+      setValue(`예약 가능 시간:
+- 평일: 오전 9시 ~ 오후 6시 (점심시간: 12~1시)
+- 토요일: 오전 9시 ~ 오후 1시
+- 일요일/공휴일: 휴무
+
+예약 방법:
+- 전화: [전화번호]
+- 카카오톡: [카카오톡 채널]
+- 온라인: [예약 URL]`);
+    } else if (/가격|비용|price|cost|얼마|how much/i.test(q)) {
+      setField("pricing");
+      setValue(`시술별 가격 (양안 기준):
+- 라식 (LASIK): 150만원
+- 라섹 (LASEK): 180만원
+- 스마일라식 (SMILE): 250만원
+- 노안라식: 300만원
+
+포함 사항:
+- 정밀 검사
+- 시술 비용
+- 1개월 사후관리
+- 안약 처방
+
+할인 정보:
+- 조기 예약 할인: 10%
+- 학생 할인: 5%
+- 재수술 보장 (10년)`);
+    } else if (/위치|주소|어디|where|location|address|찾아오/i.test(q)) {
+      setField("location");
+      setValue(`주소: [시/도] [구/군] [상세주소]
+건물명: [건물명] [층]
+
+찾아오시는 길:
+- 지하철: [호선] [역명] [번 출구]에서 도보 [분]
+- 버스: [버스 번호들] → [정류장명] 하차
+- 자가용: 네비게이션 "[병원명]" 검색
+- 주차: 건물 지하 주차장 이용 가능 (2시간 무료)
+
+랜드마크: [근처 유명 건물/장소]`);
+    } else if (/연락|전화|이메일|contact|phone|email/i.test(q)) {
+      setField("contact");
+      setValue(`전화번호:
+- 대표번호: 02-1234-5678
+- 예약 전용: 02-1234-5679
+- 응급 상담: 010-1234-5678
+
+이메일:
+- 일반 문의: info@example.com
+- 예약 문의: reservation@example.com
+
+카카오톡:
+- 채널명: [병원명]
+- 채널 ID: @example
+
+운영 시간:
+- 평일: 09:00 ~ 18:00
+- 토요일: 09:00 ~ 13:00
+- 일요일/공휴일: 휴무`);
+    } else if (/의사|doctor|선생님|staff/i.test(q)) {
+      setField("doctors");
+      setValue(`의료진 소개:
+
+대표원장: [이름] 원장
+- 전문 분야: [전문 분야]
+- 경력: [주요 경력]
+- 학력: [학력 사항]
+
+진료 의사:
+1. [이름] 원장 - [전문 분야]
+2. [이름] 원장 - [전문 분야]
+
+수술 건수:
+- 연간 [건수]건 이상
+- 누적 [건수]건 이상
+
+의료진 상담 예약:
+- 전화: [전화번호]
+- 온라인: [예약 URL]`);
+    } else if (/장비|시설|equipment|facility/i.test(q)) {
+      setField("equipment");
+      setValue(`보유 장비:
+
+주요 장비:
+1. [장비명] - [제조사/모델명]
+   용도: [용도 설명]
+
+2. [장비명] - [제조사/모델명]
+   용도: [용도 설명]
+
+3. [장비명] - [제조사/모델명]
+   용도: [용도 설명]
+
+시설 특징:
+- 무균 수술실 [개]실
+- 회복실 [개]실
+- 대기실 [평수]평
+- 주차장 [대]대 수용
+
+인증:
+- [인증/수상 내역]`);
+    } else {
+      // Default - still provide example
+      setValue(`[여기에 구체적인 정보를 입력해주세요]
+
+예시:
+- 항목 1: [설명]
+- 항목 2: [설명]
+- 항목 3: [설명]`);
     }
 
     setOpen(true);

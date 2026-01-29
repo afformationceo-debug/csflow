@@ -351,15 +351,29 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
 
     // 8. Handle escalation or send AI response
     if (ragResult.shouldEscalate) {
-      // Create escalation with AI recommendations
-      await serverEscalationService.createEscalation({
-        conversationId: conversation.id,
-        messageId: savedMessage.id,
-        reason: ragResult.escalationReason || "AI 신뢰도 미달",
-        aiConfidence: ragResult.confidence,
-        recommendedAction: ragResult.recommendedAction,
-        missingInfo: ragResult.missingInfo,
-      });
+      // Check if escalation already exists for this conversation to prevent duplicates
+      const { data: existingEscalations } = await (supabase as any)
+        .from("escalations")
+        .select("id")
+        .eq("conversation_id", conversation.id)
+        .in("status", ["pending", "assigned", "in_progress"])
+        .limit(1);
+
+      if (!existingEscalations || existingEscalations.length === 0) {
+        // Create escalation with AI recommendations
+        await serverEscalationService.createEscalation({
+          conversationId: conversation.id,
+          messageId: savedMessage.id,
+          reason: ragResult.escalationReason || "AI 신뢰도 미달",
+          aiConfidence: ragResult.confidence,
+          recommendedAction: ragResult.recommendedAction,
+          missingInfo: ragResult.missingInfo,
+          detectedQuestions: ragResult.detectedQuestions,
+        });
+        console.log(`[LINE] Escalation created for conversation ${conversation.id}`);
+      } else {
+        console.log(`[LINE] Escalation already exists for conversation ${conversation.id}, skipping`);
+      }
 
       // Update conversation status
       await (supabase

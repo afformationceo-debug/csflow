@@ -35,6 +35,7 @@ export interface CreateEscalationInput {
   // AI analysis results
   recommendedAction?: "knowledge_base" | "tenant_info";
   missingInfo?: string[];
+  detectedQuestions?: string[]; // Example questions for KB/tenant update dialog
 }
 
 // Client-side service
@@ -253,6 +254,9 @@ export const serverEscalationService = {
     }
     if (input.missingInfo && input.missingInfo.length > 0) {
       metadata.missing_info = input.missingInfo;
+    }
+    if (input.detectedQuestions && input.detectedQuestions.length > 0) {
+      metadata.detected_questions = input.detectedQuestions;
     }
 
     // Create escalation

@@ -223,6 +223,7 @@ export async function GET(request: NextRequest) {
       const metadata = esc.metadata || {};
       const recommendedAction = metadata.recommended_action as "knowledge_base" | "tenant_info" | undefined;
       const missingInfo = metadata.missing_info as string[] | undefined;
+      const detectedQuestions = metadata.detected_questions as string[] | undefined;
 
       return {
         id: esc.id,
@@ -254,6 +255,7 @@ export async function GET(request: NextRequest) {
         // AI recommendations from metadata
         recommendedAction,
         missingInfo,
+        detectedQuestions, // Example questions for update dialogs
       };
     });
 

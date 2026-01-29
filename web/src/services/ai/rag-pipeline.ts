@@ -38,6 +38,7 @@ export interface RAGOutput {
   // AI recommendations for escalations
   recommendedAction?: "knowledge_base" | "tenant_info";
   missingInfo?: string[];
+  detectedQuestions?: string[]; // Example questions for KB/tenant update
 }
 
 export interface EscalationDecision {
@@ -152,53 +153,65 @@ async function analyzeRequiredUpdate(
   retrievedDocs: RetrievedDocument[],
   escalationReason: string | undefined,
   tenant: any
-): Promise<{ recommendedAction: "knowledge_base" | "tenant_info"; missingInfo: string[] }> {
-  // Patterns that suggest tenant info needs updating
+): Promise<{ recommendedAction: "knowledge_base" | "tenant_info"; missingInfo: string[]; detectedQuestions: string[] }> {
+  // Patterns that suggest tenant info needs updating (operational/dynamic info)
   const tenantInfoPatterns = [
-    /영업.*시간|운영.*시간|몇.*시|언제.*열|언제.*문|when.*open|opening.*hours/i,
-    /가격|비용|얼마|price|cost|how much/i,
-    /위치|주소|어디|where|location|address/i,
-    /연락|전화|이메일|contact|phone|email/i,
-    /의사|doctor|선생님|staff|팀/i,
-    /장비|시설|equipment|facility/i,
-    /서비스|시술|treatment|procedure|surgery/i,
+    { pattern: /영업.*시간|운영.*시간|몇.*시|언제.*열|언제.*문|when.*open|opening.*hours/i, topic: "영업 시간", field: "operating_hours" },
+    { pattern: /예약|booking|reservation|appointment|언제.*가능|available/i, topic: "예약 가능 시간", field: "operating_hours" },
+    { pattern: /가격|비용|얼마|price|cost|how much|fee/i, topic: "가격 정보", field: "pricing" },
+    { pattern: /위치|주소|어디|where|location|address|어떻게.*가/i, topic: "위치/주소/찾아오는 길", field: "location" },
+    { pattern: /연락|전화|이메일|contact|phone|email|call/i, topic: "연락처", field: "contact" },
+    { pattern: /의사|doctor|선생님|staff|팀|누가/i, topic: "의료진 정보", field: "doctors" },
+    { pattern: /장비|시설|equipment|facility/i, topic: "시설/장비 정보", field: "equipment" },
   ];
 
   // Check if query is about tenant-specific operational information
   let isTenantInfo = false;
   let detectedTopics: string[] = [];
+  let detectedFields: string[] = [];
+  let detectedQuestions: string[] = [];
 
-  for (const pattern of tenantInfoPatterns) {
+  for (const { pattern, topic, field } of tenantInfoPatterns) {
     if (pattern.test(query)) {
       isTenantInfo = true;
+      if (!detectedTopics.includes(topic)) {
+        detectedTopics.push(topic);
+        detectedFields.push(field);
 
-      // Identify specific missing info
-      if (/영업.*시간|운영.*시간|몇.*시|언제.*열|언제.*문|when.*open|opening.*hours/i.test(query)) {
-        detectedTopics.push("영업 시간");
-      }
-      if (/가격|비용|얼마|price|cost|how much/i.test(query)) {
-        detectedTopics.push("가격 정보");
-      }
-      if (/위치|주소|어디|where|location|address/i.test(query)) {
-        detectedTopics.push("위치/주소");
-      }
-      if (/연락|전화|이메일|contact|phone|email/i.test(query)) {
-        detectedTopics.push("연락처");
-      }
-      if (/의사|doctor|선생님|staff|팀/i.test(query)) {
-        detectedTopics.push("의료진 정보");
-      }
-      if (/장비|시설|equipment|facility/i.test(query)) {
-        detectedTopics.push("시설/장비 정보");
-      }
-      if (/서비스|시술|treatment|procedure|surgery/i.test(query)) {
-        detectedTopics.push("제공 서비스/시술 목록");
+        // Generate example question for this topic
+        const examples: Record<string, string> = {
+          "operating_hours": "예약 가능한 시간대는 언제인가요?",
+          "pricing": "라식 수술 비용이 얼마인가요?",
+          "location": "병원 위치와 오시는 길을 알려주세요",
+          "contact": "전화번호와 이메일 주소를 알려주세요",
+          "doctors": "어떤 의사 선생님이 계시나요?",
+          "equipment": "어떤 장비를 사용하시나요?",
+        };
+        if (examples[field]) {
+          detectedQuestions.push(examples[field]);
+        }
       }
     }
   }
 
+  // If tenant-specific operational question (highest priority)
+  if (isTenantInfo) {
+    return {
+      recommendedAction: "tenant_info",
+      missingInfo: detectedTopics.length > 0 ? detectedTopics : ["거래처 기본 정보"],
+      detectedQuestions: detectedQuestions,
+    };
+  }
+
   // If no documents found, likely missing KB content
   if (retrievedDocs.length === 0) {
+    // Generate example questions based on query
+    const exampleQuestions = [
+      query, // Original query as first example
+      query.replace(/\?|？/g, "") + "에 대해 자세히 알려주세요",
+      query.split(/\s+/).slice(0, 3).join(" ") + " 관련 정보",
+    ];
+
     return {
       recommendedAction: "knowledge_base",
       missingInfo: [
@@ -206,18 +219,16 @@ async function analyzeRequiredUpdate(
         "일반적인 답변 가이드",
         `'${query.slice(0, 50)}...'에 대한 표준 응답`,
       ],
-    };
-  }
-
-  // If tenant-specific operational question
-  if (isTenantInfo) {
-    return {
-      recommendedAction: "tenant_info",
-      missingInfo: detectedTopics.length > 0 ? detectedTopics : ["거래처 기본 정보"],
+      detectedQuestions: exampleQuestions.slice(0, 2),
     };
   }
 
   // Default: suggest knowledge base update for general questions
+  const defaultQuestions = [
+    query,
+    query + " 관련 상세 정보",
+  ];
+
   return {
     recommendedAction: "knowledge_base",
     missingInfo: [
@@ -225,6 +236,7 @@ async function analyzeRequiredUpdate(
       "유사 질문에 대한 답변 예시",
       "고객 질문 패러프레이즈 모음",
     ],
+    detectedQuestions: defaultQuestions,
   };
 }
 
@@ -395,6 +407,7 @@ export const ragPipeline = {
     // 10. Analyze what DB needs updating if escalating
     let recommendedAction: "knowledge_base" | "tenant_info" | undefined;
     let missingInfo: string[] | undefined;
+    let detectedQuestions: string[] | undefined;
 
     if (escalationDecision) {
       const analysis = await analyzeRequiredUpdate(
@@ -405,6 +418,7 @@ export const ragPipeline = {
       );
       recommendedAction = analysis.recommendedAction;
       missingInfo = analysis.missingInfo;
+      detectedQuestions = analysis.detectedQuestions;
     }
 
     // 11. Log AI response for learning
@@ -433,6 +447,7 @@ export const ragPipeline = {
       // AI recommendations
       recommendedAction,
       missingInfo,
+      detectedQuestions,
     };
   },
 
