@@ -111,22 +111,23 @@ export async function GET(request: NextRequest) {
     let lastMessagesMap: Record<string, string> = {};
 
     if (conversationIds.length > 0) {
-      // Get all messages for these conversations (ascending = oldest first)
+      // Get all messages for these conversations (descending = newest first)
       const { data: messages } = await (supabase as any)
         .from("messages")
         .select("conversation_id, content, original_content, translated_content, original_language, direction, sender_type, created_at")
         .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false }); // Changed to descending
 
       if (messages) {
-        // First pass: find oldest customer message (messages are sorted ascending)
+        // First pass: find LAST (most recent) customer message (messages are sorted descending)
         for (const msg of messages) {
-          // Find first customer message (inbound) — exclude internal notes and system messages
+          // Find most recent customer message (inbound) — exclude internal notes, system, agent, AI
           if (!customerMessagesMap[msg.conversation_id]) {
             const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
               && msg.sender_type !== "internal_note"
               && msg.sender_type !== "system"
-              && msg.sender_type !== "agent";
+              && msg.sender_type !== "agent"
+              && msg.sender_type !== "ai";
             if (isCustomerMessage) {
               // Determine original (customer language) and Korean translation
               const originalLang = msg.original_language || "ko";
@@ -151,10 +152,10 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Second pass: find first CUSTOMER message for fallback (iterate forward)
+        // Second pass: find LAST CUSTOMER message for fallback (iterate in descending order)
         for (const msg of messages) {
           if (!lastMessagesMap[msg.conversation_id]) {
-            // Find first customer message only (not agent/internal/system)
+            // Find most recent customer message only (not agent/internal/system/ai)
             const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
               && msg.sender_type !== "internal_note"
               && msg.sender_type !== "system"

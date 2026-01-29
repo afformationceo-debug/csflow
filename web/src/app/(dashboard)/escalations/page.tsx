@@ -1079,28 +1079,46 @@ function EscalationCard({
                     </p>
 
                     {/* 명확한 업데이트 필요 정보 표시 */}
-                    {escalation.recommendedAction && (
+                    {escalation.recommendedAction && escalation.missingInfo && escalation.missingInfo.length > 0 ? (
                       <div className="space-y-1.5 pt-1">
                         <p className="text-xs font-semibold text-foreground">
-                          {escalation.recommendedAction === "tenant_info" ? "🏥 거래처 정보" : "📚 지식베이스"}에 다음 정보가 필요합니다:
+                          {escalation.recommendedAction === "tenant_info" ? "🏥 거래처정보" : "📚 지식베이스"}에 다음 정보가 필요합니다:
                         </p>
-                        {escalation.missingInfo && escalation.missingInfo.length > 0 ? (
-                          <ul className="text-xs text-muted-foreground space-y-0.5 ml-5">
-                            {escalation.missingInfo.map((info, idx) => (
-                              <li key={idx} className="list-disc">
-                                {escalation.recommendedAction === "tenant_info"
-                                  ? `거래처정보에 ${info} 정보가 있어야 합니다`
-                                  : `지식베이스에 ${info} 관련 정보가 필요합니다`}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-xs text-muted-foreground ml-5">
-                            {escalation.recommendedAction === "tenant_info"
-                              ? "거래처 운영 정보(영업시간, 가격, 위치 등)를 업데이트해주세요"
-                              : "관련 FAQ 및 상세 답변을 지식베이스에 추가해주세요"}
-                          </p>
-                        )}
+                        <ul className="text-xs text-muted-foreground space-y-0.5 ml-5">
+                          {escalation.missingInfo.map((info, idx) => (
+                            <li key={idx} className="list-disc">
+                              {escalation.recommendedAction === "tenant_info"
+                                ? `거래처정보에 ${info} 정보가 있어야 합니다`
+                                : `지식베이스에 ${info} 관련 정보가 필요합니다`}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      // Fallback: Analyze customer question to provide smart recommendations
+                      <div className="space-y-1.5 pt-1">
+                        <p className="text-xs font-semibold text-foreground">
+                          📋 <span className="font-medium">권장 조치:</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground ml-5">
+                          {(() => {
+                            const q = (escalation.customerQuestion || escalation.lastMessage || "").toLowerCase();
+                            // Check for tenant info patterns (영업시간, 가격, 위치, 연락처 등)
+                            if (/영업.*시간|운영.*시간|몇.*시|언제.*열|when.*open|opening.*hours|hour|time/i.test(q)) {
+                              return "💡 거래처정보에 영업시간 정보가 있어야 합니다";
+                            } else if (/가격|비용|price|cost|얼마|how.*much/i.test(q)) {
+                              return "💡 거래처정보에 가격 정보가 있어야 합니다";
+                            } else if (/위치|주소|location|address|찾아오|where.*located/i.test(q)) {
+                              return "💡 거래처정보에 위치/주소 정보가 있어야 합니다";
+                            } else if (/연락|전화|contact|phone|call|이메일|email/i.test(q)) {
+                              return "💡 거래처정보에 연락처 정보가 있어야 합니다";
+                            } else if (/예약|booking|reservation|appointment|schedule/i.test(q)) {
+                              return "💡 지식베이스에 예약 관련 안내가 필요합니다";
+                            } else {
+                              return "💡 지식베이스에 관련 FAQ 문서가 필요합니다";
+                            }
+                          })()}
+                        </p>
                       </div>
                     )}
                   </div>

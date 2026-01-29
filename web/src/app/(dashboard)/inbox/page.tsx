@@ -2050,7 +2050,7 @@ export default function InboxPage() {
                                         msg.sender === "ai" ? "text-violet-800 dark:text-violet-300" :
                                         "text-muted-foreground"
                                       )}>
-                                        {(msg.sender === "agent" || msg.sender === "ai") ? msg.translatedContent : msg.translatedContent}
+                                        {(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
                                       </p>
                                     </div>
                                   )}

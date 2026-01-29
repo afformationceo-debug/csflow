@@ -356,7 +356,7 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
         .from("escalations")
         .select("id")
         .eq("conversation_id", conversation.id)
-        .in("status", ["pending", "assigned", "in_progress"])
+        .in("status", ["open", "pending", "assigned", "in_progress"])
         .limit(1);
 
       if (!existingEscalations || existingEscalations.length === 0) {
