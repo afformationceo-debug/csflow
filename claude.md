@@ -3433,6 +3433,129 @@ response.headers.set(
 - `web/src/app/(dashboard)/escalations/page.tsx`: AI 분석 명확화 + KB/거래처 예시 값 RAG 최적화
 - `web/src/app/(dashboard)/inbox/page.tsx`: 번역 표시 수정 + 추천응답 유지 로직
 
+#### 18.13 3개 치명적 버그 수정 (2026-01-29) ✅ NEW
+**커밋**: `057605f`, `380da4c`, `843294f` — 에스컬레이션 고객 질문 + 인박스 번역 + LINE 중복 방지
+
+##### 문제 0: 에스컬레이션 고객 질문 순서 문제 해결 ✅
+- **문제**: 모든 에스컬레이션이 "hello"만 표시되고, 실제 고객이 질문한 순서대로 반영되지 않음
+- **원인**: `/api/escalations/route.ts` lines 99-175가 `conversation_id`로 **첫 번째 고객 메시지**를 가져옴. 하지만 에스컬레이션은 각기 다른 시점에 발생하며, 각각 `message_id` 필드에 **실제 트리거 메시지**를 저장하고 있음
+- **해결**: `escalations.message_id`를 사용하여 실제 에스컬레이션 트리거 메시지를 가져옴
+  ```typescript
+  // BEFORE: conversation_id로 첫 번째 고객 메시지 가져옴 (잘못됨)
+  const conversationIds = (escalations || []).map((e: any) => e.conversation?.id);
+
+  // AFTER: message_id로 실제 트리거 메시지 가져옴 (올바름)
+  const messageIds = (escalations || []).map((e: any) => e.message_id).filter(Boolean);
+  const { data: messages } = await supabase
+    .from("messages")
+    .select("id, content, translated_content, original_language, direction, sender_type")
+    .in("id", messageIds);
+
+  // 메시지 ID별 매핑 (대화 ID가 아님!)
+  let escalationMessagesMap: Record<string, EscalationMessage> = {};
+  for (const msg of messages) {
+    escalationMessagesMap[msg.id] = {
+      original: msg.content,
+      korean: msg.translated_content || msg.content,
+      originalLanguage: msg.original_language || "ko",
+    };
+  }
+
+  // 고객 질문 표시 시 실제 트리거 메시지 사용
+  const escalationMsg = esc.message_id ? escalationMessagesMap[esc.message_id] : null;
+  const customerQuestion = escalationMsg
+    ? (escalationMsg.originalLanguage !== "ko" && escalationMsg.original !== escalationMsg.korean
+        ? `${escalationMsg.original}\n\n[한국어] ${escalationMsg.korean}`
+        : escalationMsg.original)
+    : lastMessage;
+  ```
+- **검증 결과**: 프로덕션 API 테스트 통과 — 각 에스컬레이션이 올바른 고객 질문 표시
+  - Escalation 1: "i want rejuran reservation\n\n[한국어] 리주란 예약을 원합니다"
+  - Escalation 2: "hi"
+  - Escalation 3: "ok i want reservation\n\n[한국어] 예약을 원합니다."
+  - Escalation 4: "i want rejuran\n\n[한국어] 리주란을 원합니다"
+  - Escalation 5: "test입니다."
+
+##### 문제 1: 인박스 AI 응답 전송 후 번역 표시 문제 해결 ✅
+- **문제**: 인박스에서 AI 응답 번역이 **전송 전**에는 잘 되지만, **전송 후** 채팅창에서 한국어 번역이 표시되지 않음
+- **원인**: Optimistic UI로 즉시 표시되는 메시지에 `translatedContent` 필드가 없음. Realtime으로 DB 메시지가 들어와야만 번역이 표시됨
+- **해결**: Optimistic 메시지 생성 시 번역 미리보기를 포함
+  ```typescript
+  // Enter 키 전송 (lines 2491-2500)
+  const optimisticMsg: Message = {
+    id: `optimistic-${Date.now()}`,
+    sender: wasInternalNote ? "internal_note" : "agent",
+    content,
+    translatedContent: !wasInternalNote && autoTranslateEnabled && translationPreview ? translationPreview : undefined, // 추가
+    time: timeStr,
+    direction: "outbound" as const,
+  };
+
+  // 전송 버튼 클릭 (lines 2565-2588)
+  const savedTranslation = translationPreview; // 전송 전 저장
+  const optimisticMsg: Message = {
+    id: `optimistic-${Date.now()}`,
+    sender: wasInternalNote ? "internal_note" : "agent",
+    content,
+    translatedContent: !wasInternalNote && autoTranslateEnabled && savedTranslation ? savedTranslation : undefined, // 추가
+    time: timeStr,
+    direction: "outbound" as const,
+  };
+
+  // API 호출 시 translateToCustomerLanguage 파라미터 추가 (전송 버튼, line 2599)
+  translateToCustomerLanguage: !wasInternalNote && autoTranslateEnabled,
+  ```
+- **효과**: 에이전트 메시지 전송 즉시 번역이 표시되어, 실시간 Realtime 대기 없이 사용자 경험 향상
+
+##### 문제 3: LINE Webhook 중복 AI 응답 방지 해결 ✅
+- **문제**: AI 자동응답 생성 후 다시 채팅방 들어가는데 또 생성됨. **반드시 고객이 새로운 답장이 오면 다시 생성**해야 함
+- **원인**: 기존 로직 (lines 346-360)은 **최근 3개 메시지 중 두 번째가 AI인지만** 확인. 이는 **순서 기반 체크**이므로, 같은 고객 메시지에 대해 이미 AI 응답이 있는지 확인하지 못함
+  ```typescript
+  // BEFORE: 순서 기반 체크 (잘못됨)
+  const { data: recentMessages } = await supabase
+    .from("messages")
+    .select("id, sender_type, created_at")
+    .eq("conversation_id", conversation.id)
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  if (recentMessages && recentMessages.length > 1) {
+    const lastMessage = recentMessages[1]; // [0]은 현재, [1]은 이전
+    if (lastMessage && lastMessage.sender_type === "ai") {
+      return; // 이전이 AI면 스킵
+    }
+  }
+  ```
+- **해결**: **타임스탬프 기반 체크** — 현재 고객 메시지 이후에 AI 응답이 있는지 확인
+  ```typescript
+  // AFTER: 타임스탬프 기반 체크 (올바름)
+  const { data: recentMessages } = await supabase
+    .from("messages")
+    .select("id, sender_type, created_at, direction")
+    .eq("conversation_id", conversation.id)
+    .gte("created_at", savedMessage.created_at) // 현재 메시지 이후
+    .order("created_at", { ascending: true });
+
+  if (recentMessages && recentMessages.length > 0) {
+    const hasAIResponse = recentMessages.some((msg: any) =>
+      msg.id !== savedMessage.id && msg.sender_type === "ai"
+    );
+    if (hasAIResponse) {
+      console.log(`[LINE] AI already responded to this message, skipping duplicate response`);
+      return;
+    }
+  }
+  ```
+- **효과**:
+  - ✅ 동일한 고객 메시지에 대해서는 절대 중복 AI 응답 생성 안함
+  - ✅ 새로운 고객 메시지가 오면 정상적으로 AI 응답 생성
+  - ✅ 채팅방 재진입/페이지 리로드와 무관하게 정확히 동작
+
+**변경 파일**:
+- `web/src/app/api/escalations/route.ts` (lines 99-224): message_id 기반 에스컬레이션 메시지 조회
+- `web/src/app/(dashboard)/inbox/page.tsx` (lines 2491-2500, 2565-2600): Optimistic UI에 translatedContent 추가
+- `web/src/app/api/webhooks/line/route.ts` (lines 345-360): 타임스탬프 기반 중복 방지
+
 ### 신규 API 엔드포인트
 
 ```
