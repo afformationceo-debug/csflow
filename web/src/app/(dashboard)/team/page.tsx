@@ -172,7 +172,7 @@ const rolePermissions = [
     category: "팀 관리",
     permissions: [
       { name: "팀원 조회", admin: true, manager: true, agent: false, coordinator: false },
-      { name: "팀원 초대/편집", admin: true, manager: false, agent: false, coordinator: false },
+      { name: "팀원 등록/편집", admin: true, manager: false, agent: false, coordinator: false },
       { name: "역할 변경", admin: true, manager: false, agent: false, coordinator: false },
     ],
   },
@@ -615,8 +615,8 @@ export default function TeamPage() {
                 disabled={!inviteName || !inviteEmail || !inviteRole}
                 className="rounded-xl gap-2"
               >
-                <Mail className="h-4 w-4" />
-                초대 보내기
+                <Plus className="h-4 w-4" />
+                등록
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -939,7 +939,7 @@ export default function TeamPage() {
               </h3>
               <p className="text-sm text-muted-foreground">
                 {teamMembers.length === 0
-                  ? "팀원 초대 버튼을 눌러 새로운 팀원을 추가하세요."
+                  ? "팀원 등록 버튼을 눌러 새로운 팀원을 추가하세요."
                   : "검색 조건을 변경해 보세요."}
               </p>
             </CardContent>
