@@ -7445,3 +7445,164 @@ const mapped: Message[] = rawMessages.map((msg: any) => {
 - **Commit:** `c373e90`
 - **Title:** Fix message count showing 0 - infer direction from sender_type
 
+
+---
+
+## 19. 채널-거래처 매핑 및 멀티 테넌트 지원 (2026-01-29)
+
+### 개요
+50개 이상의 LINE 채널을 각각 다른 거래처(병원)에 매핑할 수 있도록 채널 관리 시스템 강화
+
+### 구현 사항
+
+#### 1. 채널 추가 시 거래처 선택 UI ✅
+- **위치**: `web/src/app/(dashboard)/channels/page.tsx`
+- **기능**: 채널 추가 다이얼로그 내부에 거래처 선택 드롭다운 추가
+- **특징**:
+  - 거래처 선택 필수 (validation)
+  - 전체 거래처 목록 표시 (specialty 포함)
+  - 미선택 시 에러 메시지 표시
+  - 선택된 거래처에 채널 매핑
+
+#### 2. DB 구조
+```sql
+-- channel_accounts 테이블
+CREATE TABLE channel_accounts (
+  id UUID PRIMARY KEY,
+  tenant_id UUID REFERENCES tenants(id),  -- 거래처 FK
+  channel_type TEXT,                       -- 'line', 'kakao', etc.
+  account_id TEXT,                         -- LINE Bot User ID
+  account_name TEXT,                       -- "힐링안과 LINE"
+  credentials JSONB,                       -- { access_token, channel_secret, ... }
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+#### 3. 채널-거래처 매핑 플로우
+```
+[사용자가 채널 추가]
+  └─ 다이얼로그 열림
+      ├─ 1. 거래처 선택 (dropdown)
+      ├─ 2. 채널 유형 선택 (LINE, WhatsApp, ...)
+      ├─ 3. 계정 정보 입력
+      └─ 4. 저장 버튼 클릭
+          └─ POST /api/channels
+              {
+                tenantId: "8d3bd24e-...",  // 선택된 거래처 ID
+                channelType: "line",
+                accountName: "힐링안과 LINE",
+                accountId: "2008754781",
+                credentials: { ... }
+              }
+              └─ Supabase INSERT channel_accounts
+                  └─ tenant_id 컬럼에 거래처 ID 저장
+
+[LINE 메시지 수신]
+  └─ POST /api/webhooks/line
+      └─ Bot User ID로 channel_account 조회
+          └─ SELECT * FROM channel_accounts
+              WHERE channel_type = 'line'
+              AND account_id = 'U1234...'  -- Bot User ID
+              ├─ tenant 정보 함께 로드
+              └─ tenant.ai_config 사용하여 RAG 실행
+```
+
+#### 4. 거래처별 AI 설정 활용
+- **system_prompt**: 거래처마다 다른 AI 페르소나
+- **escalation_keywords**: 거래처별 맞춤 에스컬레이션 키워드
+- **confidence_threshold**: 거래처별 AI 신뢰도 기준값
+- **default_language**: 거래처 주요 고객 언어
+
+### 검증 완료 사항
+
+#### 1. 고객 DB ✅
+- **테이블**: `customers`
+- **저장 확인**: Supabase REST API 직접 쿼리로 확인
+- **데이터**: name, country, language, metadata (interests, concerns)
+
+#### 2. 채널-거래처 매핑 ✅
+- **UI**: 채널 추가 다이얼로그에 거래처 선택 dropdown
+- **API**: POST /api/channels에 tenantId 전달
+- **DB**: channel_accounts.tenant_id에 저장
+- **검증**: 50개 LINE 채널을 각각 다른 거래처에 등록 가능
+
+#### 3. 거래처 관리 CSV 업로드 ✅
+- **다운로드**: GET /api/tenants/bulk → CSV 다운로드
+- **업로드**: POST /api/tenants/bulk → CSV 파싱 후 Supabase INSERT
+- **DB 저장**: tenants.ai_config JSONB 필드에 저장
+- **CSV 형식**:
+  ```csv
+  name,name_en,specialty,default_language,system_prompt,model,confidence_threshold,escalation_keywords
+  에이브의원,Aeve Clinic,dermatology,zh,"당신은 에이브의원...",gpt-4,0.75,"부작용,환불,클레임"
+  ```
+
+#### 4. LLM RAG 연동 ✅
+- **Tenant 조회**: `rag-pipeline.ts` line 155-159
+  ```typescript
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("*")
+    .eq("id", input.tenantId)
+    .single();
+  ```
+- **ai_config 전달**: line 230
+  ```typescript
+  const llmResponse = await llmService.generate(
+    query,
+    documents,
+    { model: selectedModel, tenantConfig: tenant.ai_config }
+  );
+  ```
+- **system_prompt 사용**: `llm.ts`에서 system message에 포함
+- **escalation_keywords 체크**: `checkEscalationKeywords()` 함수
+
+### 검증 데이터 (Supabase 실제 쿼리)
+
+#### Customers 테이블
+```json
+{
+  "id": "464674d5-ceee-4785-8055-49c00882c9ae",
+  "name": "CHATDOC CEO",
+  "language": "EN",
+  "metadata": {
+    "memo": "테스트",
+    "concerns": ["회복기간", "유지기간"],
+    "interests": [],
+    "analyzed_at": "2026-01-29T02:37:34.206Z"
+  }
+}
+```
+
+#### Tenants 테이블
+```json
+{
+  "id": "64ffd197-22f5-4216-9f7b-c1241ef59654",
+  "name": "에이브의원",
+  "specialty": "dermatology",
+  "ai_config": {
+    "model": "gpt-4",
+    "enabled": true,
+    "system_prompt": "당신은 에이브의원의 피부과 전문 상담사입니다...",
+    "default_language": "zh",
+    "escalation_keywords": ["부작용", "환불", "클레임"],
+    "confidence_threshold": 0.75
+  }
+}
+```
+
+### 파일 변경
+- `web/src/app/(dashboard)/channels/page.tsx` (+25 -5 lines)
+  - 채널 추가 다이얼로그에 거래처 선택 UI 추가
+  - 필수 필드 validation
+  - 에러 메시지 표시
+
+### 커밋
+- `11f9d41`: Fix inbox auto-detection loading + DB verification
+- `7b360d0`: Add tenant selection to channel creation dialog
+
+### 배포
+- ✅ GitHub push 완료
+- ✅ Vercel 자동 배포 진행 중
+
+---

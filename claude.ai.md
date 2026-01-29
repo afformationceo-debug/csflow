@@ -2851,3 +2851,244 @@ interface Customer {
 ### 배포
 - ⏳ 다음 배포 시 자동 반영
 
+
+---
+
+## 23. 채널-거래처 매핑 및 LLM RAG 검증 (2026-01-29) ✅
+
+### 사용자 요청 사항
+
+1. ✅ 고객 DB Supabase 저장 확인
+2. ✅ 채널 추가 시 거래처 선택 기능 구현 (50개 LINE 채널 대응)
+3. ✅ 거래처 관리 DB 반영 및 LLM RAG 연동 확인
+
+### 1. 고객 DB Supabase 저장 확인 ✅
+
+#### 확인 방법
+```javascript
+// Node.js + Supabase REST API 직접 쿼리
+GET /rest/v1/customers?select=id,name,country,language,created_at
+```
+
+#### 확인 결과
+```json
+{
+  "id": "464674d5-ceee-4785-8055-49c00882c9ae",
+  "name": "CHATDOC CEO",
+  "country": null,
+  "language": "EN",
+  "created_at": "2026-01-28T07:13:36.608525+00:00"
+}
+```
+
+✅ **결과**: `customers` 테이블에 정상 저장됨
+
+### 2. 채널 추가 시 거래처 선택 기능 구현 ✅
+
+#### 문제점
+- 채널 관리 페이지에서 "채널 추가" 클릭 시 거래처 선택 UI 없음
+- 기존: 상단 필터에서 거래처 선택 → 채널 추가 시 자동 매핑
+- 문제: 다이얼로그만 보고는 어느 거래처에 추가되는지 불명확
+
+#### 해결 방법
+다이얼로그 내부에 거래처 선택 드롭다운 추가:
+
+```typescript
+// web/src/app/(dashboard)/channels/page.tsx
+<div className="grid gap-2">
+  <Label className="text-sm font-medium">
+    거래처 선택 <span className="text-destructive">*</span>
+  </Label>
+  <Select value={selectedTenantId} onValueChange={(v) => { 
+    setSelectedTenantId(v); 
+    setSubmitError(""); 
+  }}>
+    <SelectTrigger className="w-full rounded-lg">
+      <SelectValue placeholder="거래처를 선택하세요" />
+    </SelectTrigger>
+    <SelectContent>
+      {tenants.map((t) => (
+        <SelectItem key={t.id} value={t.id}>
+          {t.name}
+          {t.specialty ? ` (${t.specialty})` : ""}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  {!selectedTenantId && (
+    <p className="text-xs text-destructive">
+      ⚠️ 거래처를 선택해야 채널을 추가할 수 있습니다.
+    </p>
+  )}
+</div>
+```
+
+#### 동작 흐름
+```
+[채널 추가 버튼 클릭]
+  └─ 다이얼로그 열림
+      ├─ 1. 거래처 선택 (필수) ← 신규 추가
+      ├─ 2. 채널 유형 선택 (LINE, WhatsApp, ...)
+      ├─ 3. 계정 정보 입력
+      └─ 4. 저장 → POST /api/channels
+          {
+            tenantId: selectedTenantId,
+            channelType: "line",
+            accountName: "힐링안과 LINE",
+            accountId: "2008754781",
+            credentials: { access_token, channel_secret, ... }
+          }
+          └─ Supabase INSERT channel_accounts
+              ├─ tenant_id: selectedTenantId
+              ├─ channel_type: "line"
+              ├─ account_id: "2008754781"
+              └─ is_active: true
+
+[LINE 메시지 수신]
+  └─ POST /api/webhooks/line
+      ├─ Bot User ID로 channel_account 조회
+      ├─ tenant 정보 함께 로드
+      └─ tenant의 ai_config 사용하여 RAG 파이프라인 실행
+```
+
+#### 검증 결과
+- ✅ 다이얼로그에서 거래처 선택 가능
+- ✅ 거래처 미선택 시 에러 메시지 표시
+- ✅ API에 tenantId 전달되어 DB 저장됨
+- ✅ 50개 LINE 채널을 각각 다른 거래처에 등록 가능
+
+### 3. 거래처 관리 DB 반영 및 LLM RAG 연동 확인 ✅
+
+#### CSV 업로드 기능 확인
+- **다운로드**: `GET /api/tenants/bulk` → 현재 거래처 데이터를 CSV로 다운로드
+- **업로드**: `POST /api/tenants/bulk` → CSV 파일로 거래처 일괄 등록
+
+#### CSV 파일 구조
+```csv
+name,name_en,specialty,default_language,system_prompt,model,confidence_threshold,escalation_keywords
+에이브의원,Aeve Clinic,dermatology,zh,"당신은 에이브의원의 피부과 전문 상담사입니다...",gpt-4,0.75,"부작용,환불,클레임"
+```
+
+#### Supabase 저장 확인
+```javascript
+GET /rest/v1/tenants?select=id,name,specialty,ai_config
+```
+
+**실제 데이터**:
+```json
+[
+  {
+    "id": "8d3bd24e-0d74-4dc7-aa34-3e39d5821244",
+    "name": "CS Command Center",
+    "specialty": "general",
+    "ai_config": {
+      "model": "gpt-4",
+      "enabled": true,
+      "confidence_threshold": 0.75
+    }
+  },
+  {
+    "id": "64ffd197-22f5-4216-9f7b-c1241ef59654",
+    "name": "에이브의원",
+    "specialty": "dermatology",
+    "ai_config": {
+      "model": "gpt-4",
+      "enabled": true,
+      "system_prompt": "당신은 에이브의원의 피부과 전문 상담사입니다...",
+      "default_language": "zh",
+      "escalation_keywords": ["부작용", "환불", "클레임"],
+      "confidence_threshold": 0.75
+    }
+  }
+]
+```
+
+✅ **결과**: CSV 업로드 시 `tenants` 테이블에 정상 저장됨
+
+#### LLM RAG 파이프라인 연동 확인
+
+**RAG 파이프라인 코드 분석** (`web/src/services/ai/rag-pipeline.ts`):
+
+```typescript
+// 1. Tenant 정보 가져오기
+const { data: tenant } = await supabase
+  .from("tenants")
+  .select("*")
+  .eq("id", input.tenantId)
+  .single();
+
+// 2. ai_config 추출
+const aiConfig = tenant.ai_config as {
+  enabled?: boolean;
+  model?: LLMModel;
+  system_prompt?: string;
+  escalation_keywords?: string[];
+  confidence_threshold?: number;
+};
+
+// 3. LLM에 전달
+const llmResponse = await llmService.generate(
+  query,
+  retrievedDocuments,
+  {
+    model: aiConfig.model,
+    tenantConfig: aiConfig  // ← system_prompt 포함
+  }
+);
+
+// 4. 에스컬레이션 체크
+const escalationDecision = checkEscalationKeywords(
+  query,
+  aiConfig  // ← escalation_keywords 사용
+);
+```
+
+#### LLM 프롬프트 구성 (`web/src/services/ai/llm.ts`):
+
+```typescript
+const systemPrompt = options?.tenantConfig?.system_prompt || 
+  "당신은 전문 고객 상담사입니다...";
+
+const messages = [
+  {
+    role: "system",
+    content: systemPrompt + contextText + conversationHistory
+  },
+  {
+    role: "user",
+    content: query
+  }
+];
+
+const completion = await openai.chat.completions.create({
+  model: options?.model || "gpt-4",
+  messages: messages,
+  temperature: 0.3,
+  max_tokens: 800
+});
+```
+
+#### 검증 결과 요약
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| CSV 업로드 | ✅ | POST /api/tenants/bulk → Supabase INSERT |
+| DB 저장 | ✅ | tenants.ai_config JSONB 필드에 저장 |
+| RAG 조회 | ✅ | ragPipeline.process() 시 tenant SELECT |
+| system_prompt 전달 | ✅ | llmService.generate()에 tenantConfig 전달 |
+| escalation_keywords 사용 | ✅ | checkEscalationKeywords() 함수에서 체크 |
+| confidence_threshold 적용 | ✅ | checkConfidenceThreshold() 함수에서 체크 |
+
+✅ **최종 결론**: 거래처 CSV 업로드 → DB 저장 → LLM RAG 프롬프트 반영 **전체 연동 확인됨**
+
+### 파일 변경
+- `web/src/app/(dashboard)/channels/page.tsx` - 채널 추가 다이얼로그에 거래처 선택 UI 추가
+
+### 커밋
+- Commit `11f9d41`: Fix inbox auto-detection loading + DB verification
+- Commit `7b360d0`: Add tenant selection to channel creation dialog
+
+### 배포
+- ✅ GitHub push 완료
+- ✅ Vercel 자동 배포 진행 중
+
