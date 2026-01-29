@@ -2495,6 +2495,7 @@ export default function InboxPage() {
                                 id: `optimistic-${Date.now()}`,
                                 sender: wasInternalNote ? "internal_note" : "agent",
                                 content,
+                                translatedContent: !wasInternalNote && autoTranslateEnabled && translationPreview ? translationPreview : undefined,
                                 time: timeStr,
                                 direction: "outbound" as const,  // ADD: direction for message count
                               };
@@ -2565,6 +2566,7 @@ export default function InboxPage() {
                         if (messageInput.trim() && selectedConversation) {
                           const content = messageInput;
                           const wasInternalNote = isInternalNote;
+                          const savedTranslation = translationPreview;
                           setMessageInput("");
                           setTranslationPreview("");
                           // Clear AI suggestion for this conversation on send
@@ -2581,6 +2583,7 @@ export default function InboxPage() {
                             id: `optimistic-${Date.now()}`,
                             sender: wasInternalNote ? "internal_note" : "agent",
                             content,
+                            translatedContent: !wasInternalNote && autoTranslateEnabled && savedTranslation ? savedTranslation : undefined,
                             time: timeStr,
                             direction: "outbound" as const,  // ADD: direction for message count
                           };
@@ -2595,6 +2598,7 @@ export default function InboxPage() {
                                 conversationId: selectedConversation.id,
                                 content,
                                 isInternalNote: wasInternalNote,
+                                translateToCustomerLanguage: !wasInternalNote && autoTranslateEnabled,
                                 targetLanguage: !wasInternalNote ? targetLanguage : undefined,
                               }),
                             }).catch(err => console.error("Send message failed:", err));
