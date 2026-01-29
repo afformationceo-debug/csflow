@@ -111,59 +111,67 @@ export async function GET(request: NextRequest) {
     let lastMessagesMap: Record<string, string> = {};
 
     if (conversationIds.length > 0) {
-      // Get all messages for these conversations (descending = newest first)
+      // Get all messages for these conversations (ascending = oldest first)
       const { data: messages } = await (supabase as any)
         .from("messages")
         .select("conversation_id, content, original_content, translated_content, original_language, direction, sender_type, created_at")
         .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: false }); // Changed to descending
+        .order("created_at", { ascending: true }); // Oldest first to get initial customer message
 
       if (messages) {
-        // First pass: find LAST (most recent) customer message (messages are sorted descending)
+        // First pass: find FIRST customer message (the original question that triggered escalation)
         for (const msg of messages) {
-          // Find most recent customer message (inbound) — exclude internal notes, system, agent, AI
-          if (!customerMessagesMap[msg.conversation_id]) {
-            const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
-              && msg.sender_type !== "internal_note"
-              && msg.sender_type !== "system"
-              && msg.sender_type !== "agent"
-              && msg.sender_type !== "ai";
-            if (isCustomerMessage) {
-              // Determine original (customer language) and Korean translation
-              const originalLang = msg.original_language || "ko";
+          // Skip if we already found a customer message for this conversation
+          if (customerMessagesMap[msg.conversation_id]) {
+            continue;
+          }
 
-              // If original_content exists, use it as customer's native text
-              // Otherwise, content is the customer's text
-              const customerNativeText = msg.original_content || msg.content || "";
+          // Find first customer message (inbound) — exclude internal notes, system, agent, AI
+          const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+            && msg.sender_type !== "internal_note"
+            && msg.sender_type !== "system"
+            && msg.sender_type !== "agent"
+            && msg.sender_type !== "ai";
 
-              // If original language is Korean, no translation needed
-              // If translated_content exists, use it as Korean
-              // Otherwise, content is Korean (default assumption)
-              const koreanText = originalLang === "ko"
-                ? customerNativeText
-                : (msg.translated_content || msg.content || "");
+          if (isCustomerMessage) {
+            // Determine original (customer language) and Korean translation
+            const originalLang = msg.original_language || "ko";
 
-              customerMessagesMap[msg.conversation_id] = {
-                original: customerNativeText,
-                korean: koreanText,
-                originalLanguage: originalLang,
-              };
-            }
+            // If original_content exists, use it as customer's native text
+            // Otherwise, content is the customer's text
+            const customerNativeText = msg.original_content || msg.content || "";
+
+            // If original language is Korean, no translation needed
+            // If translated_content exists, use it as Korean
+            // Otherwise, content is Korean (default assumption)
+            const koreanText = originalLang === "ko"
+              ? customerNativeText
+              : (msg.translated_content || msg.content || "");
+
+            customerMessagesMap[msg.conversation_id] = {
+              original: customerNativeText,
+              korean: koreanText,
+              originalLanguage: originalLang,
+            };
           }
         }
 
-        // Second pass: find LAST CUSTOMER message for fallback (iterate in descending order)
-        for (const msg of messages) {
-          if (!lastMessagesMap[msg.conversation_id]) {
-            // Find most recent customer message only (not agent/internal/system/ai)
-            const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
-              && msg.sender_type !== "internal_note"
-              && msg.sender_type !== "system"
-              && msg.sender_type !== "agent"
-              && msg.sender_type !== "ai";
-            if (isCustomerMessage) {
-              lastMessagesMap[msg.conversation_id] = msg.content || "";
-            }
+        // Second pass: find LAST customer message for fallback (iterate backwards)
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const msg = messages[i];
+          if (lastMessagesMap[msg.conversation_id]) {
+            continue;
+          }
+
+          // Find most recent customer message only (not agent/internal/system/ai)
+          const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
+            && msg.sender_type !== "internal_note"
+            && msg.sender_type !== "system"
+            && msg.sender_type !== "agent"
+            && msg.sender_type !== "ai";
+
+          if (isCustomerMessage) {
+            lastMessagesMap[msg.conversation_id] = msg.content || "";
           }
         }
       }
