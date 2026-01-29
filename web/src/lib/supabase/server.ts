@@ -28,24 +28,21 @@ export async function createClient() {
 }
 
 export async function createServiceClient() {
-  const cookieStore = await cookies();
-
+  // Service Role은 쿠키 불필요 (RLS 우회)
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
       cookies: {
         getAll() {
-          return cookieStore.getAll();
+          return [];
         },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // Server Component에서는 무시
-          }
+        setAll() {
+          // Service Role은 쿠키 사용 안 함
         },
       },
     }
