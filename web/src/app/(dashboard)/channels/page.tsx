@@ -174,12 +174,15 @@ interface Tenant {
   name: string;
   display_name: string;
   specialty: string | null;
+  country?: string | null;
 }
 
 export default function ChannelsPage() {
   const [allChannels, setAllChannels] = useState<ConnectedChannel[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingChannel, setEditingChannel] = useState<ConnectedChannel | null>(null);
   const [newChannelType, setNewChannelType] = useState<ChannelType | "">("");
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountId, setNewAccountId] = useState("");
@@ -242,6 +245,16 @@ export default function ChannelsPage() {
   const channels = tenantFilter === "all"
     ? allChannels
     : allChannels.filter(ch => ch.tenantId === tenantFilter);
+
+  // 거래처별로 채널 그룹화
+  const channelsByTenant = channels.reduce((acc, channel) => {
+    const tenantId = channel.tenantId || "unknown";
+    if (!acc[tenantId]) {
+      acc[tenantId] = [];
+    }
+    acc[tenantId].push(channel);
+    return acc;
+  }, {} as Record<string, ConnectedChannel[]>);
 
   // 통계
   const totalChannels = channels.length;
@@ -338,6 +351,64 @@ export default function ChannelsPage() {
     }
   };
 
+  const handleEditChannel = (channel: ConnectedChannel) => {
+    setEditingChannel(channel);
+    setNewChannelType(channel.channelType);
+    setNewAccountName(channel.accountName);
+    setNewAccountId(channel.accountId);
+    setSelectedTenantId(channel.tenantId || "");
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateChannel = async () => {
+    if (!editingChannel || !selectedTenantId || !newAccountName) return;
+    setIsSubmitting(true);
+    setSubmitError("");
+
+    try {
+      // Update channel via API (PATCH endpoint needed)
+      const response = await fetch(`/api/channels/${editingChannel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: selectedTenantId,
+          accountName: newAccountName,
+          isActive: editingChannel.isActive,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "채널 수정 실패");
+      }
+
+      // Update local state
+      setAllChannels((prev) =>
+        prev.map((ch) =>
+          ch.id === editingChannel.id
+            ? {
+                ...ch,
+                accountName: newAccountName,
+                tenantId: selectedTenantId,
+                tenantName: tenants.find((t) => t.id === selectedTenantId)?.name || "Unknown",
+              }
+            : ch
+        )
+      );
+
+      setEditDialogOpen(false);
+      setEditingChannel(null);
+      setNewChannelType("");
+      setNewAccountName("");
+      setNewAccountId("");
+      setSelectedTenantId("");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "채널 수정에 실패했습니다");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const summaryStats = [
     { title: "총 연결 채널", value: totalChannels, icon: Link2, color: "text-blue-500", iconBg: "bg-blue-500/10", gradientFrom: "from-blue-500/10", gradientTo: "to-blue-600/5", barColor: "#3B82F6", subtitle: "전체 채널" },
     { title: "활성 채널", value: activeChannels, icon: Radio, color: "text-emerald-500", iconBg: "bg-emerald-500/10", gradientFrom: "from-emerald-500/10", gradientTo: "to-emerald-600/5", barColor: "#10B981", subtitle: "실시간 수신 중" },
@@ -379,7 +450,8 @@ export default function ChannelsPage() {
                 {tenants.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
-                    {t.specialty ? ` (${t.specialty})` : ""}
+                    {t.country ? ` (${t.country})` : ""}
+                    {t.specialty ? ` - ${t.specialty}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -413,7 +485,8 @@ export default function ChannelsPage() {
                     {tenants.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.name}
-                        {t.specialty ? ` (${t.specialty})` : ""}
+                        {t.country ? ` (${t.country})` : ""}
+                        {t.specialty ? ` - ${t.specialty}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -720,9 +793,33 @@ export default function ChannelsPage() {
                 <p className="text-[11px] text-muted-foreground mt-1">위에서 새 채널을 연결하세요.</p>
               </div>
             ) : (
-              <motion.div className="space-y-2" variants={containerVariants} initial="hidden" animate="visible">
+              <motion.div className="space-y-4" variants={containerVariants} initial="hidden" animate="visible">
                 <AnimatePresence mode="popLayout">
-                  {channels.map((channel) => {
+                  {/* 거래처별로 그룹화하여 표시 */}
+                  {Object.entries(channelsByTenant).map(([tenantId, tenantChannels]) => {
+                    const tenant = tenants.find(t => t.id === tenantId);
+                    const tenantName = tenant?.name || "알 수 없음";
+                    const tenantCountry = tenant?.country;
+
+                    return (
+                      <div key={tenantId} className="space-y-2">
+                        {/* 거래처 헤더 */}
+                        <div className="flex items-center gap-2 px-2 py-1">
+                          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs font-semibold">
+                              {tenantName}
+                              {tenantCountry && ` (${tenantCountry})`}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">
+                              {tenantChannels.length}개 채널
+                            </span>
+                          </div>
+                          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+                        </div>
+
+                        {/* 거래처의 채널 목록 */}
+                        {tenantChannels.map((channel) => {
                     const Icon = CHANNEL_ICONS[channel.channelType];
                     const style = CHANNEL_BADGE_STYLES[channel.channelType];
 
@@ -809,7 +906,12 @@ export default function ChannelsPage() {
                         {/* 액션 */}
                         <div className="flex items-center gap-1.5 shrink-0">
                           <Switch checked={channel.isActive} onCheckedChange={(checked) => handleToggle(channel.id, checked)} />
-                          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleEditChannel(channel)}
+                          >
                             <Settings2 className="w-4 h-4 text-muted-foreground" />
                           </Button>
                           <Button
@@ -824,12 +926,94 @@ export default function ChannelsPage() {
                       </motion.div>
                     );
                   })}
+                </div>
+              </div>
+            );
+          })}
                 </AnimatePresence>
               </motion.div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* ── 채널 수정 다이얼로그 ── */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>채널 수정</DialogTitle>
+            <DialogDescription>
+              채널 정보를 수정하세요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* 거래처 선택 */}
+            <div className="grid gap-2">
+              <Label className="text-sm font-medium">
+                거래처 선택 <span className="text-destructive">*</span>
+              </Label>
+              <Select value={selectedTenantId} onValueChange={(v) => { setSelectedTenantId(v); setSubmitError(""); }}>
+                <SelectTrigger className="w-full rounded-lg">
+                  <SelectValue placeholder="거래처를 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenants.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                      {t.country ? ` (${t.country})` : ""}
+                      {t.specialty ? ` - ${t.specialty}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>채널 유형</Label>
+              <Input value={CHANNEL_LABELS[newChannelType as ChannelType] || ""} disabled className="rounded-lg bg-muted" />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>계정 이름</Label>
+              <Input
+                placeholder="예: 힐링안과 LINE"
+                value={newAccountName}
+                onChange={(e) => setNewAccountName(e.target.value)}
+                className="rounded-lg"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>계정 ID</Label>
+              <Input value={newAccountId} disabled className="rounded-lg bg-muted" />
+            </div>
+
+            {submitError && (
+              <p className="text-sm text-destructive">{submitError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditDialogOpen(false);
+                setEditingChannel(null);
+                setSubmitError("");
+              }}
+              className="rounded-lg"
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleUpdateChannel}
+              disabled={!selectedTenantId || !newAccountName || isSubmitting}
+              className="rounded-lg"
+            >
+              {isSubmitting ? "수정 중..." : "수정 완료"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

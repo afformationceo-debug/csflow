@@ -193,6 +193,7 @@ export async function GET(request: NextRequest) {
         name: t.name,
         display_name: displayName,
         specialty: (t.specialty as string) || "general",
+        country: t.country || null,
         status,
         default_language: defaultLanguage,
         logo_url: t.logo_url,
@@ -226,7 +227,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, name_en, display_name, specialty, default_language } = body;
+    const { name, name_en, display_name, specialty, default_language, country } = body;
 
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -240,6 +241,7 @@ export async function POST(request: NextRequest) {
       name,
       display_name: displayName,
       specialty: specialty || "general",
+      country: country || null,
       settings: {
         default_language: default_language || "ko",
       },
@@ -283,7 +285,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, ai_config, settings, name, display_name, name_en, specialty } = body;
+    const { id, ai_config, settings, name, display_name, name_en, specialty, country } = body;
 
     if (!id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
@@ -297,6 +299,7 @@ export async function PATCH(request: NextRequest) {
     if (name !== undefined) updateData.name = name;
     if (display_name !== undefined) updateData.display_name = display_name;
     if (name_en !== undefined) updateData.display_name = name_en;
+    if (country !== undefined) updateData.country = country;
     if (specialty !== undefined) updateData.specialty = specialty;
 
     if (ai_config !== undefined) {
