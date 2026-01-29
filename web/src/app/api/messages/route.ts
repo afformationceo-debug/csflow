@@ -202,24 +202,24 @@ export async function POST(request: NextRequest) {
       metadata.ai_logs = aiMetadata.logs;
     }
 
+    // For outbound messages (agent/AI → customer):
+    // - content: customer language (e.g., English) — shown in main bubble
+    // - translated_content: Korean original — shown in "원문 (한국어)" section
     const insertData: Record<string, unknown> = {
       conversation_id: conversationId,
       direction: "outbound",
       sender_type: senderType,
       content_type: contentType || "text",
-      content: content,
+      content: translatedContent || content, // Customer language (or Korean if no translation)
       original_language: "KO",
+      translated_content: translatedContent ? content : undefined, // Korean original (only if translated)
+      translated_language: translatedContent ? "KO" : undefined,
       status: "pending",
       metadata,
     };
 
     if (mediaUrl) {
       insertData.media_url = mediaUrl;
-    }
-
-    if (translatedContent) {
-      insertData.translated_content = translatedContent;
-      insertData.translated_language = translatedLanguage;
     }
 
     const { data: message, error: msgError } = await (supabase
