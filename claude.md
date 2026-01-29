@@ -2288,6 +2288,182 @@ const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
 3. **UX 버그는 작은 상태 관리로 해결 가능**: `useRef` 하나로 복잡한 스크롤 문제 해결
 4. **디버그 스크립트의 가치**: 프로덕션 DB 직접 조회로 근본 원인 빠르게 파악
 
+---
+
+## 21. 인박스 UX 및 AI 자동응답 개선 (2026-01-29)
+
+### 21.1 버그 개요
+
+사용자 리포트에 의해 발견된 3가지 추가 문제:
+- **Bug 0**: 에스컬레이션 고객 질문에 "hello [한국어] hello" 형식으로 불필요한 라벨 표시
+- **Bug 1**: 인박스 AI 응답의 "원문 (한국어)" 섹션이 고객 언어로 표시되어 확인 불가
+- **Bug 3**: LINE webhook이 이미 AI 응답한 메시지에 중복 응답 생성
+
+### 21.2 버그 0: 에스컬레이션 고객 질문 형식 개선 ✅
+
+#### 증상
+- **기대값**: "hello" (원문과 번역이 같을 때 중복 표시 제거)
+- **실제값**: "hello\n\n[한국어] hello" (불필요한 라벨과 중복 텍스트)
+
+#### 근본 원인
+짧은 인사말("hello")은 DeepL이 번역하지 않고 그대로 반환하는데, 코드에서 원문 ≠ "ko"면 무조건 "[한국어]" 라벨을 붙임.
+
+#### 수정 내용 (Commit `48e061e`)
+
+**파일**: `/web/src/app/api/escalations/route.ts`
+
+**변경 사항** (라인 226-230):
+```typescript
+// Get customer's actual question (original language + Korean translation)
+const customerMsg = conv?.id ? customerMessagesMap[conv.id] : null;
+const customerQuestion = customerMsg
+  ? (customerMsg.originalLanguage !== "ko" && customerMsg.original !== customerMsg.korean
+      ? `${customerMsg.original}\n\n[한국어] ${customerMsg.korean}`
+      : customerMsg.original)
+  : lastMessage;
+```
+
+**핵심 로직**:
+- `originalLanguage !== "ko"` **AND** `original !== korean` 조건 추가
+- 번역이 실제로 다를 때만 "[한국어]" 라벨 표시
+- 원문 = 번역이면 원문만 표시
+
+**효과**:
+- "hello" → "hello" (깔끔하게 표시)
+- "I would like to visit..." → "I would like to visit...\n\n[한국어] 2월 16일에 방문하고 싶습니다" (번역 표시)
+
+### 21.3 버그 1: 인박스 AI 응답 번역 표시 수정 ✅
+
+#### 증상
+AI 어시스턴트가 고객 언어(영어)로 메시지 전송 시, "원문 (한국어)" 섹션도 영어로 표시됨.
+
+**예시**:
+- **전송 메시지**: "Hi! Are you looking to come in on February 16th 😊..."
+- **"원문 (한국어)"**: "Hi! Are you looking to come in on February 16th 😊..." (영어 - **잘못됨**)
+- **기대값**: "안녕하세요! 2월 16일에 방문하시려는 건가요? 😊..." (한국어)
+
+#### 근본 원인
+UI 코드 라인 2080에서 AI 메시지일 때 `msg.content`를 표시하는데, **AI 메시지의 `content`는 이미 고객 언어로 번역된 텍스트**임.
+
+**데이터 구조** (AI 메시지):
+- `content`: 고객 언어 (영어) — 실제 전송된 메시지
+- `translatedContent`: 한국어 원문 — 담당자가 확인해야 할 원문
+
+#### 수정 내용 (Commit `48e061e`)
+
+**파일**: `/web/src/app/(dashboard)/inbox/page.tsx`
+
+**변경 사항** (라인 2074-2081):
+```typescript
+<p className={cn(
+  "text-xs leading-relaxed",
+  msg.sender === "agent" ? "text-primary-foreground" :
+  msg.sender === "ai" ? "text-violet-800 dark:text-violet-300" :
+  "text-muted-foreground"
+)}>
+  {msg.translatedContent}
+</p>
+```
+
+**변경 전**:
+```typescript
+{(msg.sender === "agent" || msg.sender === "ai") ? msg.content : msg.translatedContent}
+```
+
+**핵심 수정**:
+- 모든 메시지 유형에서 `translatedContent` 사용
+- AI/에이전트 메시지: `translatedContent` = 한국어 원문
+- 고객 메시지: `translatedContent` = 한국어 번역
+
+**효과**:
+- AI 응답의 "원문 (한국어)" 섹션에 이제 정확한 한국어 원문 표시
+- 담당자가 AI가 무엇을 보냈는지 명확히 확인 가능
+
+### 21.4 버그 3: LINE Webhook 중복 AI 응답 방지 ✅
+
+#### 증상
+고객이 한 번 메시지를 보냈는데, AI가 같은 응답을 여러 번 생성하여 전송함.
+
+#### 근본 원인
+LINE webhook이 메시지를 받을 때마다 **무조건 RAG 파이프라인을 실행**하고 있었음. 대화 상태나 이전 응답 여부를 확인하지 않음.
+
+#### 수정 내용 (Commit `48e061e`)
+
+**파일**: `/web/src/app/api/webhooks/line/route.ts`
+
+**변경 사항** (라인 326-357):
+
+**1. 대화 상태 확인 추가**:
+```typescript
+// 6.5. Check conversation status - skip AI if already escalated or waiting for agent
+if (conversation.status === "escalated" || conversation.status === "waiting") {
+  console.log(`[LINE] Conversation ${conversation.id} is ${conversation.status}, skipping AI response`);
+  return;
+}
+```
+
+**2. 최근 메시지 확인 추가**:
+```typescript
+// 6.6. Check if AI already responded recently - prevent duplicate responses
+const { data: recentMessages } = await (supabase as any)
+  .from("messages")
+  .select("id, sender_type, created_at")
+  .eq("conversation_id", conversation.id)
+  .order("created_at", { ascending: false })
+  .limit(3);
+
+if (recentMessages && recentMessages.length > 1) {
+  // Check if last message before current customer message was from AI
+  const lastMessage = recentMessages[1]; // [0] is current customer message, [1] is previous
+  if (lastMessage && lastMessage.sender_type === "ai") {
+    console.log(`[LINE] AI already responded recently, skipping duplicate response`);
+    return;
+  }
+}
+```
+
+**핵심 로직**:
+1. **대화 상태 확인**: `escalated` 또는 `waiting` 상태면 AI 응답 건너뛰기
+2. **최근 응답 확인**: 최근 3개 메시지 중 바로 이전 메시지가 AI 응답이면 건너뛰기
+3. RAG 파이프라인은 위 조건을 통과한 경우에만 실행
+
+**효과**:
+- 에스컬레이션된 대화에 AI가 간섭하지 않음
+- 이미 AI가 응답한 메시지에 중복 응답 생성 방지
+- 고객이 새로운 질문을 할 때만 AI가 다시 응답
+
+### 21.5 배포 및 검증
+
+**커밋 내역**:
+- `48e061e`: "fix: Fix 3 critical inbox issues - escalation display, translation, and duplicate AI responses"
+
+**빌드 결과**:
+```
+✓ Compiled successfully
+✓ Type checking completed
+✓ Linting completed with 0 errors
+```
+
+**배포**:
+- ✅ GitHub 푸시 완료
+- ✅ Vercel 자동 배포 트리거됨
+- 🌐 프로덕션 URL: https://csflow.vercel.app
+
+**검증 방법**:
+1. **에스컬레이션**: https://csflow.vercel.app/escalations → "고객 질문" 필드 확인
+   - "hello [한국어] hello" → "hello"
+   - 실제 번역 있을 때만 "[한국어]" 라벨 표시
+2. **인박스 번역**: https://csflow.vercel.app/inbox → AI 응답 후 "원문 (한국어)" 섹션 확인
+   - 이제 한국어 원문이 정확히 표시됨
+3. **중복 응답**: LINE 테스트 계정으로 메시지 전송 → AI 응답 1회만 발생하는지 확인
+
+### 21.6 교훈
+
+1. **UI 데이터 매핑 주의**: `content` vs `translatedContent`의 의미가 메시지 방향(inbound/outbound)에 따라 다름을 이해해야 함
+2. **중복 방지는 다층 방어**: 대화 상태 + 최근 메시지 확인으로 여러 시나리오 커버
+3. **조건부 라벨 표시**: 불필요한 정보는 숨기는 것이 UX 개선
+4. **Webhook 멱등성**: 같은 이벤트를 여러 번 받아도 중복 처리되지 않도록 설계 필요
+
 #### 7.19 메신저 채널 연동 가이드 (2026-01-28)
 
 ##### LINE 채널 연동 (완료)

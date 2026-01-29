@@ -96,78 +96,70 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Collect all conversation IDs to fetch customer messages (inbound only)
-    const conversationIds = (escalations || [])
-      .map((e: any) => e.conversation?.id)
+    // Collect message IDs from escalations (the actual messages that triggered escalation)
+    const messageIds = (escalations || [])
+      .map((e: any) => e.message_id)
       .filter(Boolean);
 
-    // Fetch customer messages with original language + Korean translation
-    interface CustomerMessage {
+    // Fetch the actual escalation trigger messages
+    interface EscalationMessage {
       original: string;          // Customer's native language
       korean: string;           // Korean translation
       originalLanguage: string; // Language code
     }
-    let customerMessagesMap: Record<string, CustomerMessage> = {};
+    let escalationMessagesMap: Record<string, EscalationMessage> = {};
     let lastMessagesMap: Record<string, string> = {};
 
-    if (conversationIds.length > 0) {
-      // Get all messages for these conversations (ascending = oldest first)
+    if (messageIds.length > 0) {
+      // Get the actual messages that triggered each escalation
       const { data: messages } = await (supabase as any)
         .from("messages")
-        .select("conversation_id, content, translated_content, original_language, direction, sender_type, created_at")
-        .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: true }); // Oldest first to get initial customer message
+        .select("id, content, translated_content, original_language, direction, sender_type")
+        .in("id", messageIds);
 
       if (messages) {
-        // First pass: find FIRST customer message (the original question that triggered escalation)
         for (const msg of messages) {
-          // Skip if we already found a customer message for this conversation
-          if (customerMessagesMap[msg.conversation_id]) {
-            continue;
-          }
+          // Determine original (customer language) and Korean translation
+          const originalLang = msg.original_language || "ko";
 
-          // Find first customer message (inbound) — exclude internal notes, system, agent, AI
-          const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
-            && msg.sender_type !== "internal_note"
-            && msg.sender_type !== "system"
-            && msg.sender_type !== "agent"
-            && msg.sender_type !== "ai";
+          // For inbound messages:
+          // - content = customer's native language (original)
+          // - translated_content = Korean translation
+          const customerNativeText = msg.content || "";
+          const koreanText = originalLang === "ko"
+            ? customerNativeText
+            : (msg.translated_content || customerNativeText);
 
-          if (isCustomerMessage) {
-            // Determine original (customer language) and Korean translation
-            const originalLang = msg.original_language || "ko";
-
-            // For inbound messages:
-            // - content = customer's native language (original)
-            // - translated_content = Korean translation
-            const customerNativeText = msg.content || "";
-            const koreanText = originalLang === "ko"
-              ? customerNativeText
-              : (msg.translated_content || customerNativeText);
-
-            customerMessagesMap[msg.conversation_id] = {
-              original: customerNativeText,
-              korean: koreanText,
-              originalLanguage: originalLang,
-            };
-          }
+          escalationMessagesMap[msg.id] = {
+            original: customerNativeText,
+            korean: koreanText,
+            originalLanguage: originalLang,
+          };
         }
+      }
+    }
 
-        // Second pass: find LAST customer message for fallback (iterate backwards)
-        for (let i = messages.length - 1; i >= 0; i--) {
-          const msg = messages[i];
-          if (lastMessagesMap[msg.conversation_id]) {
-            continue;
-          }
+    // Collect conversation IDs for last message fallback
+    const conversationIds = (escalations || [])
+      .map((e: any) => e.conversation?.id)
+      .filter(Boolean);
 
-          // Find most recent customer message only (not agent/internal/system/ai)
-          const isCustomerMessage = (msg.direction === "inbound" || msg.sender_type === "customer")
-            && msg.sender_type !== "internal_note"
-            && msg.sender_type !== "system"
-            && msg.sender_type !== "agent"
-            && msg.sender_type !== "ai";
+    if (conversationIds.length > 0) {
+      // Get last customer message for each conversation (fallback)
+      const { data: convMessages } = await (supabase as any)
+        .from("messages")
+        .select("conversation_id, content, created_at")
+        .in("conversation_id", conversationIds)
+        .eq("direction", "inbound")
+        .neq("sender_type", "internal_note")
+        .neq("sender_type", "system")
+        .neq("sender_type", "agent")
+        .neq("sender_type", "ai")
+        .order("created_at", { ascending: false });
 
-          if (isCustomerMessage) {
+      if (convMessages) {
+        for (const msg of convMessages) {
+          if (!lastMessagesMap[msg.conversation_id]) {
             lastMessagesMap[msg.conversation_id] = msg.content || "";
           }
         }
@@ -223,12 +215,12 @@ export async function GET(request: NextRequest) {
         esc.reason ||
         "";
 
-      // Get customer's actual question (original language + Korean translation)
-      const customerMsg = conv?.id ? customerMessagesMap[conv.id] : null;
-      const customerQuestion = customerMsg
-        ? (customerMsg.originalLanguage !== "ko" && customerMsg.original !== customerMsg.korean
-            ? `${customerMsg.original}\n\n[한국어] ${customerMsg.korean}`
-            : customerMsg.original)
+      // Get customer's actual question from the escalation trigger message
+      const escalationMsg = esc.message_id ? escalationMessagesMap[esc.message_id] : null;
+      const customerQuestion = escalationMsg
+        ? (escalationMsg.originalLanguage !== "ko" && escalationMsg.original !== escalationMsg.korean
+            ? `${escalationMsg.original}\n\n[한국어] ${escalationMsg.korean}`
+            : escalationMsg.original)
         : lastMessage;
 
       // Extract AI recommendations from metadata
