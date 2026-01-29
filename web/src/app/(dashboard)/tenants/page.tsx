@@ -26,6 +26,14 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Plus,
   Building2,
   Bot,
@@ -53,6 +61,10 @@ import {
   Download,
   Upload,
   FileText,
+  Grid3x3,
+  List,
+  Edit,
+  MapPin,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -94,6 +106,7 @@ interface Tenant {
   name: string;
   display_name: string;
   specialty: Specialty;
+  country?: string | null;
   status: TenantStatus;
   default_language: string;
   ai_config: TenantAIConfig;
@@ -258,11 +271,15 @@ export default function TenantsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [aiConfigTenantId, setAiConfigTenantId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"card" | "table">("table"); // Default to table view
+  const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null); // For viewing/editing
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [newTenant, setNewTenant] = useState({
     name: "",
     display_name: "",
     specialty: "" as Specialty | "",
     default_language: "ko",
+    country: "",
   });
 
   const [editingAIConfig, setEditingAIConfig] = useState<TenantAIConfig | null>(null);
@@ -366,9 +383,10 @@ export default function TenantsPage() {
           display_name: newTenant.display_name,
           specialty: newTenant.specialty,
           default_language: newTenant.default_language,
+          country: newTenant.country || null,
         }),
       });
-      setNewTenant({ name: "", display_name: "", specialty: "", default_language: "ko" });
+      setNewTenant({ name: "", display_name: "", specialty: "", default_language: "ko", country: "" });
       setIsAddDialogOpen(false);
       loadTenants();
     } catch (error) {
@@ -649,6 +667,19 @@ export default function TenantsPage() {
               </div>
               <div className="space-y-2">
                 <Label className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  국가 (선택)
+                </Label>
+                <Input
+                  placeholder="예: 일본, 대만, 베트남"
+                  value={newTenant.country}
+                  onChange={(e) =>
+                    setNewTenant({ ...newTenant, country: e.target.value })
+                  }
+                  className="border-0 bg-muted/50 shadow-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
                   기본 언어
                 </Label>
                 <Select
@@ -725,15 +756,37 @@ export default function TenantsPage() {
         ))}
       </div>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="거래처 검색..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9 border-0 bg-muted/40 shadow-sm h-9 text-sm"
-        />
+      {/* Search Bar and View Toggle */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="거래처 검색..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 border-0 bg-muted/40 shadow-sm h-9 text-sm"
+          />
+        </div>
+        <div className="flex items-center gap-1 rounded-lg bg-muted/40 p-1">
+          <Button
+            variant={viewMode === "card" ? "secondary" : "ghost"}
+            size="icon"
+            className="h-7 w-7 rounded-md"
+            onClick={() => setViewMode("card")}
+            title="카드 뷰"
+          >
+            <Grid3x3 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === "table" ? "secondary" : "ghost"}
+            size="icon"
+            className="h-7 w-7 rounded-md"
+            onClick={() => setViewMode("table")}
+            title="테이블 뷰"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Loading State */}
@@ -771,8 +824,8 @@ export default function TenantsPage() {
         </div>
       )}
 
-      {/* Tenant List */}
-      {!isLoading && <div className="grid gap-3 md:grid-cols-2">
+      {/* Tenant List - Card View */}
+      {!isLoading && viewMode === "card" && <div className="grid gap-3 md:grid-cols-2">
           {filteredTenants.map((tenant) => {
             const specialtyInfo = SPECIALTY_MAP[tenant.specialty] || SPECIALTY_MAP.general;
             const SpecialtyIcon = specialtyInfo.icon;
@@ -989,6 +1042,161 @@ export default function TenantsPage() {
             );
           })}
         </div>}
+
+      {/* Tenant List - Table View */}
+      {!isLoading && viewMode === "table" && filteredTenants.length > 0 && (
+        <Card className="border-0 shadow-sm rounded-2xl backdrop-blur-sm bg-card/80 overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border/40 hover:bg-transparent">
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold">거래처명</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold">진료과목</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold">국가</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold">상태</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-center">AI 정확도</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-center">대화 수</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-center">에스컬레이션율</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-center">월간 문의</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold">채널</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-center">액션</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTenants.map((tenant) => {
+                const specialtyInfo = SPECIALTY_MAP[tenant.specialty] || SPECIALTY_MAP.general;
+                const SpecialtyIcon = specialtyInfo.icon;
+
+                return (
+                  <TableRow key={tenant.id} className="border-border/40 hover:bg-muted/40 transition-colors">
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${specialtyInfo.bg} font-bold text-sm ${specialtyInfo.color}`}
+                        >
+                          {tenant.display_name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold">{tenant.display_name}</div>
+                          <div className="text-[10px] text-muted-foreground font-mono">{tenant.name}</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={`${SPECIALTY_BADGE_COLORS[tenant.specialty] || SPECIALTY_BADGE_COLORS.general} border-0 text-[10px] px-2 py-0.5 font-medium rounded-full`}
+                      >
+                        <SpecialtyIcon className="mr-1 h-3 w-3" />
+                        {specialtyInfo.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>{tenant.country || "-"}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {tenant.status === "active" ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500 live-dot" />
+                          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                            활성
+                          </span>
+                        </div>
+                      ) : (
+                        <Badge className="bg-red-500/10 text-red-500 border-0 text-[10px] px-2 py-0.5 rounded-full">
+                          중지
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <MiniRingChart
+                          value={tenant.stats.ai_accuracy}
+                          size={28}
+                          strokeWidth={2.5}
+                          color={getAccuracyColor(tenant.stats.ai_accuracy)}
+                        />
+                        <span className={`text-xs font-bold tabular-nums ${getAccuracyTextClass(tenant.stats.ai_accuracy)}`}>
+                          {tenant.stats.ai_accuracy}%
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums text-sm font-medium">
+                      {tenant.stats.total_conversations.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className={`text-sm font-semibold tabular-nums ${tenant.stats.escalation_rate > 15 ? "text-amber-500" : "text-muted-foreground"}`}>
+                        {tenant.stats.escalation_rate}%
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums text-sm font-medium">
+                      {tenant.stats.monthly_inquiries.toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 flex-wrap max-w-[120px]">
+                        {tenant.channels.slice(0, 3).map((ch, i) => {
+                          const channelInfo = CHANNEL_ICON_MAP[ch.type] || CHANNEL_ICON_MAP.line;
+                          const ChannelIcon = channelInfo.icon;
+                          return (
+                            <div
+                              key={`${ch.type}-${i}`}
+                              className="flex items-center gap-0.5 text-[10px] bg-background/60 backdrop-blur-sm px-1.5 py-0.5 rounded-full"
+                              title={ch.accountName}
+                            >
+                              <ChannelIcon className={`h-2.5 w-2.5 ${channelInfo.color}`} />
+                            </div>
+                          );
+                        })}
+                        {tenant.channels.length > 3 && (
+                          <span className="text-[9px] text-muted-foreground">+{tenant.channels.length - 3}</span>
+                        )}
+                        {tenant.channels.length === 0 && (
+                          <span className="text-[10px] text-muted-foreground italic">없음</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg"
+                          onClick={() => {
+                            setSelectedTenant(tenant);
+                            setIsDetailDialogOpen(true);
+                          }}
+                          title="상세 보기"
+                        >
+                          <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg"
+                          onClick={() => openAIConfig(tenant)}
+                          title="AI 설정"
+                        >
+                          <Brain className="h-3.5 w-3.5 text-violet-500" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteTenant(tenant.id)}
+                          title="삭제"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
 
       {/* Empty State */}
       {!isLoading && filteredTenants.length === 0 && tenants.length > 0 && (
@@ -1244,6 +1452,221 @@ export default function TenantsPage() {
             </Button>
             <Button size="sm" onClick={handleSaveAIConfig}>
               저장
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tenant Detail/Edit Dialog */}
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-sm">
+                <Building2 className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <span className="text-base">거래처 상세 정보</span>
+                {selectedTenant && (
+                  <span className="block text-[11px] text-muted-foreground font-normal">
+                    {selectedTenant.display_name}
+                  </span>
+                )}
+              </div>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              거래처 정보를 확인하고 수정합니다.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedTenant && (
+            <div className="space-y-5 py-4">
+              {/* Basic Info Section */}
+              <div className="space-y-3">
+                <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  기본 정보
+                </h4>
+                <div className="space-y-2.5 p-4 rounded-xl bg-muted/30">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        거래처 ID
+                      </Label>
+                      <p className="text-sm font-mono font-medium mt-1">{selectedTenant.name}</p>
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        표시 이름
+                      </Label>
+                      <p className="text-sm font-semibold mt-1">{selectedTenant.display_name}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        진료과목
+                      </Label>
+                      <div className="mt-1">
+                        <Badge
+                          className={`${SPECIALTY_BADGE_COLORS[selectedTenant.specialty]} border-0 text-[10px] px-2 py-0.5`}
+                        >
+                          {SPECIALTY_MAP[selectedTenant.specialty]?.label}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        국가
+                      </Label>
+                      <p className="text-sm font-medium mt-1">{selectedTenant.country || "-"}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        기본 언어
+                      </Label>
+                      <p className="text-sm font-medium mt-1">{selectedTenant.default_language.toUpperCase()}</p>
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        상태
+                      </Label>
+                      <div className="mt-1">
+                        {selectedTenant.status === "active" ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500 live-dot" />
+                            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                              활성
+                            </span>
+                          </div>
+                        ) : (
+                          <Badge className="bg-red-500/10 text-red-500 border-0 text-[10px]">
+                            중지
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats Section */}
+              <div className="space-y-3">
+                <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  운영 통계
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-lg bg-gradient-to-br from-violet-500/5 to-indigo-500/10 border border-border/40">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+                      AI 정확도
+                    </p>
+                    <p className="text-xl font-bold">{selectedTenant.stats.ai_accuracy}%</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500/5 to-cyan-500/10 border border-border/40">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+                      총 대화 수
+                    </p>
+                    <p className="text-xl font-bold">{selectedTenant.stats.total_conversations.toLocaleString()}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-gradient-to-br from-amber-500/5 to-orange-500/10 border border-border/40">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+                      에스컬레이션율
+                    </p>
+                    <p className="text-xl font-bold">{selectedTenant.stats.escalation_rate}%</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-gradient-to-br from-emerald-500/5 to-teal-500/10 border border-border/40">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+                      월간 문의
+                    </p>
+                    <p className="text-xl font-bold">{selectedTenant.stats.monthly_inquiries.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Channels Section */}
+              <div className="space-y-3">
+                <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  연결된 채널
+                </h4>
+                <div className="flex flex-wrap gap-2 p-4 rounded-xl bg-muted/30">
+                  {selectedTenant.channels.map((ch, i) => {
+                    const channelInfo = CHANNEL_ICON_MAP[ch.type] || CHANNEL_ICON_MAP.line;
+                    const ChannelIcon = channelInfo.icon;
+                    return (
+                      <div
+                        key={`${ch.type}-${i}`}
+                        className="flex items-center gap-2 text-sm bg-background/60 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-border/40"
+                      >
+                        <ChannelIcon className={`h-4 w-4 ${channelInfo.color}`} />
+                        <span className="font-medium capitalize">
+                          {ch.type === "kakao" ? "카카오" : ch.type}
+                        </span>
+                        <span className="text-muted-foreground text-xs">({ch.accountName})</span>
+                      </div>
+                    );
+                  })}
+                  {selectedTenant.channels.length === 0 && (
+                    <span className="text-sm text-muted-foreground italic">연결된 채널이 없습니다</span>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Config Summary */}
+              <div className="space-y-3">
+                <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  AI 설정
+                </h4>
+                <div className="space-y-2 p-4 rounded-xl bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">사용 모델</span>
+                    <span className="text-sm font-medium">{selectedTenant.ai_config.preferred_model}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">신뢰도 임계값</span>
+                    <span className="text-sm font-medium">{(selectedTenant.ai_config.confidence_threshold * 100).toFixed(0)}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">자동 응답</span>
+                    <Badge className={selectedTenant.ai_config.auto_response_enabled ? "bg-emerald-500/10 text-emerald-600 border-0" : "bg-gray-500/10 text-gray-600 border-0"}>
+                      {selectedTenant.ai_config.auto_response_enabled ? "활성" : "비활성"}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Created Date */}
+              <div className="pt-3 border-t border-border/40">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">등록일</span>
+                  <span className="font-medium tabular-nums">
+                    {new Date(selectedTenant.created_at).toLocaleString("ko-KR")}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsDetailDialogOpen(false)}
+            >
+              닫기
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (selectedTenant) {
+                  setIsDetailDialogOpen(false);
+                  openAIConfig(selectedTenant);
+                }
+              }}
+              className="gap-1.5"
+            >
+              <Edit className="h-3.5 w-3.5" />
+              AI 설정 수정
             </Button>
           </DialogFooter>
         </DialogContent>

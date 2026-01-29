@@ -84,6 +84,7 @@ interface Tenant {
   id: string;
   name: string;
   specialty?: string;
+  country?: string;
 }
 
 // --- Data is now fetched from /api/team ---
@@ -340,7 +341,12 @@ function TenantMultiSelect({
                     </div>
                     <div className="flex items-center gap-2">
                       <span>{tenant.name}</span>
-                      {tenant.specialty && (
+                      {tenant.country && (
+                        <span className="text-xs text-muted-foreground">
+                          ({tenant.country})
+                        </span>
+                      )}
+                      {tenant.specialty && !tenant.country && (
                         <span className="text-xs text-muted-foreground">
                           ({tenant.specialty})
                         </span>
@@ -386,11 +392,12 @@ export default function TeamPage() {
         setTeamMembers(teamData.members);
       }
       if (tenantsData.tenants) {
-        // Convert to Tenant[] with id, name, specialty
+        // Convert to Tenant[] with id, name, specialty, country
         const tenantObjects: Tenant[] = tenantsData.tenants.map((t: any) => ({
           id: t.id,
           name: t.name || t.display_name || "Unknown",
           specialty: t.specialty,
+          country: t.country,
         }));
         setAllTenants(tenantObjects);
       }
