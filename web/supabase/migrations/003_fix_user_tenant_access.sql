@@ -84,4 +84,4 @@ FROM users u
 WHERE u.id = 'f1b421d2-18c6-43e3-a56e-b62a504bb8ba';
 
 -- Step 4: Show all tenants for verification
-SELECT id, name, display_name FROM tenants;
+SELECT id, name FROM tenants;
