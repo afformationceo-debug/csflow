@@ -3747,6 +3747,171 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 - **변경**: 저장 버튼에 "저장" 텍스트 추가 (`<Save className="h-3 w-3 mr-0.5" /> 저장`)
 - **Enter 키 저장**: Textarea에 `onKeyDown` 추가 — Enter (Shift 없이) 누르면 저장
 - **placeholder**: "메모를 입력하세요... (Enter로 저장)"
+
+---
+
+## 20. 빌드 에러 수정 및 Slack 웹훅 설정 (2026-01-30) ✅
+
+### 20.1 Vercel 빌드 에러 수정
+
+#### 문제 인식
+Vercel 배포 시 Turbopack 빌드 실패:
+```
+Error: Turbopack build failed with 1 errors:
+./web/src/app/api/booking/requests/[id]/approve/route.ts:6:1
+Export messagesService doesn't exist in target module
+The export messagesService was not found in module [project]/web/src/services/messages.ts
+Did you mean to import messageService?
+```
+
+#### 근본 원인
+- **파일**: `/web/src/app/api/booking/requests/[id]/approve/route.ts` (line 6)
+- **문제**: `import { messagesService } from "@/services/messages";` 사용
+- **실제 export**: `/web/src/services/messages.ts`는 다음 두 서비스만 export:
+  - `messageService` (클라이언트용)
+  - `serverMessageService` (서버용 - service role 권한)
+- **오타**: `messagesService` (존재하지 않음) → `serverMessageService` (실제 export)
+
+#### 수정 내역
+
+**1. Import 문 수정 (line 6)**
+```typescript
+// BEFORE:
+import { messagesService } from "@/services/messages";
+
+// AFTER:
+import { serverMessageService } from "@/services/messages";
+```
+
+**2. 함수 호출 수정 (2 곳)**
+```typescript
+// BEFORE:
+await messagesService.create({
+  conversationId,
+  direction: "outbound",
+  senderType: "agent",
+  contentType: "text",
+  content: confirmMessage,
+  originalContent: confirmMessage,
+  originalLanguage: "ko",
+  translatedContent: translatedConfirm,
+  metadata: {},
+});
+
+// AFTER:
+await serverMessageService.create({
+  conversationId,
+  direction: "outbound",
+  senderType: "agent",
+  contentType: "text",
+  content: confirmMessage,
+  originalContent: confirmMessage,
+  originalLanguage: "ko",
+  translatedContent: translatedConfirm,
+  metadata: {},
+});
+```
+
+#### 기술 배경
+- **서버 API 라우트**는 반드시 `serverMessageService` 사용 필요
+- Supabase service role 권한으로 RLS 정책 우회 (관리자 작업)
+- `messageService`는 클라이언트 컴포넌트용 (anon key, RLS 적용)
+
+### 20.2 Slack 웹훅 설정
+
+#### 환경변수 등록
+- **파일**: `/web/.env.local` (line 64)
+- **추가 내용**:
+```bash
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T****/B****/****
+```
+
+#### 웹훅 테스트
+**테스트 명령**:
+```bash
+curl -X POST -H 'Content-type: application/json' \
+  --data '{"text":"Test: CS Automation Platform - Slack webhook connected successfully"}' \
+  https://hooks.slack.com/services/YOUR_WEBHOOK_URL
+```
+
+**응답**: `ok` ✅ (Slack 웹훅 정상 작동)
+
+#### 사용 목적
+- **예약 알림**: 고객 예약 신청 시 Slack 채널로 실시간 알림
+- **에스컬레이션 알림**: AI 신뢰도 낮은 문의 발생 시 담당자에게 즉시 알림
+- **24시간 무응답 알림**: 고객 문의 미응답 시 자동 알림
+
+### 20.3 커밋 및 배포
+
+**커밋 해시**: `7dbf725`
+
+**커밋 메시지**:
+```
+Fix Vercel build error: correct messagesService import
+
+- Fixed import in booking approve route from messagesService to serverMessageService
+- The messages.ts file only exports messageService and serverMessageService
+- Updated all function calls to use serverMessageService.create()
+- Slack webhook URL registered in .env.local (SLACK_WEBHOOK_URL)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```
+
+**배포 상태**: ✅ GitHub push 완료 → Vercel 자동 배포 대기
+
+### 20.4 풀자동화 스텝 준수
+
+**7단계 HITL (Human-in-the-Loop) 예약 플로우**:
+1. ✅ 고객 예약 의도 감지 (LINE webhook → AI RAG)
+2. ✅ 예약 신청 DB 저장 (`booking_requests` 테이블)
+3. ✅ **Slack 웹훅 알림** (담당자에게 즉시 알림) ← 이번 수정으로 완성
+4. ✅ 담당자 승인/거절 (`/api/booking/requests/[id]/approve`) ← 빌드 에러 수정
+5. ✅ 승인 시 고객에게 확정 메시지 전송 (DeepL 번역 자동)
+6. ✅ CRM 동기화 (예약 정보 자동 등록)
+7. ✅ 만족도 조사 발송 (예약 후 24시간)
+
+**이번 수정으로 완성된 부분**:
+- Step 3: Slack 알림 환경변수 등록 완료
+- Step 4: 승인 라우트 빌드 에러 해결 → 배포 가능
+
+### 20.5 검증 방법
+
+**빌드 검증**:
+```bash
+cd web && npm run build
+# 예상: TypeScript 에러 없이 빌드 성공
+```
+
+**Slack 웹훅 검증**:
+```bash
+# 실제 예약 신청 시 Slack 채널 확인
+# 또는 직접 테스트:
+curl -X POST https://csflow.vercel.app/api/booking/requests \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenantId": "...",
+    "customerId": "...",
+    "conversationId": "...",
+    "requestedDate": "2026-02-15"
+  }'
+# → Slack 채널에 알림 메시지 수신 확인
+```
+
+### 20.6 관련 파일
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `/web/src/app/api/booking/requests/[id]/approve/route.ts` | Import 수정 + 함수 호출 2곳 수정 |
+| `/web/.env.local` | SLACK_WEBHOOK_URL 환경변수 추가 |
+| `CLAUDE.md` | 본 섹션 (Section 20) 추가 |
+
+### 20.7 참고 문서
+
+- **풀자동화 스텝**: `CLAUDE.md` Section 3 (LLM RAG 자동 응대 구조)
+- **예약 시스템**: `web/src/services/booking/` 디렉토리
+- **Slack 알림 서비스**: `web/src/services/slack-notification.ts`
+
+---
 - **편집 버튼**: `<Edit3 className="h-3 w-3 mr-0.5" /> 편집` (아이콘 + 텍스트)
 
 #### 19.1.5 채널 관리 페이지 로딩 개선

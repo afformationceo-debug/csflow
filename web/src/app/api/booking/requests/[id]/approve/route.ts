@@ -123,7 +123,14 @@ async function sendConfirmationToCustomer(
       .eq("id", customerId)
       .single();
 
-    const language = customer?.language || "ko";
+    if (!customer) {
+      return NextResponse.json(
+        { error: "Customer not found" },
+        { status: 404 }
+      );
+    }
+
+    const language = customer.language || "ko";
 
     let messageKo = "";
 
@@ -192,7 +199,14 @@ async function sendRejectionToCustomer(
       .eq("id", customerId)
       .single();
 
-    const language = customer?.language || "ko";
+    if (!customer) {
+      return NextResponse.json(
+        { error: "Customer not found" },
+        { status: 404 }
+      );
+    }
+
+    const language = customer.language || "ko";
 
     let messageKo = `죄송합니다. 요청하신 날짜에 예약이 어렵습니다.
 
