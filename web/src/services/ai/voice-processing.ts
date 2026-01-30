@@ -6,9 +6,19 @@
 import OpenAI from "openai";
 import { createServiceClient } from "@/lib/supabase/server";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy initialization of OpenAI client
+let openai: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("OPENAI_API_KEY environment variable is not set");
+    }
+    openai = new OpenAI({ apiKey });
+  }
+  return openai;
+}
 
 export interface VoiceTranscriptionResult {
   text: string;
@@ -51,7 +61,7 @@ export async function transcribeVoiceMessage(
 
   try {
     // Use Whisper API for transcription
-    const response = await openai.audio.transcriptions.create({
+    const response = await getOpenAIClient().audio.transcriptions.create({
       file: audioFile,
       model: "whisper-1",
       language: language,
@@ -134,7 +144,7 @@ export async function translateVoiceToEnglish(
   });
 
   try {
-    const response = await openai.audio.translations.create({
+    const response = await getOpenAIClient().audio.translations.create({
       file: audioFile,
       model: "whisper-1",
       prompt: prompt,
