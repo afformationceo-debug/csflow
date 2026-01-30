@@ -40,14 +40,25 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 공개 경로 (웹훅, OAuth, 지식베이스 템플릿 등)
-  const publicRoutes = ["/login", "/api/webhooks", "/api/oauth", "/api/knowledge/template"];
+  // 공개 경로 (웹훅, OAuth)
+  const publicRoutes = ["/login", "/api/webhooks", "/api/oauth"];
   const isPublicRoute = publicRoutes.some((route) =>
     request.nextUrl.pathname.startsWith(route)
   );
 
-  // 인증되지 않은 사용자는 로그인으로 리다이렉트
+  // API 경로는 인증 실패 시 리다이렉트 대신 401 반환
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api");
+
+  // 인증되지 않은 사용자 처리
   if (!user && !isPublicRoute) {
+    if (isApiRoute) {
+      // API 호출은 401 Unauthorized 반환 (리다이렉트 안 함)
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    // 페이지 접근은 로그인으로 리다이렉트
     const loginUrl = new URL("/login", request.url);
     return NextResponse.redirect(loginUrl);
   }
