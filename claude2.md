@@ -879,4 +879,143 @@ k6 run --vus 100 --duration 5m loadtest.js
 
 ---
 
+## 📋 Human-in-the-Loop 풀자동화 예약 시스템 (2026-01-30)
+
+### 시스템 개요
+
+**목적**: 고객 인입부터 예약 확정까지 AI 자동화 + 휴먼 승인 하이브리드 시스템 구축
+
+**플로우**:
+```
+1. 고객 인입 (LINE 메시지)
+   ↓
+2. AI 자동 응대 (RAG + 예약 유도)
+   ↓
+3. 예약 의도 감지 → 예약 양식 전송
+   ↓
+4. 1차 예약 신청 로그 생성
+   ↓
+5. 휴먼 알림 (카카오톡/슬랙)
+   ↓
+6. 휴먼 승인/조율/거절
+   ↓
+7. CRM 자동 예약 등록 (승인 시)
+   ↓
+8. 고객 확정 안내
+```
+
+### 완료된 구현 (2026-01-30)
+
+#### 1. 데이터베이스 스키마 ✅
+**파일**: `/web/supabase/migrations/005_booking_automation_system.sql`
+
+**테이블**:
+- `booking_requests` - 1차 예약 신청 로그 (pending_human_approval → human_approved → confirmed)
+- `human_notifications` - 카카오/슬랙 알림 추적
+- `booking_intent_logs` - AI 의도 감지 로그
+- `channel_accounts.full_automation_enabled` - 풀자동화 ON/OFF
+- `channel_accounts.automation_config` - 자동화 설정 (예약 유도 강도, 알림 채널 등)
+
+**함수**:
+- `create_booking_request()` - AI가 예약 요청 생성
+- `approve_booking_request()` - 휴먼 승인 처리
+- `confirm_booking_to_crm()` - CRM 등록 완료
+
+**뷰**:
+- `pending_booking_requests` - 대기 중인 예약 (대시보드용)
+
+#### 2. AI 예약 의도 감지 서비스 ✅
+**파일**: `/web/src/services/booking/intent-detection.ts`
+
+**기능**:
+- LLM 기반 예약 의도 감지 (신뢰도 0.0~1.0)
+- Intent 분류: booking_inquiry, booking_request, booking_modification, booking_cancellation
+- 엔티티 추출: 날짜, 시간, 시술 종류, 특별 요청
+- 다국어 폴백 키워드 매칭 (KO, EN, JA, ZH)
+- 예약 양식 생성 (언어별)
+- 양식 응답 파싱
+
+#### 3. 예약 요청 관리 서비스 ✅
+**파일**: `/web/src/services/booking/booking-request.ts`
+
+**기능**:
+- 예약 신청 생성 (`createBookingRequest`)
+- 대기 중인 예약 조회 (`getPendingBookingRequests`)
+- 휴먼 승인 처리 (`approveBookingRequest`)
+- 예약 거절 (`rejectBookingRequest`)
+- CRM 등록 완료 (`confirmBookingToCRM`)
+- 풀자동화 모드 확인 (`isFullAutomationEnabled`)
+- 자동화 설정 조회 (`getAutomationConfig`)
+
+#### 4. RAG + 예약 통합 파이프라인 ✅
+**파일**: `/web/src/services/booking/rag-booking-integration.ts`
+
+**기능**:
+- 기존 RAG에 예약 로직 통합
+- 예약 의도 자동 감지
+- 신뢰도 기반 액션 결정:
+  - Confidence >0.9: 예약 요청 즉시 생성
+  - Confidence 0.7-0.89: 예약 양식 전송
+  - Confidence 0.5-0.69: 추가 정보 요청
+  - Confidence <0.5: 일반 응답 + 예약 유도 멘트
+- 양식 응답 자동 파싱 및 예약 생성
+- 예약 확정 메시지 생성 (다국어)
+
+#### 5. 휴먼 알림 시스템 ✅
+**파일**: `/web/src/services/booking/human-notification.ts`
+
+**기능**:
+- Slack 알림 전송 (Block Kit UI, 승인/조율/거절 버튼)
+- 카카오 알림톡 전송 (템플릿 기반)
+- 알림 로그 저장
+- 휴먼 응답 기록
+- 다중 채널 자동 전송 (`notifyHumanForBookingRequest`)
+
+### 시스템 구성
+
+**채널별 풀자동화 설정**:
+```json
+{
+  "full_automation_enabled": false,  // 기본값: 비활성화
+  "automation_config": {
+    "booking_prompt_intensity": "medium",  // low, medium, high
+    "notification_channels": ["slack"],     // kakao_alimtalk, slack, email
+    "auto_crm_sync": true,
+    "require_human_approval": true,
+    "business_hours": {
+      "timezone": "Asia/Seoul",
+      "weekdays": ["mon", "tue", "wed", "thu", "fri"],
+      "hours": "09:00-18:00"
+    }
+  }
+}
+```
+
+### 다음 단계
+
+1. **API 엔드포인트 생성**:
+   - `POST /api/booking/requests` - 예약 생성
+   - `GET /api/booking/requests` - 대기 목록 조회
+   - `PATCH /api/booking/requests/[id]/approve` - 승인
+   - `POST /api/booking/notifications/slack` - Slack 인터랙션 처리
+
+2. **휴먼 대시보드 UI**:
+   - 대기 중인 예약 목록 (`/dashboard/bookings`)
+   - 승인/거절 버튼
+   - 대안 날짜 입력
+
+3. **CRM 연동 완성**:
+   - 승인 후 자동 CRM 등록
+   - 예약 ID 매핑
+
+4. **채널 관리 UI 업데이트**:
+   - 풀자동화 모드 토글
+   - 자동화 설정 편집
+
+5. **메시지 처리 파이프라인 통합**:
+   - LINE/Meta 웹훅에서 `enhancedRAGPipeline.process` 호출
+   - 예약 생성 시 자동 알림 발송
+
+---
+
 이 개발 계획서는 기존 기능을 유지하면서 프로덕션 환경에 필요한 모든 요소를 점진적으로 추가합니다. 각 단계는 독립적으로 테스트 가능하며, 문제 발생 시 안전하게 롤백할 수 있습니다.

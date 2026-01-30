@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
       accountName,
       accountId,
       credentials,
+      fullAutomationEnabled,
       // Meta OAuth fields
       sessionId,
       pageAccessToken,
@@ -256,6 +257,7 @@ export async function POST(request: NextRequest) {
           credentials: credentials || {},
           is_active: true,
           webhook_url: `${webhookBase}${webhookPaths[channelType]}`,
+          full_automation_enabled: fullAutomationEnabled || false,
         })
         .select()
         .single();

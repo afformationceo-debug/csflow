@@ -593,6 +593,18 @@ export default function KnowledgeBasePage() {
                       <SelectItem value="tenants">거래처 (Tenants)</SelectItem>
                     </SelectContent>
                   </Select>
+                  {csvType === "knowledge" && (
+                    <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 text-xs space-y-1.5">
+                      <div className="font-semibold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        풀자동화 시스템 핵심
+                      </div>
+                      <div className="text-muted-foreground leading-relaxed">
+                        지식베이스가 충분히 구축되어야 AI가 예약 관련 질문에 정확하게 답변하고 예약 의도를 감지할 수 있습니다.
+                        최소 <span className="font-semibold text-violet-600 dark:text-violet-400">50개 이상의 FAQ</span>를 업로드하는 것을 권장합니다.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -615,15 +627,33 @@ export default function KnowledgeBasePage() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs space-y-1.5">
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs space-y-2">
                   <div className="font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                     <AlertCircle className="h-3.5 w-3.5" />
                     CSV 형식 안내
                   </div>
                   {csvType === "knowledge" ? (
-                    <div className="text-muted-foreground space-y-0.5">
-                      <div>• 컬럼: tenant_name, title, content, category, tags</div>
-                      <div>• 예시: &quot;힐링안과&quot;,&quot;라식 수술&quot;,&quot;라식은...&quot;,&quot;시술안내&quot;,&quot;라식,수술&quot;</div>
+                    <div className="text-muted-foreground space-y-1">
+                      <div className="font-medium text-amber-700 dark:text-amber-300 mb-1">필수 컬럼:</div>
+                      <div className="pl-2 space-y-0.5">
+                        <div>• <code className="bg-amber-900/10 px-1.5 py-0.5 rounded text-[10px] font-mono">tenant_name</code> - 거래처 이름 (예: &quot;힐링안과&quot;)</div>
+                        <div>• <code className="bg-amber-900/10 px-1.5 py-0.5 rounded text-[10px] font-mono">title</code> - 문서 제목 (예: &quot;라식 수술 비용&quot;)</div>
+                        <div>• <code className="bg-amber-900/10 px-1.5 py-0.5 rounded text-[10px] font-mono">content</code> - 문서 내용 (예: &quot;라식 수술은 양안 기준 150만원입니다&quot;)</div>
+                        <div>• <code className="bg-amber-900/10 px-1.5 py-0.5 rounded text-[10px] font-mono">category</code> - 카테고리 (FAQ, 시술정보, 가격정보, 안내사항, 예약)</div>
+                        <div>• <code className="bg-amber-900/10 px-1.5 py-0.5 rounded text-[10px] font-mono">tags</code> - 태그 (쉼표 구분, 예: &quot;라식,수술,비용&quot;)</div>
+                      </div>
+                      <div className="pt-2 border-t border-amber-500/10 mt-2">
+                        <div className="font-medium text-amber-700 dark:text-amber-300 mb-1">샘플 FAQ 행:</div>
+                        <div className="bg-amber-900/5 rounded p-1.5 font-mono text-[9px] overflow-x-auto">
+                          힐링안과,라식 비용,라식 수술은 양안 기준 150만원입니다.,가격정보,라식,비용
+                        </div>
+                        <div className="bg-amber-900/5 rounded p-1.5 font-mono text-[9px] overflow-x-auto mt-1">
+                          힐링안과,라식 회복기간,라식 수술 후 3-5일 정도면 일상생활이 가능합니다.,FAQ,라식,회복
+                        </div>
+                        <div className="bg-amber-900/5 rounded p-1.5 font-mono text-[9px] overflow-x-auto mt-1">
+                          힐링안과,예약 방법,카카오톡 또는 전화로 예약하실 수 있습니다.,예약,예약,상담
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-muted-foreground space-y-0.5">

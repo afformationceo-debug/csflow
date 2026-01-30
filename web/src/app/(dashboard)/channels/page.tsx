@@ -189,6 +189,7 @@ export default function ChannelsPage() {
   const [newCredentials, setNewCredentials] = useState("");
   const [newChannelSecret, setNewChannelSecret] = useState("");
   const [newBotBasicId, setNewBotBasicId] = useState("");
+  const [fullAutomationEnabled, setFullAutomationEnabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -313,6 +314,7 @@ export default function ChannelsPage() {
           accountName: newAccountName,
           accountId: newAccountId,
           credentials,
+          fullAutomationEnabled,
         }),
       });
 
@@ -344,6 +346,7 @@ export default function ChannelsPage() {
       setNewCredentials("");
       setNewChannelSecret("");
       setNewBotBasicId("");
+      setFullAutomationEnabled(false);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "채널 등록에 실패했습니다");
     } finally {
@@ -580,6 +583,35 @@ export default function ChannelsPage() {
                   />
                 </div>
               )}
+
+              {/* 풀자동화 모드 토글 */}
+              <div className="rounded-lg border border-violet-200 dark:border-violet-900/50 bg-gradient-to-br from-violet-50/50 to-purple-50/30 dark:from-violet-950/20 dark:to-purple-950/10 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                      <Label htmlFor="full-automation" className="text-sm font-semibold text-violet-900 dark:text-violet-100 cursor-pointer">
+                        풀자동화 모드
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      AI가 고객 응대부터 예약 감지, 휴먼 알림, 예약 확정까지 자동으로 처리합니다. 지식베이스가 충분히 구축된 채널에만 활성화하세요.
+                    </p>
+                    {fullAutomationEnabled && (
+                      <div className="mt-2 flex items-start gap-2 text-xs text-violet-700 dark:text-violet-300 bg-violet-100/50 dark:bg-violet-900/20 rounded-md p-2">
+                        <span className="mt-0.5">✓</span>
+                        <span>AI 자동 응대 → 예약 의도 감지 → 예약 양식 전송 → 휴먼 알림 → 예약 확정</span>
+                      </div>
+                    )}
+                  </div>
+                  <Switch
+                    id="full-automation"
+                    checked={fullAutomationEnabled}
+                    onCheckedChange={setFullAutomationEnabled}
+                    className="shrink-0"
+                  />
+                </div>
+              </div>
 
               {submitError && (
                 <p className="text-sm text-destructive">{submitError}</p>

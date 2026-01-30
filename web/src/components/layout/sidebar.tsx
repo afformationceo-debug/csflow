@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   MessageSquare,
+  Calendar,
   Radio,
   Building2,
   BookOpen,
@@ -33,6 +34,11 @@ const navigation = [
     href: "/inbox",
     icon: MessageSquare,
     badge: 23,
+  },
+  {
+    name: "예약 대기 목록",
+    href: "/bookings",
+    icon: Calendar,
   },
   {
     name: "고객 관리",

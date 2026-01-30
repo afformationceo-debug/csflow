@@ -376,15 +376,39 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
       }
     }
 
-    // 7. Process through RAG pipeline
+    // 7. Process through RAG pipeline (Enhanced or Basic based on full_automation_enabled)
     const queryText = translatedText || messageText;
     console.log(`[LINE] Processing RAG query: "${queryText.slice(0, 50)}..."`);
-    const ragResult = await ragPipeline.process({
-      query: queryText,
-      tenantId,
-      conversationId: conversation.id,
-      customerLanguage: originalLanguage,
-    });
+
+    // Check if full automation is enabled for this channel
+    const fullAutomationEnabled = channelAccount.full_automation_enabled || false;
+    console.log(`[LINE] Full automation enabled: ${fullAutomationEnabled}`);
+
+    let ragResult;
+    if (fullAutomationEnabled) {
+      // Use enhanced RAG with booking intelligence
+      const { enhancedRAGPipeline } = await import("@/services/booking/rag-booking-integration");
+      console.log(`[LINE] Using ENHANCED RAG Pipeline with booking detection`);
+
+      ragResult = await enhancedRAGPipeline.process({
+        query: queryText,
+        tenantId,
+        conversationId: conversation.id,
+        customerLanguage: originalLanguage,
+        channelAccountId: channelAccount.id,
+        customerId: customer.id,
+        messageId: savedMessage.id,
+      });
+    } else {
+      // Use basic RAG pipeline
+      console.log(`[LINE] Using BASIC RAG Pipeline`);
+      ragResult = await ragPipeline.process({
+        query: queryText,
+        tenantId,
+        conversationId: conversation.id,
+        customerLanguage: originalLanguage,
+      });
+    }
 
     console.log(`[LINE] RAG result: confidence=${ragResult.confidence}, escalate=${ragResult.shouldEscalate}`);
 
