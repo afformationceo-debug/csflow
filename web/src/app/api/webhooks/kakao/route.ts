@@ -5,7 +5,7 @@ import { serverCustomerService } from "@/services/customers";
 import { serverConversationService } from "@/services/conversations";
 import { serverMessageService } from "@/services/messages";
 import { translationService, SupportedLanguage } from "@/services/translation";
-import { ragPipeline } from "@/services/ai";
+import { ragPipeline } from "@/services/ai/rag-pipeline";
 import { serverEscalationService } from "@/services/escalations";
 
 // Disable body parsing for signature verification

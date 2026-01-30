@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { knowledgeBaseService } from "@/services/ai";
+import { knowledgeBaseService } from "@/services/ai/knowledge-base";
 
 export const dynamic = "force-dynamic";
 

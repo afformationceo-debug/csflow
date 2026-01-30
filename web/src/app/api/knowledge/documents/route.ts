@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { knowledgeBaseService } from "@/services/ai";
+import { knowledgeBaseService } from "@/services/ai/knowledge-base";
 
 // Force dynamic - no caching for real-time data
 export const dynamic = "force-dynamic";
