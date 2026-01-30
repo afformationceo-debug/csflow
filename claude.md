@@ -10221,6 +10221,72 @@ const { data: result, error } = await (supabase as any).rpc("create_booking_requ
 - 등록하지 않으면 에스컬레이션/예약 알림이 Slack으로 전송되지 않음
 - 로컬 개발 환경에서는 `.env.local` 사용하므로 정상 작동
 
+##### 18.14.6 TypeScript Null Safety Error 수정 (booking-request.ts:68) ✅
+
+**빌드 오류 4차**:
+```
+Type error: 'bookingRequest' is possibly 'null'.
+  66 |
+  67 |     return {
+> 68 |       id: bookingRequest.id,
+     |           ^
+  69 |       status: bookingRequest.status,
+  70 |       createdAt: bookingRequest.created_at,
+  71 |     };
+```
+
+**근본 원인**:
+- `/web/src/services/booking/booking-request.ts` lines 56-71
+- Supabase `.single()` 쿼리 결과 `bookingRequest`가 null일 수 있음
+- 오류 체크(`fetchError`)는 있으나 **null 체크가 누락**됨
+- TypeScript가 올바르게 null safety 위반 감지
+
+**수정 내용** (lines 62-71):
+```typescript
+// Before:
+if (fetchError) {
+  console.error("[Booking Request] Fetch error:", fetchError);
+  throw new Error(`Failed to fetch booking request: ${fetchError.message}`);
+}
+
+return {
+  id: bookingRequest.id,        // ❌ Error: 'bookingRequest' is possibly 'null'
+  status: bookingRequest.status,
+  createdAt: bookingRequest.created_at,
+};
+
+// After:
+if (fetchError) {
+  console.error("[Booking Request] Fetch error:", fetchError);
+  throw new Error(`Failed to fetch booking request: ${fetchError.message}`);
+}
+
+if (!bookingRequest) {
+  console.error("[Booking Request] Booking request not found after creation");
+  throw new Error("Booking request not found after creation");
+}
+
+return {
+  id: bookingRequest.id,        // ✅ Safe: null check 추가
+  status: bookingRequest.status,
+  createdAt: bookingRequest.created_at,
+};
+```
+
+**변경 사항**:
+- ✅ `bookingRequest` null 체크 추가 (line 66-69)
+- ✅ null일 경우 명확한 오류 메시지와 함께 에러 throw
+- ✅ TypeScript null safety 위반 해결
+
+**영향**:
+- 예약 신청 생성 후 조회 실패 시 명확한 오류 처리
+- HITL 예약 자동화 시스템의 안정성 향상
+
+**배포 현황**:
+- ✅ Git commit: `2f7beec` "Fix null safety: add bookingRequest null check in createBookingRequest"
+- ✅ Git push 완료 → Vercel 자동 배포 트리거됨
+- 🔄 배포 진행 중 — TypeScript 빌드 성공 확인 대기
+
 **근본 원인 재분석** (commit `296be14`):
 - 문제: 내림차순 정렬 시 AI 응답이 고객 원래 질문보다 최근이라 덮어씌움
 - 해결: 오름차순 정렬 + `continue`로 첫 번째 고객 메시지 선택 (에스컬레이션을 일으킨 최초 질문)

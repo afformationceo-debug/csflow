@@ -319,6 +319,45 @@ export const llmService = {
   },
 
   /**
+   * Simple query without RAG context (for classification, etc.)
+   */
+  async query(params: {
+    systemPrompt: string;
+    userPrompt: string;
+    model?: "gpt-4" | "claude-3-sonnet";
+    temperature?: number;
+    maxTokens?: number;
+  }): Promise<{ text: string }> {
+    const model = params.model || "gpt-4";
+    const temperature = params.temperature ?? 0.7;
+    const maxTokens = params.maxTokens || 1000;
+
+    if (model.startsWith("claude")) {
+      const anthropic = getAnthropicClient();
+      const response = await anthropic.messages.create({
+        model: "claude-3-sonnet-20240229",
+        max_tokens: maxTokens,
+        temperature,
+        system: params.systemPrompt,
+        messages: [{ role: "user", content: params.userPrompt }],
+      });
+      return { text: response.content[0].type === 'text' ? response.content[0].text : '' };
+    } else {
+      const openai = getOpenAIClient();
+      const response = await openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          { role: "system", content: params.systemPrompt },
+          { role: "user", content: params.userPrompt },
+        ],
+        temperature,
+        max_tokens: maxTokens,
+      });
+      return { text: response.choices[0].message.content || "" };
+    }
+  },
+
+  /**
    * Select best model based on query complexity
    */
   selectModel(query: string, documentCount: number): LLMModel {

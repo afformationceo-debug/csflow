@@ -194,9 +194,9 @@ export const enhancedRAGPipeline = {
     if (!parsed.requestedDate) {
       // Incomplete form - ask for missing info
       const response =
-        input.customerLanguage === "ja"
+        input.customerLanguage === "JA"
           ? "ご希望の日付を教えていただけますか？"
-          : input.customerLanguage === "en"
+          : input.customerLanguage === "EN"
           ? "Could you please provide your preferred date?"
           : "희망하시는 날짜를 알려주시겠어요?";
 
@@ -216,11 +216,11 @@ export const enhancedRAGPipeline = {
       const supabase = await createServiceClient();
 
       // Get tenant_id from channel_account
-      const { data: channelAccount } = await supabase
+      const { data: channelAccount } = (await supabase
         .from("channel_accounts")
         .select("tenant_id")
         .eq("id", input.channelAccountId)
-        .single();
+        .single()) as { data: { tenant_id: string } | null; error: any };
 
       if (!channelAccount) {
         throw new Error("Channel account not found");
@@ -265,9 +265,9 @@ export const enhancedRAGPipeline = {
 
       // Error response
       const errorMsg =
-        input.customerLanguage === "ja"
+        input.customerLanguage === "JA"
           ? "申し訳ございません。予約処理中にエラーが発生しました。担当者にお繋ぎします。"
-          : input.customerLanguage === "en"
+          : input.customerLanguage === "EN"
           ? "I'm sorry, there was an error processing your booking. Let me connect you with our staff."
           : "죄송합니다. 예약 처리 중 오류가 발생했습니다. 담당자에게 연결해드리겠습니다.";
 
@@ -294,11 +294,11 @@ export const enhancedRAGPipeline = {
     const supabase = await createServiceClient();
 
     // Get tenant_id from channel_account
-    const { data: channelAccount } = await supabase
+    const { data: channelAccount } = (await supabase
       .from("channel_accounts")
       .select("tenant_id")
       .eq("id", input.channelAccountId)
-      .single();
+      .single()) as { data: { tenant_id: string } | null; error: any };
 
     if (!channelAccount) {
       throw new Error("Channel account not found");

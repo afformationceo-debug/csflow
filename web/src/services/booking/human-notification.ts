@@ -154,7 +154,7 @@ export async function sendSlackNotification(
     }
 
     // Log notification
-    const { data: notification } = await supabase
+    const { data: notification } = await (supabase as any)
       .from("human_notifications")
       .insert({
         booking_request_id: data.bookingRequestId,
@@ -177,7 +177,7 @@ export async function sendSlackNotification(
     // Log failed notification
     try {
       const supabase = await createServiceClient();
-      await supabase.from("human_notifications").insert({
+      await (supabase as any).from("human_notifications").insert({
         booking_request_id: data.bookingRequestId,
         notification_type: "slack",
         recipient: slackWebhookUrl,
@@ -243,7 +243,7 @@ export async function sendKakaoAlimtalk(
     const result = await response.json();
 
     // Log notification
-    const { data: notification } = await supabase
+    const { data: notification } = await (supabase as any)
       .from("human_notifications")
       .insert({
         booking_request_id: data.bookingRequestId,
@@ -268,7 +268,7 @@ export async function sendKakaoAlimtalk(
     // Log failed notification
     try {
       const supabase = await createServiceClient();
-      await supabase.from("human_notifications").insert({
+      await (supabase as any).from("human_notifications").insert({
         booking_request_id: data.bookingRequestId,
         notification_type: "kakao_alimtalk",
         recipient: recipientPhone,
@@ -294,7 +294,7 @@ export async function notifyHumanForBookingRequest(
     const supabase = await createServiceClient();
 
     // Get booking request details
-    const { data: bookingRequest } = await supabase
+    const { data: bookingRequest } = (await supabase
       .from("booking_requests")
       .select(
         `
@@ -304,28 +304,28 @@ export async function notifyHumanForBookingRequest(
       `
       )
       .eq("id", bookingRequestId)
-      .single();
+      .single()) as { data: any; error: any };
 
     if (!bookingRequest) {
       throw new Error("Booking request not found");
     }
 
     // Get channel account to check automation config
-    const { data: conversation } = await supabase
+    const { data: conversation } = (await supabase
       .from("conversations")
       .select("channel_account_id")
       .eq("id", bookingRequest.conversation_id)
-      .single();
+      .single()) as { data: any; error: any };
 
     if (!conversation) {
       throw new Error("Conversation not found");
     }
 
-    const { data: channelAccount } = await supabase
+    const { data: channelAccount } = (await supabase
       .from("channel_accounts")
       .select("automation_config")
       .eq("id", conversation.channel_account_id)
-      .single();
+      .single()) as { data: any; error: any };
 
     const automationConfig = channelAccount?.automation_config as {
       notification_channels?: string[];
@@ -404,7 +404,7 @@ export async function recordHumanResponse(
   try {
     const supabase = await createServiceClient();
 
-    await supabase
+    await (supabase as any)
       .from("human_notifications")
       .update({
         status: "responded",

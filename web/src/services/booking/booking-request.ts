@@ -165,11 +165,11 @@ export async function getBookingRequest(bookingRequestId: string): Promise<{
   try {
     const supabase = await createServiceClient();
 
-    const { data, error } = await supabase
+    const { data, error } = (await supabase
       .from("booking_requests")
       .select("*")
       .eq("id", bookingRequestId)
-      .single();
+      .single()) as { data: any; error: any };
 
     if (error) {
       if (error.code === "PGRST116") {
@@ -178,6 +178,11 @@ export async function getBookingRequest(bookingRequestId: string): Promise<{
       }
       console.error("[Booking Request] Fetch detail error:", error);
       throw new Error(`Failed to fetch booking request: ${error.message}`);
+    }
+
+    if (!data) {
+      console.error("[Booking Request] No data returned for booking request");
+      return null;
     }
 
     return {
@@ -289,7 +294,7 @@ export async function rejectBookingRequest(
   try {
     const supabase = await createServiceClient();
 
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("booking_requests")
       .update({
         status: "rejected",
@@ -316,18 +321,22 @@ export async function isFullAutomationEnabled(channelAccountId: string): Promise
   try {
     const supabase = await createServiceClient();
 
-    const { data, error } = await supabase
+    const { data, error } = (await supabase
       .from("channel_accounts")
       .select("full_automation_enabled")
       .eq("id", channelAccountId)
-      .single();
+      .single()) as { data: { full_automation_enabled: boolean } | null; error: any };
 
     if (error) {
       console.error("[Booking Request] Channel check error:", error);
       return false;
     }
 
-    return data?.full_automation_enabled === true;
+    if (!data) {
+      return false;
+    }
+
+    return data.full_automation_enabled === true;
   } catch (error) {
     console.error("[Booking Request] Error:", error);
     return false;
@@ -351,18 +360,22 @@ export async function getAutomationConfig(channelAccountId: string): Promise<{
   try {
     const supabase = await createServiceClient();
 
-    const { data, error } = await supabase
+    const { data, error } = (await supabase
       .from("channel_accounts")
       .select("automation_config")
       .eq("id", channelAccountId)
-      .single();
+      .single()) as { data: { automation_config: any } | null; error: any };
 
     if (error) {
       console.error("[Booking Request] Config fetch error:", error);
       return null;
     }
 
-    return data?.automation_config || null;
+    if (!data) {
+      return null;
+    }
+
+    return data.automation_config || null;
   } catch (error) {
     console.error("[Booking Request] Error:", error);
     return null;

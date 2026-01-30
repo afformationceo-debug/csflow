@@ -182,7 +182,7 @@ export async function logBookingIntent(
   try {
     const supabase = await createServiceClient();
 
-    await supabase.from("booking_intent_logs").insert({
+    await (supabase as any).from("booking_intent_logs").insert({
       conversation_id: conversationId,
       message_id: messageId,
       intent_detected: intent.detected,
