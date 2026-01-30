@@ -3903,6 +3903,81 @@ Fix TypeScript type inference error in booking approval route
 
 **배포 상태**: ✅ GitHub push 완료 (`ea99885`) → Vercel 자동 배포 진행 중
 
+### 20.3.2 serverMessageService API 메서드 누락 수정 (3차)
+
+**문제**: `serverMessageService.create` 메서드 존재하지 않음
+```
+Type error: Property 'create' does not exist on type '{ createInboundMessage(...): Promise<...>; createAIMessage(...): Promise<...>; ... }'.
+Location: /web/src/app/api/booking/requests/[id]/approve/route.ts:168:32
+```
+
+**원인**:
+- `/web/src/services/messages.ts`의 `serverMessageService`에는 `createInboundMessage`, `createAIMessage` 메서드만 존재
+- 에이전트(human)가 보내는 아웃바운드 메시지용 메서드 누락
+- 예약 승인 시 고객에게 확정/거절 메시지를 보내는 `create` 메서드 호출 시 에러
+
+**해결 방법**: `createOutboundMessage` 메서드 추가
+```typescript
+// /web/src/services/messages.ts
+export const serverMessageService = {
+  // ... 기존 메서드들 ...
+
+  async createOutboundMessage(data: {
+    conversationId: string;
+    content: string;
+    contentType?: MessageContentType;
+    originalContent?: string;
+    originalLanguage?: string;
+    translatedContent?: string;
+    senderType?: "agent" | "ai";
+    metadata?: Record<string, unknown>;
+  }): Promise<Message> {
+    const supabase = await createServiceClient();
+
+    const { data: message, error } = await (supabase
+      .from("messages") as any)
+      .insert({
+        conversation_id: data.conversationId,
+        direction: "outbound",
+        content_type: data.contentType || "text",
+        content: data.content,
+        original_content: data.originalContent,
+        original_language: data.originalLanguage,
+        translated_content: data.translatedContent,
+        sender_type: data.senderType || "agent",
+        status: "pending",
+        metadata: data.metadata || {},
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return message;
+  },
+};
+```
+
+**적용 내용**:
+- `serverMessageService.create()` → `serverMessageService.createOutboundMessage()` 변경 (2곳)
+- `direction: "outbound"` 파라미터 제거 (메서드 내부에서 자동 설정)
+- 원본/번역 내용 지원
+- 에이전트/AI 발신자 타입 지원
+
+**커밋 해시**: `97b1c69`
+
+**커밋 메시지**:
+```
+Fix serverMessageService API: add createOutboundMessage method
+
+- Added createOutboundMessage method to serverMessageService for agent outbound messages
+- Updated booking approval route to use createOutboundMessage instead of non-existent create method
+- Supports original/translated content and agent/ai sender types
+- Resolves 'Property create does not exist' TypeScript error
+```
+
+**배포 상태**: ✅ GitHub push 완료 (`97b1c69`) → Vercel 자동 배포 진행 중
+
 ### 20.4 풀자동화 스텝 준수
 
 **7단계 HITL (Human-in-the-Loop) 예약 플로우**:

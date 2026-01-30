@@ -105,6 +105,7 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
     id: string;
     tenant_id: string;
     tenant: { ai_config?: { enabled?: boolean } };
+    full_automation_enabled?: boolean;
   };
 
   const tenantId = channelAccountData.tenant_id;
@@ -381,7 +382,7 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
     console.log(`[LINE] Processing RAG query: "${queryText.slice(0, 50)}..."`);
 
     // Check if full automation is enabled for this channel
-    const fullAutomationEnabled = channelAccount.full_automation_enabled || false;
+    const fullAutomationEnabled = channelAccountData.full_automation_enabled || false;
     console.log(`[LINE] Full automation enabled: ${fullAutomationEnabled}`);
 
     let ragResult;
@@ -395,7 +396,7 @@ async function processInboundMessage(message: UnifiedInboundMessage) {
         tenantId,
         conversationId: conversation.id,
         customerLanguage: originalLanguage,
-        channelAccountId: channelAccount.id,
+        channelAccountId: channelAccountData.id,
         customerId: customer.id,
         messageId: savedMessage.id,
       });
