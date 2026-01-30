@@ -36,7 +36,7 @@ export async function createBookingRequest(
     const supabase = await createServiceClient();
 
     // Database function 호출
-    const { data: result, error } = await supabase.rpc("create_booking_request", {
+    const { data: result, error } = await (supabase as any).rpc("create_booking_request", {
       p_tenant_id: data.tenantId,
       p_customer_id: data.customerId,
       p_conversation_id: data.conversationId,
@@ -219,7 +219,7 @@ export async function approveBookingRequest(
   try {
     const supabase = await createServiceClient();
 
-    const { data: result, error } = await supabase.rpc("approve_booking_request", {
+    const { data: result, error } = await (supabase as any).rpc("approve_booking_request", {
       p_booking_request_id: bookingRequestId,
       p_confirmed_date: approval.confirmedDate || null,
       p_alternative_dates: approval.alternativeDates || null,
@@ -254,7 +254,7 @@ export async function confirmBookingToCRM(
   try {
     const supabase = await createServiceClient();
 
-    const { data: result, error } = await supabase.rpc("confirm_booking_to_crm", {
+    const { data: result, error } = await (supabase as any).rpc("confirm_booking_to_crm", {
       p_booking_request_id: bookingRequestId,
       p_crm_booking_id: crmBookingId,
     });
