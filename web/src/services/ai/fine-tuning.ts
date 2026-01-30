@@ -449,4 +449,39 @@ class FineTuningService {
   }
 }
 
-export const fineTuningService = new FineTuningService();
+// Lazy singleton instance
+let instance: FineTuningService | null = null;
+
+export const fineTuningService = {
+  get instance(): FineTuningService {
+    if (!instance) {
+      instance = new FineTuningService();
+    }
+    return instance;
+  },
+
+  // Proxy all methods to the lazy instance
+  collectTrainingData: (...args: Parameters<FineTuningService['collectTrainingData']>) =>
+    fineTuningService.instance.collectTrainingData(...args),
+
+  getTrainingDataStats: (...args: Parameters<FineTuningService['getTrainingDataStats']>) =>
+    fineTuningService.instance.getTrainingDataStats(...args),
+
+  validateTrainingExample: (...args: Parameters<FineTuningService['validateTrainingExample']>) =>
+    fineTuningService.instance.validateTrainingExample(...args),
+
+  generateTrainingFile: (...args: Parameters<FineTuningService['generateTrainingFile']>) =>
+    fineTuningService.instance.generateTrainingFile(...args),
+
+  startFineTuning: (...args: Parameters<FineTuningService['startFineTuning']>) =>
+    fineTuningService.instance.startFineTuning(...args),
+
+  checkFineTuningStatus: (...args: Parameters<FineTuningService['checkFineTuningStatus']>) =>
+    fineTuningService.instance.checkFineTuningStatus(...args),
+
+  testFineTunedModel: (...args: Parameters<FineTuningService['testFineTunedModel']>) =>
+    fineTuningService.instance.testFineTunedModel(...args),
+
+  setupABTest: (...args: Parameters<FineTuningService['setupABTest']>) =>
+    fineTuningService.instance.setupABTest(...args),
+};
