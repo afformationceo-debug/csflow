@@ -1018,4 +1018,261 @@ k6 run --vus 100 --duration 5m loadtest.js
 
 ---
 
+## 📋 풀자동화 시스템 검증 현황 (2026-01-31)
+
+### 현재 상황
+
+#### ✅ 완료된 작업
+1. **Migration 008 실행 완료** - Database RLS 정책 수정 (`public.users` 스키마 명시)
+2. **Frontend tenant_id 이슈 수정** - `activeTenantId` 타입 변경 + React Query `enabled` 옵션
+3. **Middleware API 401 수정** - API 호출 시 리다이렉트 대신 401 JSON 반환
+4. **LINE 풀자동화 활성화** - `UPDATE channel_accounts SET full_automation_enabled = true WHERE channel_type = 'line';`
+5. **배포 완료** - GitHub main 브랜치 푸시 (커밋: `61a9c22`)
+
+#### 🔄 진행 중
+- Vercel 자동 배포 (GitHub main 브랜치 푸시 시 자동 트리거)
+- 지식베이스 UI 검증 대기 (75개 문서 표시 확인)
+
+### 문제 분석 및 해결
+
+#### 문제 1: 지식베이스 404 에러
+**증상**:
+```
+Failed to load resource: the server responded with a status of 404 ()
+GET https://csflow.vercel.app/api/knowledge/documents?tenantId=... → Redirecting...
+```
+
+**근본 원인**:
+- 미들웨어가 `/api/knowledge/documents` API 호출을 인증 필수로 판단
+- 인증 실패 시 `/login`으로 **리다이렉트**를 반환 ("Redirecting..." 메시지)
+- 브라우저의 React Query는 JSON 데이터를 기대했지만 HTML 리다이렉트 응답을 받음
+- 결과: 404 에러 + 데이터 로드 실패
+
+**해결 방법**:
+1. `/web/middleware.ts` 수정 (Line 43-62):
+```typescript
+// Before: 모든 경로에서 인증 실패 시 리다이렉트
+if (!user && !isPublicRoute) {
+  const loginUrl = new URL("/login", request.url);
+  return NextResponse.redirect(loginUrl);
+}
+
+// After: API 경로는 401 JSON 반환
+const isApiRoute = request.nextUrl.pathname.startsWith("/api");
+
+if (!user && !isPublicRoute) {
+  if (isApiRoute) {
+    // API 호출은 401 Unauthorized 반환 (리다이렉트 안 함)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // 페이지 접근은 로그인으로 리다이렉트
+  const loginUrl = new URL("/login", request.url);
+  return NextResponse.redirect(loginUrl);
+}
+```
+
+2. 커밋 및 배포:
+   - 커밋: `61a9c22` "Fix: API routes return 401 instead of redirect for unauthorized access"
+   - 푸시: GitHub main 브랜치
+   - Vercel 자동 배포 진행 중
+
+**기대 결과**:
+- ✅ 로그인 후 API 호출 시 정상 응답 (200 OK + JSON 데이터)
+- ✅ 로그인 안 한 상태로 API 호출 시 401 JSON 반환 (리다이렉트 없음)
+- ✅ 지식베이스 UI에서 75개 문서 정상 표시
+
+### 검증 절차
+
+#### 1. Vercel 배포 확인 (2-3분 소요)
+1. https://vercel.com/dashboard 접속
+2. 프로젝트 선택
+3. "Deployments" 탭에서 최신 배포 상태 확인
+4. ✅ **Ready** (녹색) 상태 대기
+
+#### 2. 지식베이스 UI 검증
+1. **하드 새로고침 필수** (브라우저 캐시 클리어)
+   - Mac: `Cmd + Shift + R`
+   - Windows: `Ctrl + Shift + F5`
+2. https://csflow.vercel.app/knowledge 접속
+3. 로그인: `afformation.ceo@gmail.com / afformation1!`
+4. **75개 문서 표시** 확인
+5. Console 오류 없음 확인 (`tenant_id=eq.none` 에러 없음)
+
+### 풀자동화 6단계 테스트 계획
+
+**사전 조건**:
+- ✅ Migration 008 실행 완료
+- ✅ Frontend 수정 완료
+- ✅ LINE 풀자동화 활성화 (`full_automation_enabled = true`)
+- 🔄 지식베이스 75개 문서 표시 (Vercel 배포 후 확인)
+
+**테스트 순서**:
+
+#### [Stage 1] 고객 인입 (사용자 직접 테스트)
+**사용자 액션**: LINE 앱에서 메시지 전송
+- 예시: "안녕하세요, 라식 수술 상담받고 싶습니다"
+
+**자동 검증**:
+```sql
+-- 1. 고객 자동 등록 확인
+SELECT * FROM customers
+WHERE id IN (
+  SELECT customer_id FROM customer_channels
+  WHERE channel_account_id IN (
+    SELECT id FROM channel_accounts WHERE channel_type = 'line'
+  )
+)
+ORDER BY created_at DESC
+LIMIT 5;
+
+-- 2. 대화 생성 확인
+SELECT * FROM conversations
+WHERE channel_account_id IN (
+  SELECT id FROM channel_accounts WHERE channel_type = 'line'
+)
+ORDER BY created_at DESC
+LIMIT 5;
+
+-- 3. 메시지 저장 확인
+SELECT * FROM messages
+WHERE conversation_id IN (
+  SELECT id FROM conversations
+  WHERE channel_account_id IN (
+    SELECT id FROM channel_accounts WHERE channel_type = 'line'
+  )
+)
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+#### [Stage 2] AI 자동 응대 + 예약 유도
+**자동 처리**:
+1. 질문 분류 (가격/시술정보/위치/고민/통역)
+2. RAG 기반 답변 생성 (지식베이스 75개 문서 활용)
+3. 지속적인 예약 유도 프롬프트
+4. 예약 의도 감지 (신뢰도 0.7 이상)
+5. 예약 양식 전송 (LINE Quick Reply)
+
+**검증 SQL**:
+```sql
+-- AI 응답 로그 확인
+SELECT * FROM ai_response_logs
+WHERE conversation_id = 'YOUR_CONVERSATION_ID'
+ORDER BY created_at DESC;
+
+-- 예약 의도 감지 로그 확인
+SELECT * FROM booking_intent_logs
+WHERE customer_id = 'YOUR_CUSTOMER_ID'
+ORDER BY created_at DESC;
+```
+
+**LINE 앱 확인**:
+- [ ] AI 응답 메시지 수신
+- [ ] 라식 수술 정보 포함
+- [ ] 예약 유도 멘트 포함
+- [ ] (예약 의도 감지 시) 예약 양식 전송
+
+#### [Stage 3] 예약 정보 수집
+**사용자 액션**: 예약 양식에 응답
+```
+1️⃣ 2026-02-15
+2️⃣ 오전 10시
+3️⃣ 라식
+4️⃣ 일본어 통역 필요
+```
+
+**자동 처리**:
+- 양식 응답 파싱
+- `booking_requests` 테이블에 레코드 생성
+- `status`: "pending_human_approval"
+
+**검증 SQL**:
+```sql
+SELECT * FROM booking_requests
+WHERE customer_id = 'YOUR_CUSTOMER_ID'
+ORDER BY created_at DESC;
+```
+
+#### [Stage 4] 휴먼 알림 (Slack)
+**자동 처리**:
+- Slack 알림 전송 (Block Kit UI, 액션 버튼)
+- `human_notifications` 테이블 로그 생성
+
+**검증 SQL**:
+```sql
+SELECT * FROM human_notifications
+WHERE booking_request_id = 'YOUR_BOOKING_REQUEST_ID'
+ORDER BY sent_at DESC;
+```
+
+**Slack 앱 확인**:
+- [ ] 알림 메시지 수신
+- [ ] 예약 정보 정확히 표시
+- [ ] [예약 가능] [조율 필요] [거절] 버튼 표시
+
+#### [Stage 5] 휴먼 승인/조율/거절
+**사용자 액션**: Slack에서 액션 버튼 클릭
+
+**시나리오 A: 예약 가능**
+- `booking_requests.status` → "human_approved" → "confirmed"
+- CRM API 호출 → 예약 등록
+- 고객에게 확정 메시지 전송
+
+**시나리오 B: 조율 필요**
+- `booking_requests.status` → "requires_coordination"
+- AI가 대안 날짜 제시 메시지 전송
+
+**시나리오 C: 거절**
+- `booking_requests.status` → "rejected"
+- AI가 거절 사유 + 다른 옵션 제시
+
+**검증 SQL**:
+```sql
+SELECT
+  br.status,
+  br.approved_by,
+  br.approved_at,
+  br.alternative_dates,
+  br.rejection_reason,
+  hn.human_response
+FROM booking_requests br
+JOIN human_notifications hn ON hn.booking_request_id = br.id
+WHERE br.id = 'YOUR_BOOKING_REQUEST_ID';
+```
+
+#### [Stage 6] CRM 연동 완료
+**자동 처리** (시나리오 A 진행 시):
+- CRM API 호출 → 실제 예약 등록
+- `booking_requests.crm_booking_id` 설정
+- `booking_requests.status` = "confirmed"
+- 고객에게 확정 메시지 전송 (날짜/시간/주소/담당자)
+
+**검증 SQL**:
+```sql
+SELECT
+  id,
+  status,
+  crm_booking_id,
+  confirmed_at,
+  requested_date,
+  requested_time,
+  treatment
+FROM booking_requests
+WHERE status = 'confirmed'
+ORDER BY confirmed_at DESC;
+```
+
+**LINE 앱 확인**:
+- [ ] 예약 확정 메시지 수신
+- [ ] 날짜, 시간, 장소, 주소, 담당의 정보 포함
+- [ ] 병원 연락처 포함
+- [ ] 변경/취소 안내 포함
+
+### 참고 문서
+- **풀자동화 체크리스트**: `/web/FULL_AUTOMATION_CHECKLIST.md`
+- **Vercel 배포 가이드**: `/web/VERCEL_DEPLOYMENT_CHECK.md`
+- **Frontend Tenant Fix**: `/web/FRONTEND_TENANT_FIX.md`
+
+---
+
 이 개발 계획서는 기존 기능을 유지하면서 프로덕션 환경에 필요한 모든 요소를 점진적으로 추가합니다. 각 단계는 독립적으로 테스트 가능하며, 문제 발생 시 안전하게 롤백할 수 있습니다.
