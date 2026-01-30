@@ -4,7 +4,7 @@
  */
 
 import { createServiceClient } from "@/lib/supabase/server";
-import { ragPipeline } from "@/services/ai";
+import { ragPipeline } from "@/services/ai/rag-pipeline";
 import { translationService } from "@/services/translation";
 
 export interface WidgetSession {
