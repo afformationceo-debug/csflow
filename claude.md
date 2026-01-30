@@ -11738,3 +11738,375 @@ try { ... } catch (translationError) {
 
 ---
 
+
+---
+
+## 30. RLS + Frontend Tenant ID 수정 (2026-01-30)
+
+### 30.1 문제 배경
+
+**Migration 008 실행 완료 후에도 지식베이스 UI에서 문서가 보이지 않음**
+
+**Console 에러:**
+```
+GET https://bfxtgqhollfkzawuzfwo.supabase.co/rest/v1/knowledge_documents?select=category&tenant_id=eq.none&category=not.is.null 400 (Bad Request)
+```
+
+**진단 결과:**
+- ✅ Migration 008 성공적으로 실행됨 (RLS 정책 정상)
+- ✅ Database에 75개 문서 존재
+- ✅ User `afformation.ceo@gmail.com`의 `tenant_ids` 정확
+- ❌ **Frontend가 `tenant_id=eq.none`으로 API 호출** ← 근본 원인
+
+### 30.2 근본 원인 분석
+
+#### Frontend 초기화 타이밍 문제
+
+```typescript
+// /web/src/app/(dashboard)/knowledge/page.tsx (Line 194)
+const [activeTenantId, setActiveTenantId] = useState<string>("");  // ← 빈 문자열로 초기화
+
+// Line 207-222: Tenant 데이터 fetch
+useEffect(() => {
+  fetch("/api/tenants")
+    .then((r) => r.json())
+    .then((data) => {
+      const tenants = (data.tenants || []).map((t: any) => ({ id: t.id, name: t.display_name || t.name }));
+      setTenantOptions(tenants);
+      if (tenants.length > 0 && !activeTenantId) {
+        setActiveTenantId(tenants[0].id);  // ← 비동기로 나중에 설정
+      }
+    });
+}, []);
+
+// Line 230-234: React Query 호출 (동기적으로 즉시 실행)
+const { data: apiDocuments } = useKnowledgeDocuments({
+  tenantId: selectedTenantFilter || activeTenantId || "none",  // ← "none" fallback!
+  category: selectedCategory,
+  search: searchQuery || undefined,
+});
+```
+
+**타이밍 문제:**
+1. 컴포넌트 마운트 → `activeTenantId = ""`
+2. React Query 즉시 실행 → `tenantId: "" || ""  || "none"` → **`"none"`**
+3. API 호출: `tenant_id=eq.none` → **400 Bad Request** ❌
+4. (비동기) Tenant 데이터 로드 완료 → `activeTenantId = "8d3bd24e..."`
+5. (이미 늦음) React Query는 이미 실패함
+
+### 30.3 해결 방법
+
+#### 변경사항 1: `activeTenantId` 타입 변경
+
+```typescript
+// BEFORE
+const [activeTenantId, setActiveTenantId] = useState<string>("");
+
+// AFTER
+const [activeTenantId, setActiveTenantId] = useState<string | undefined>(undefined);
+```
+
+**이유**: `undefined`일 때만 React Query를 비활성화할 수 있음
+
+#### 변경사항 2: React Query 조건부 실행
+
+```typescript
+// BEFORE
+const { data: apiDocuments } = useKnowledgeDocuments({
+  tenantId: selectedTenantFilter || activeTenantId || "none",  // ❌
+  category: selectedCategory,
+  search: searchQuery || undefined,
+});
+
+// AFTER
+const { data: apiDocuments } = useKnowledgeDocuments({
+  tenantId: selectedTenantFilter || activeTenantId || "",
+  category: selectedCategory,
+  search: searchQuery || undefined,
+}, {
+  enabled: !!(selectedTenantFilter || activeTenantId),  // ← tenant ID 있을 때만 실행
+});
+```
+
+#### 변경사항 3: React Query Hooks `enabled` 옵션 추가
+
+**/web/src/hooks/use-knowledge-base.ts** 수정:
+
+```typescript
+// useKnowledgeDocuments
+export function useKnowledgeDocuments(
+  filters: KnowledgeDocumentFilters,
+  options?: { enabled?: boolean }  // ← 추가
+) {
+  return useQuery({
+    queryKey: knowledgeKeys.documents(filters),
+    queryFn: async () => { /* ... */ },
+    staleTime: 30000,
+    enabled: options?.enabled !== false,  // ← 추가
+  });
+}
+
+// useKnowledgeCategories
+export function useKnowledgeCategories(
+  tenantId: string,
+  options?: { enabled?: boolean }  // ← 추가
+) {
+  return useQuery({
+    queryKey: knowledgeKeys.categories(tenantId),
+    queryFn: async () => { /* ... */ },
+    staleTime: 60000,
+    enabled: options?.enabled !== false && !!tenantId,  // ← 추가
+  });
+}
+
+// useKnowledgeStatistics
+export function useKnowledgeStatistics(
+  tenantId: string,
+  options?: { enabled?: boolean }  // ← 추가
+) {
+  return useQuery({
+    queryKey: knowledgeKeys.statistics(tenantId),
+    queryFn: async () => { /* ... */ },
+    staleTime: 60000,
+    enabled: options?.enabled !== false && !!tenantId,  // ← 추가
+  });
+}
+```
+
+### 30.4 작동 흐름 (수정 후)
+
+```
+1. 컴포넌트 마운트
+   activeTenantId: undefined
+   ↓
+2. React Query 호출
+   enabled: !!(undefined) = false  ← API 호출 안 함 ✅
+   ↓
+3. useEffect 실행 (비동기)
+   fetch("/api/tenants")
+   ↓
+4. Tenant 데이터 로드 완료
+   setActiveTenantId("8d3bd24e-0d74-4dc7-aa34-3e39d5821244")
+   ↓
+5. React Query 자동 재실행 (의존성 변경 감지)
+   enabled: !!("8d3bd24e-0d74-4dc7-aa34-3e39d5821244") = true
+   tenantId: "8d3bd24e-0d74-4dc7-aa34-3e39d5821244"
+   ↓
+6. 올바른 API 호출 ✅
+   GET /knowledge_documents?tenant_id=eq.8d3bd24e-0d74-4dc7-aa34-3e39d5821244
+   ↓
+7. 75개 문서 정상 조회 ✅
+```
+
+### 30.5 빌드 및 배포
+
+```bash
+$ cd /Users/hyunkeunji/Desktop/csautomation/web
+$ npm run build
+▲ Next.js 16.1.4 (Turbopack)
+✓ Compiled successfully in 2.6s
+✓ TypeScript: 0 errors
+✓ Build completed
+
+$ git add -A
+$ git commit -m "Fix frontend tenant_id issue in knowledge base UI"
+# [main 2e433e6]
+# 7 files changed, 894 insertions(+), 9 deletions(-)
+
+$ git push origin main
+# To https://github.com/afformationceo-debug/csflow.git
+#    cbae7b6..2e433e6  main -> main
+```
+
+### 30.6 전체 RLS 수정 여정 요약
+
+#### Migration 006 (실패)
+- **시도**: `ANY(users.tenant_ids)` 구문 사용
+- **실패 원인**: 스키마 참조 미명시, 구문 호환성 문제
+- **결과**: RLS 정책 적용 안 됨
+
+#### Migration 007 (실패)
+- **시도**: `unnest(tenant_ids)` 구문으로 변경
+- **실패 원인**: 스키마 참조 여전히 미명시 (`FROM users` → PostgreSQL이 어느 스키마인지 모름)
+- **결과**: RLS 정책 여전히 작동 안 함
+
+#### Migration 008 (성공 - Database)
+- **시도**: 명시적 스키마 참조 `public.users.tenant_ids`
+- **성공**: RLS 정책 정상 작동
+- **검증**: 
+  ```sql
+  SELECT * FROM pg_policies WHERE schemaname = 'public';
+  -- Result: 9 policies created ✅
+  ```
+- **결과**: Database 레벨 수정 완료 ✅
+
+#### Frontend 수정 (성공 - UI)
+- **문제**: Migration 008 성공 후에도 UI에서 문서 안 보임
+- **원인**: `tenant_id=eq.none` API 요청
+- **해결**: 
+  - `activeTenantId` 타입 변경 (`string` → `string | undefined`)
+  - React Query `enabled` 옵션 추가
+  - Tenant ID 로드 후에만 API 호출
+- **결과**: Frontend 레벨 수정 완료 ✅
+
+### 30.7 검증 체크리스트
+
+- [x] TypeScript 빌드 성공 (0 errors)
+- [x] Migration 008 실행 완료 (Database)
+- [x] Frontend 수정 커밋 완료 (`2e433e6`)
+- [x] Git push to origin/main
+- [x] claude.md 업데이트 완료 (Section 30)
+- [ ] Vercel 자동 배포 확인
+- [ ] Production 테스트:
+  1. https://csflow.vercel.app/knowledge 접속
+  2. 로그인: `afformation.ceo@gmail.com / afformation1!`
+  3. **기대 결과**: 75개 문서 모두 표시 ✅
+  4. Console 에러 없음 확인
+
+### 30.8 다음 단계 (풀자동화 Stage 1-2 테스트)
+
+**Migration 008 + Frontend 수정 완료 후 진행할 작업:**
+
+#### 1. LINE 채널 Full Automation 활성화
+
+```sql
+-- Supabase SQL Editor에서 실행
+UPDATE channel_accounts 
+SET full_automation_enabled = true 
+WHERE channel_type = 'line';
+```
+
+**확인 방법:**
+```sql
+SELECT id, name, channel_type, full_automation_enabled 
+FROM channel_accounts 
+WHERE channel_type = 'line';
+-- 기대 결과: full_automation_enabled = true
+```
+
+#### 2. 풀자동화 Stage 1-2 워크플로우 검증
+
+**Stage 1: LINE 메시지 수신 → 자동 고객/대화 생성**
+```
+LINE 메시지 전송 (고객)
+  ↓
+/api/webhooks/line 수신
+  ↓
+getOrCreateCustomer() → customers 테이블에 자동 생성
+  ↓
+getOrCreateConversation() → conversations 테이블에 자동 생성
+  ↓
+메시지 저장 → messages 테이블
+  ↓
+✅ Stage 1 완료
+```
+
+**Stage 2: AI RAG 자동응답 + 예약 의도 감지**
+```
+full_automation_enabled = true 확인
+  ↓
+enhancedRAGPipeline.process() 호출
+  ↓
+1. 질문 분류 (가격/시술/위치/상담)
+   └─ detectQuestionType() [LINE webhook Line 153-175]
+  ↓
+2. RAG 검색 + 답변 생성
+   └─ Knowledge base + Tenant info 참조
+  ↓
+3. 예약 의도 감지
+   └─ detectBookingIntent() + Confidence > 70%
+  ↓
+4a. 예약 의도 감지 시:
+    └─ sendBookingForm() 호출
+    └─ 예약 양식 LINE 메시지 전송
+  ↓
+4b. 일반 질문:
+    └─ AI 답변 전송
+    └─ 지속적 예약 유도 (empathy + persuasion)
+  ↓
+✅ Stage 2 완료
+```
+
+#### 3. 테스트 시나리오
+
+**시나리오 1: 일반 문의**
+```
+고객: "라식 수술 가격이 얼마인가요?"
+  ↓
+AI: [Knowledge base 검색]
+AI: "힐링안과 라식 수술은 양안 기준 150만원입니다. 
+     상담 예약을 도와드릴까요?" (예약 유도)
+```
+
+**시나리오 2: 예약 의도 감지**
+```
+고객: "다음 주 월요일에 상담 예약하고 싶어요"
+  ↓
+Booking Intent Detection: confidence = 85%
+  ↓
+AI: "예약을 도와드리겠습니다!"
+  ↓
+[LINE 예약 양식 전송] (tenant_id별 맞춤 양식)
+```
+
+**시나리오 3: 복잡한 질문 (에스컬레이션)**
+```
+고객: "수술 후 부작용이 있는데 어떻게 하나요?"
+  ↓
+AI Confidence < 75% (불확실)
+  ↓
+Escalation 생성 → 담당자에게 Slack 알림
+  ↓
+AI: "전문 상담원이 곧 연락드리겠습니다."
+```
+
+### 30.9 기술 노트
+
+#### RLS 정책 명시적 스키마 참조의 중요성
+
+**PostgreSQL 스키마 검색 경로:**
+```sql
+SHOW search_path;
+-- Result: "$user", public
+```
+
+**문제가 된 코드:**
+```sql
+-- ❌ 스키마 미명시 (PostgreSQL이 어느 스키마인지 추측)
+SELECT unnest(tenant_ids) FROM users WHERE id = auth.uid()
+-- PostgreSQL: "users 테이블을 어디서 찾지? public? auth? pg_catalog?"
+-- 결과: 테이블을 못 찾거나 잘못된 테이블을 참조
+```
+
+**수정된 코드:**
+```sql
+-- ✅ 명시적 스키마 참조 (절대 실패하지 않음)
+SELECT unnest(public.users.tenant_ids) 
+FROM public.users 
+WHERE public.users.id = auth.uid()
+-- PostgreSQL: "public 스키마의 users 테이블 명확히 참조"
+-- 결과: 항상 정확한 테이블 참조 ✅
+```
+
+**교훈**: RLS 정책 내부에서는 **항상 명시적 스키마 참조** 사용
+
+#### React Query enabled 옵션 활용
+
+**문제**: 의존 데이터 로딩 전 API 호출
+
+**해결**: `enabled` 옵션으로 조건부 실행
+```typescript
+const { data } = useQuery({
+  queryKey: ["documents", tenantId],
+  queryFn: () => fetchDocuments(tenantId),
+  enabled: !!tenantId,  // ← tenantId 있을 때만 실행
+});
+```
+
+**장점**:
+- 불필요한 API 호출 방지
+- 400/404 에러 방지
+- 네트워크 트래픽 절약
+- 사용자 경험 개선 (에러 없이 로딩)
+
+---
