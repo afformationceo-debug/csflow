@@ -40,8 +40,8 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 공개 경로 (웹훅, OAuth 등)
-  const publicRoutes = ["/login", "/api/webhooks", "/api/oauth"];
+  // 공개 경로 (웹훅, OAuth, 지식베이스 템플릿 등)
+  const publicRoutes = ["/login", "/api/webhooks", "/api/oauth", "/api/knowledge/template"];
   const isPublicRoute = publicRoutes.some((route) =>
     request.nextUrl.pathname.startsWith(route)
   );
