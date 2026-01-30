@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fineTuningService } from "@/services/ai";
+import { fineTuningService } from "@/services/ai/fine-tuning";
 import OpenAI from "openai";
 
 // Lazy initialization of OpenAI client

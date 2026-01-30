@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fineTuningService } from "@/services/ai";
+import { fineTuningService } from "@/services/ai/fine-tuning";
 
 // Force dynamic rendering (opt out of static optimization)
 export const dynamic = 'force-dynamic';
