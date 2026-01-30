@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { widgetService } from "@/services/widget";
 
+// Force dynamic rendering (opt out of static optimization)
+export const dynamic = 'force-dynamic';
+
 /**
  * Get widget configuration for a tenant
  */
