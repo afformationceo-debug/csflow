@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
         name: t.name,
         display_name: displayName,
         specialty: (t.specialty as string) || "general",
-        country: t.country || null,
+        country: (settings.country as string) || null,
         status,
         default_language: defaultLanguage,
         logo_url: t.logo_url,
