@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { fineTuningService } from "@/services/ai";
 
+// Force dynamic rendering (opt out of static optimization)
+export const dynamic = 'force-dynamic';
+
 // GET /api/ai/fine-tuning - 학습 작업 목록 조회
 export async function GET(request: NextRequest) {
   try {
