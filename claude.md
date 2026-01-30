@@ -3859,6 +3859,50 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 
 **배포 상태**: ✅ GitHub push 완료 → Vercel 자동 배포 대기
 
+### 20.3.1 TypeScript 타입 추론 에러 수정 (2차)
+
+**문제**: 첫 번째 null 체크 수정 후에도 TypeScript 타입 추론 실패
+```
+Type error: Property 'language' does not exist on type 'never'.
+Location: /web/src/app/api/booking/requests/[id]/approve/route.ts:133:31
+```
+
+**원인**: Supabase `.single()` 메서드의 반환 타입이 명시되지 않아, null 체크 후에도 TypeScript가 `customer`를 `never` 타입으로 추론
+
+**해결 방법**: 명시적 타입 단언(Type Assertion) 추가
+```typescript
+// BEFORE:
+const { data: customer } = await supabase
+  .from("customers")
+  .select("language")
+  .eq("id", customerId)
+  .single();
+
+// AFTER:
+const { data: customer } = await supabase
+  .from("customers")
+  .select("language")
+  .eq("id", customerId)
+  .single() as { data: { language: string } | null; error: any };
+```
+
+**적용 범위**:
+- `sendConfirmationToCustomer` 함수 (line 120-133)
+- `sendRejectionToCustomer` 함수 (line 196-209)
+
+**커밋 해시**: `ea99885`
+
+**커밋 메시지**:
+```
+Fix TypeScript type inference error in booking approval route
+
+- Added explicit type assertion to Supabase customer query results
+- Applied to both sendConfirmationToCustomer and sendRejectionToCustomer functions
+- Resolves 'Property language does not exist on type never' compilation error
+```
+
+**배포 상태**: ✅ GitHub push 완료 (`ea99885`) → Vercel 자동 배포 진행 중
+
 ### 20.4 풀자동화 스텝 준수
 
 **7단계 HITL (Human-in-the-Loop) 예약 플로우**:

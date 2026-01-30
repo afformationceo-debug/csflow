@@ -165,9 +165,8 @@ ${data.humanResponse ? `\n📝 ${data.humanResponse}` : ""}
     }
 
     // Send message
-    await serverMessageService.create({
+    await serverMessageService.createOutboundMessage({
       conversationId,
-      direction: "outbound",
       senderType: "agent",
       contentType: "text",
       content: message,
@@ -224,9 +223,8 @@ ${reason ? `📝 ${reason}\n\n` : ""}다른 날짜를 제안해주시면 다시 
     }
 
     // Send message
-    await serverMessageService.create({
+    await serverMessageService.createOutboundMessage({
       conversationId,
-      direction: "outbound",
       senderType: "agent",
       contentType: "text",
       content: message,

@@ -246,4 +246,38 @@ export const serverMessageService = {
 
     if (error) throw error;
   },
+
+  async createOutboundMessage(data: {
+    conversationId: string;
+    content: string;
+    contentType?: MessageContentType;
+    originalContent?: string;
+    originalLanguage?: string;
+    translatedContent?: string;
+    senderType?: "agent" | "ai";
+    metadata?: Record<string, unknown>;
+  }): Promise<Message> {
+    const supabase = await createServiceClient();
+
+    const { data: message, error } = await (supabase
+      .from("messages") as any)
+      .insert({
+        conversation_id: data.conversationId,
+        direction: "outbound",
+        content_type: data.contentType || "text",
+        content: data.content,
+        original_content: data.originalContent,
+        original_language: data.originalLanguage,
+        translated_content: data.translatedContent,
+        sender_type: data.senderType || "agent",
+        status: "pending",
+        metadata: data.metadata || {},
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return message;
+  },
 };
