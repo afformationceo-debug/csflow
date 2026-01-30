@@ -1,3 +1,6 @@
+// Force dynamic rendering for all auth pages to avoid build-time Supabase client issues
+export const dynamic = 'force-dynamic';
+
 export default function AuthLayout({
   children,
 }: {
