@@ -43,3 +43,11 @@ next-env.d.ts
 *.pem
 .playwright-mcp/
 .env*.local
+
+# Temporary import scripts
+import-to-supabase.ts
+verify-knowledge.ts
+upload-knowledge.js
+upload-knowledge.mjs
+import-knowledge.py
+knowledge-import.sql
