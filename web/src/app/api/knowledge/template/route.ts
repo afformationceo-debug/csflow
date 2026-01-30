@@ -77,13 +77,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // CSV 생성
+    // CSV 생성 (UTF-8 BOM 추가)
     const csvContent = convertToCSV(documents);
+    const utf8BOM = "\uFEFF"; // UTF-8 BOM
+    const csvWithBOM = utf8BOM + csvContent;
 
-    return new NextResponse(csvContent, {
+    return new NextResponse(csvWithBOM, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
       },
     });
   } catch (error) {
