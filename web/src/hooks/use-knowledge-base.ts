@@ -59,7 +59,10 @@ const knowledgeKeys = {
 /**
  * Hook to fetch knowledge documents with filters
  */
-export function useKnowledgeDocuments(filters: KnowledgeDocumentFilters) {
+export function useKnowledgeDocuments(
+  filters: KnowledgeDocumentFilters,
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: knowledgeKeys.documents(filters),
     queryFn: async () => {
@@ -113,6 +116,7 @@ export function useKnowledgeDocuments(filters: KnowledgeDocumentFilters) {
       }));
     },
     staleTime: 30000, // 30 seconds
+    enabled: options?.enabled !== false, // Default to true if not specified
   });
 }
 
@@ -144,7 +148,10 @@ export function useKnowledgeDocument(documentId: string | null) {
 /**
  * Hook to fetch categories for a tenant
  */
-export function useKnowledgeCategories(tenantId: string) {
+export function useKnowledgeCategories(
+  tenantId: string,
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: knowledgeKeys.categories(tenantId),
     queryFn: async () => {
@@ -163,13 +170,17 @@ export function useKnowledgeCategories(tenantId: string) {
       return categories.filter(Boolean) as string[];
     },
     staleTime: 60000, // 1 minute
+    enabled: options?.enabled !== false && !!tenantId,
   });
 }
 
 /**
  * Hook to fetch knowledge base statistics
  */
-export function useKnowledgeStatistics(tenantId: string) {
+export function useKnowledgeStatistics(
+  tenantId: string,
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: knowledgeKeys.statistics(tenantId),
     queryFn: async () => {
@@ -215,6 +226,7 @@ export function useKnowledgeStatistics(tenantId: string) {
       };
     },
     staleTime: 60000, // 1 minute
+    enabled: options?.enabled !== false && !!tenantId,
   });
 }
 

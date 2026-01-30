@@ -191,7 +191,7 @@ export default function KnowledgeBasePage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<KnowledgeDocumentItem | null>(null);
   const [tenantOptions, setTenantOptions] = useState<{ id: string; name: string }[]>([]);
-  const [activeTenantId, setActiveTenantId] = useState<string>("");
+  const [activeTenantId, setActiveTenantId] = useState<string | undefined>(undefined);
   const [newDocument, setNewDocument] = useState({
     title: "",
     content: "",
@@ -219,22 +219,28 @@ export default function KnowledgeBasePage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [activeTenantId]);
 
-  // React Query hooks
+  // React Query hooks - only fetch if we have a valid tenant ID
   const {
     data: apiDocuments,
     isLoading: documentsLoading,
     error: documentsError,
     refetch: refetchDocuments,
   } = useKnowledgeDocuments({
-    tenantId: selectedTenantFilter || activeTenantId || "none",
+    tenantId: selectedTenantFilter || activeTenantId || "",
     category: selectedCategory,
     search: searchQuery || undefined,
+  }, {
+    enabled: !!(selectedTenantFilter || activeTenantId), // Only run query when we have a tenant ID
   });
 
-  const { data: categories } = useKnowledgeCategories(activeTenantId || "none");
-  const { data: statistics, isLoading: statsLoading } = useKnowledgeStatistics(activeTenantId || "none");
+  const { data: categories } = useKnowledgeCategories(activeTenantId || "", {
+    enabled: !!activeTenantId,
+  });
+  const { data: statistics, isLoading: statsLoading } = useKnowledgeStatistics(activeTenantId || "", {
+    enabled: !!activeTenantId,
+  });
 
   const createMutation = useCreateKnowledgeDocument();
   const updateMutation = useUpdateKnowledgeDocument();
