@@ -64,6 +64,11 @@ export async function createBookingRequest(
       throw new Error(`Failed to fetch booking request: ${fetchError.message}`);
     }
 
+    if (!bookingRequest) {
+      console.error("[Booking Request] Booking request not found after creation");
+      throw new Error("Booking request not found after creation");
+    }
+
     return {
       id: bookingRequest.id,
       status: bookingRequest.status,
