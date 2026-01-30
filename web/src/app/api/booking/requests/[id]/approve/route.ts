@@ -3,7 +3,7 @@ import {
   approveBookingRequest,
   getBookingRequest,
 } from "@/services/booking/booking-request";
-import { messagesService } from "@/services/messages";
+import { serverMessageService } from "@/services/messages";
 import { translationService } from "@/services/translation";
 
 /**
@@ -158,7 +158,7 @@ ${data.humanResponse ? `\n📝 ${data.humanResponse}` : ""}
     }
 
     // Send message
-    await messagesService.create({
+    await serverMessageService.create({
       conversationId,
       direction: "outbound",
       senderType: "agent",
@@ -210,7 +210,7 @@ ${reason ? `📝 ${reason}\n\n` : ""}다른 날짜를 제안해주시면 다시 
     }
 
     // Send message
-    await messagesService.create({
+    await serverMessageService.create({
       conversationId,
       direction: "outbound",
       senderType: "agent",
