@@ -53,11 +53,14 @@ export async function createBookingRequest(
     }
 
     // 생성된 booking_request 조회
-    const { data: bookingRequest, error: fetchError } = await supabase
+    const { data: bookingRequest, error: fetchError } = (await supabase
       .from("booking_requests")
       .select("id, status, created_at")
       .eq("id", result)
-      .single();
+      .single()) as {
+      data: { id: string; status: string; created_at: string } | null;
+      error: any;
+    };
 
     if (fetchError) {
       console.error("[Booking Request] Fetch error:", fetchError);
