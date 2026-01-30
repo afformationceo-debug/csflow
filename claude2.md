@@ -1272,6 +1272,72 @@ ORDER BY confirmed_at DESC;
 - **풀자동화 체크리스트**: `/web/FULL_AUTOMATION_CHECKLIST.md`
 - **Vercel 배포 가이드**: `/web/VERCEL_DEPLOYMENT_CHECK.md`
 - **Frontend Tenant Fix**: `/web/FRONTEND_TENANT_FIX.md`
+- **지식베이스 디버깅 가이드**: `/web/KNOWLEDGE_BASE_DEBUGGING.md` ✨ NEW
+
+---
+
+## 📋 지식베이스 표시 이슈 해결 (2026-01-31)
+
+### 문제 상황
+사용자 보고: "배포 후 확인하고 새로고침도 했는데 아직도 지식베이스 안뜹니다!"
+
+### 완료된 수정사항 ✅
+
+1. **Migration 008 실행 완료**
+   - RLS 정책에 `public.users` 명시적 참조 추가
+   - 커밋: Migration 파일 생성 및 실행 완료
+
+2. **Frontend tenant_id 이슈 수정** (Commit: 2e433e6)
+   - `activeTenantId` 타입: `string` → `string | undefined`
+   - React Query hooks에 `enabled` 옵션 추가
+   - Tenant ID 로드 전 API 호출 방지
+
+3. **Middleware API 401 수정** (Commit: 61a9c22)
+   - API 경로와 페이지 경로 분리 처리
+   - API 호출 시 HTML 리다이렉트 대신 JSON 401 반환
+   ```typescript
+   if (!user && !isPublicRoute) {
+     if (isApiRoute) {
+       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+     }
+     return NextResponse.redirect(new URL("/login", request.url));
+   }
+   ```
+
+4. **문서화 완료** (Commit: 0cae765)
+   - `VERCEL_DEPLOYMENT_CHECK.md` 생성
+   - `FULL_AUTOMATION_CHECKLIST.md` 생성
+   - `KNOWLEDGE_BASE_DEBUGGING.md` 생성 ✨ NEW
+
+### 디버깅 단계별 가이드
+
+사용자님께서 직접 확인하실 수 있도록 상세한 디버깅 가이드를 작성했습니다:
+👉 **`/web/KNOWLEDGE_BASE_DEBUGGING.md`** 참고
+
+**5분 체크리스트**:
+1. ☐ Vercel 대시보드에서 최신 배포 ✅ Ready 확인
+2. ☐ 시크릿 모드에서 csflow.vercel.app/knowledge 접속
+3. ☐ 로그인: afformation.ceo@gmail.com / afformation1!
+4. ☐ F12 → Network 탭 → `knowledge_documents` 요청 확인
+5. ☐ 응답 코드에 따라 문제 진단:
+   - **400**: Vercel 배포 재확인
+   - **401**: 재로그인 필요
+   - **200 + 빈 배열**: DB RLS 문제 → `CHECK_KNOWLEDGE_DB.sql` 실행
+   - **200 + 75개 문서**: React 렌더링 문제 → Console 오류 확인
+
+### DB 진단 SQL 제공
+
+`CHECK_KNOWLEDGE_DB.sql` 파일 생성:
+- 9개의 종합 진단 쿼리
+- 문서 개수, RLS 정책, 사용자 권한, 샘플 데이터 등 전체 검증
+- Supabase SQL Editor에서 직접 실행 가능
+
+### 다음 단계
+
+지식베이스 정상 표시 확인 후:
+✅ **풀자동화 Stage 1-2 테스트 진행**
+- Stage 1: LINE 메시지 → 고객/대화 자동 생성
+- Stage 2: AI RAG 응답 → 예약 의도 감지 → 예약 양식 전송
 
 ---
 

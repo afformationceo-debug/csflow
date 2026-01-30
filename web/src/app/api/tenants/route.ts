@@ -177,8 +177,8 @@ export async function GET(request: NextRequest) {
           : DEFAULT_AI_CONFIG.escalation_keywords,
       };
 
-      // Determine display_name: prefer display_name, then name_en, then name
-      const displayName = (t.display_name as string) || (t.name_en as string) || (t.name as string);
+      // Determine display_name: prefer name_en, then name (display_name column doesn't exist in DB)
+      const displayName = (t.name_en as string) || (t.name as string);
 
       // Determine status
       const isActive = t.is_active !== undefined ? Boolean(t.is_active) : true;
@@ -235,15 +235,17 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createServiceClient();
 
-    const displayName = display_name || name_en || name;
+    // NOTE: The DB schema has 'name' and 'name_en' but NOT 'display_name'
+    // display_name from frontend should map to name_en
+    const nameEn = display_name || name_en;
 
     const insertData: Record<string, unknown> = {
       name,
-      display_name: displayName,
+      name_en: nameEn,
       specialty: specialty || "general",
-      country: country || null,
       settings: {
         default_language: default_language || "ko",
+        country: country || null,
       },
       ai_config: {
         model: "gpt-4",
@@ -297,10 +299,18 @@ export async function PATCH(request: NextRequest) {
     const updateData: Record<string, unknown> = {};
 
     if (name !== undefined) updateData.name = name;
-    if (display_name !== undefined) updateData.display_name = display_name;
-    if (name_en !== undefined) updateData.display_name = name_en;
-    if (country !== undefined) updateData.country = country;
+    // Map display_name to name_en (display_name column doesn't exist in DB)
+    if (display_name !== undefined) updateData.name_en = display_name;
+    if (name_en !== undefined) updateData.name_en = name_en;
     if (specialty !== undefined) updateData.specialty = specialty;
+
+    // Store country in settings JSONB, not as a separate column
+    if (country !== undefined) {
+      if (!updateData.settings) {
+        updateData.settings = {};
+      }
+      (updateData.settings as Record<string, unknown>).country = country;
+    }
 
     if (ai_config !== undefined) {
       // Map page's ai_config format to DB format
