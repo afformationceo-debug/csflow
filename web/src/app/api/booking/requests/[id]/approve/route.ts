@@ -121,7 +121,7 @@ async function sendConfirmationToCustomer(
       .from("customers")
       .select("language")
       .eq("id", customerId)
-      .single();
+      .single() as { data: { language: string } | null; error: any };
 
     if (!customer) {
       return NextResponse.json(
@@ -197,7 +197,7 @@ async function sendRejectionToCustomer(
       .from("customers")
       .select("language")
       .eq("id", customerId)
-      .single();
+      .single() as { data: { language: string } | null; error: any };
 
     if (!customer) {
       return NextResponse.json(
