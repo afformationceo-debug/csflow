@@ -9998,6 +9998,171 @@ if (!existingEscalations || existingEscalations.length === 0) {
 - ✅ Git push 완료 → Vercel 자동 배포
 - ✅ 전체 4+2=6개 버그 수정 완료
 
+---
+
+#### 18.14 TypeScript Type Inference 오류 수정 (2026-01-29) ✅
+
+##### 18.14.1 serverMessageService.create() 메서드 누락 (1차 오류)
+
+**문제**:
+```
+Type error: Property 'create' does not exist on type serverMessageService
+Location: /web/src/app/api/booking/requests/[id]/approve/route.ts:168:32
+```
+
+**근본 원인**:
+- `/web/src/services/messages.ts`의 `serverMessageService`에 에이전트 아웃바운드 메시지를 생성하는 메서드가 없었음
+- `createInboundMessage()` (고객 → 시스템), `createAIMessage()` (AI → 고객)만 존재
+- 에이전트가 고객에게 답변하는 메시지를 생성할 메서드가 필요했음
+
+**해결**:
+- `/web/src/services/messages.ts`에 `createOutboundMessage()` 메서드 추가
+- 에이전트 및 AI 발신 메시지 지원 (direction: "outbound")
+- 번역 지원 (originalContent, translatedContent 분리)
+- 메타데이터 저장
+
+**변경 사항**:
+```typescript
+// /web/src/services/messages.ts
+async createOutboundMessage(data: {
+  conversationId: string;
+  content: string;
+  contentType?: MessageContentType;
+  originalContent?: string;
+  originalLanguage?: string;
+  translatedContent?: string;
+  senderType?: "agent" | "ai";
+  metadata?: Record<string, unknown>;
+}): Promise<Message> {
+  const supabase = await createServiceClient();
+
+  const { data: message, error } = await (supabase
+    .from("messages") as any)
+    .insert({
+      conversation_id: data.conversationId,
+      direction: "outbound",
+      content_type: data.contentType || "text",
+      content: data.content,
+      original_content: data.originalContent,
+      original_language: data.originalLanguage,
+      translated_content: data.translatedContent,
+      sender_type: data.senderType || "agent",
+      status: "pending",
+      metadata: data.metadata || {},
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return message;
+}
+```
+
+**업데이트된 파일**:
+- `/web/src/services/messages.ts` — `createOutboundMessage()` 메서드 추가
+- `/web/src/app/api/booking/requests/[id]/approve/route.ts` — `serverMessageService.create()` → `serverMessageService.createOutboundMessage()` (2회)
+
+**커밋**: `97b1c69` - "Fix serverMessageService API: add createOutboundMessage method"
+
+##### 18.14.2 channelAccount.full_automation_enabled Type 'never' 오류 (2차 오류)
+
+**문제**:
+```
+Type error: Property 'full_automation_enabled' does not exist on type 'never'
+Location: /web/src/app/api/webhooks/line/route.ts:384:50
+Code: const fullAutomationEnabled = channelAccount.full_automation_enabled || false;
+```
+
+**근본 원인**:
+- LINE webhook route에서 `channelAccount` 변수가 Supabase 쿼리로 생성됨 (line 68-97)
+- 명시적 타입 assertion을 `channelAccountData` 변수로 생성했지만 (line 104-108), `full_automation_enabled` 필드가 포함되지 않았음
+- 코드 line 384-385에서 원본 `channelAccount` 변수를 사용하려 했으나 TypeScript가 타입을 `never`로 추론
+- **패턴**: Supabase 쿼리 → null check → 타입이 `never`로 narrowing되는 일관된 패턴
+
+**해결 방법**:
+1. `channelAccountData` 타입 assertion에 `full_automation_enabled?: boolean` 필드 추가
+2. LINE webhook route에서 `channelAccount` 대신 `channelAccountData` 사용
+3. 두 곳 수정:
+   - Line 385: `channelAccount.full_automation_enabled` → `channelAccountData.full_automation_enabled`
+   - Line 399: `channelAccount.id` → `channelAccountData.id`
+
+**변경 사항**:
+```typescript
+// /web/src/app/api/webhooks/line/route.ts (line 104-108)
+const channelAccountData = channelAccount as unknown as {
+  id: string;
+  tenant_id: string;
+  tenant: { ai_config?: { enabled?: boolean } };
+  full_automation_enabled?: boolean;  // ✅ ADDED
+};
+
+// Line 385
+const fullAutomationEnabled = channelAccountData.full_automation_enabled || false;
+
+// Line 399
+channelAccountId: channelAccountData.id,
+```
+
+**업데이트된 파일**:
+- `/web/src/app/api/webhooks/line/route.ts` — 타입 assertion 확장, 변수 참조 수정
+
+**커밋**: `51bbd91` - "Fix TypeScript type inference: use channelAccountData with full_automation_enabled field"
+
+##### 18.14.3 기술 상세
+
+**TypeScript Type Narrowing 문제 패턴**:
+
+이번 오류는 Supabase 쿼리에서 반복적으로 발생하는 TypeScript 타입 추론 문제의 세 번째 사례입니다:
+
+1. **첫 번째 사례** (booking approval route - `customer` 타입): commit `ea99885`
+2. **두 번째 사례** (booking approval route - `serverMessageService.create()`): commit `97b1c69`
+3. **세 번째 사례** (LINE webhook - `channelAccount.full_automation_enabled`): commit `51bbd91`
+
+**공통 패턴**:
+```typescript
+// 1. Supabase query without explicit typing
+const { data: entity } = await supabase
+  .from("table")
+  .select("*")
+  .single();
+
+// 2. Null check
+if (!entity) {
+  return;
+}
+
+// 3. Type assertion (but incomplete fields)
+const typedEntity = entity as unknown as {
+  id: string;
+  // Missing: other fields accessed later
+};
+
+// 4. Later access to missing field → TypeScript infers 'never'
+const value = entity.missing_field; // ❌ Error: 'never' type
+```
+
+**해결 패턴**:
+1. 타입 assertion에 필요한 모든 필드 포함
+2. 원본 변수 대신 타입이 지정된 변수 사용
+3. 또는 Supabase 쿼리 자체에 제네릭 타입 지정
+
+**풀자동화 시스템 컨텍스트**:
+
+이 수정은 Phase 2 Human-in-the-Loop (HITL) 풀자동화 예약 시스템의 일부입니다:
+- `full_automation_enabled` 플래그로 채널별 자동화 레벨 제어
+- `true`: Enhanced RAG Pipeline (예약 지능형 감지 + 자동 처리)
+- `false`: Basic RAG Pipeline (일반 응답만)
+
+**참고 문서**: `@claude2.md` lines 976-1018
+
+##### 18.14.4 배포
+
+- ✅ TypeScript 빌드 성공 (0 errors)
+- ✅ Git commit: `97b1c69` "Fix serverMessageService API: add createOutboundMessage method"
+- ✅ Git commit: `51bbd91` "Fix TypeScript type inference: use channelAccountData with full_automation_enabled field"
+- ✅ Git push 완료 → Vercel 자동 배포 트리거됨
+- 🔄 배포 진행 중 — CSV 지식베이스 업로드 및 LLM RAG 응답 테스트 대기 중
+
 **근본 원인 재분석** (commit `296be14`):
 - 문제: 내림차순 정렬 시 AI 응답이 고객 원래 질문보다 최근이라 덮어씌움
 - 해결: 오름차순 정렬 + `continue`로 첫 번째 고객 메시지 선택 (에스컬레이션을 일으킨 최초 질문)
