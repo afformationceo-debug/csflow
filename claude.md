@@ -10112,11 +10112,12 @@ channelAccountId: channelAccountData.id,
 
 **TypeScript Type Narrowing 문제 패턴**:
 
-이번 오류는 Supabase 쿼리에서 반복적으로 발생하는 TypeScript 타입 추론 문제의 세 번째 사례입니다:
+이번 오류는 Supabase 쿼리에서 반복적으로 발생하는 TypeScript 타입 추론 문제의 네 번째 사례입니다:
 
 1. **첫 번째 사례** (booking approval route - `customer` 타입): commit `ea99885`
 2. **두 번째 사례** (booking approval route - `serverMessageService.create()`): commit `97b1c69`
 3. **세 번째 사례** (LINE webhook - `channelAccount.full_automation_enabled`): commit `51bbd91`
+4. **네 번째 사례** (booking-request service - `.rpc()` parameter 타입): commit `0bafe22`
 
 **공통 패턴**:
 ```typescript
@@ -10155,13 +10156,70 @@ const value = entity.missing_field; // ❌ Error: 'never' type
 
 **참고 문서**: `@claude2.md` lines 976-1018
 
+##### 18.14.3 Supabase RPC Type Inference 오류 (3차 오류)
+
+**문제**:
+```
+Type error: Argument of type '{ p_tenant_id: string; ... }' is not assignable to parameter of type 'never'.
+Location: /web/src/services/booking/booking-request.ts:39:82
+```
+
+**근본 원인**:
+- Supabase `.rpc()` 메서드 호출 시 TypeScript가 RPC 함수의 파라미터 타입을 추론하지 못함
+- 데이터베이스 함수(`create_booking_request`, `approve_booking_request`, `confirm_booking_to_crm`)의 타입 정보가 TypeScript에 전달되지 않음
+- TypeScript가 파라미터를 `never` 타입으로 추론하여 에러 발생
+
+**해결 방법**:
+- 모든 `.rpc()` 호출에 `(supabase as any)` 타입 assertion 추가
+- 3개 위치 수정:
+  1. `create_booking_request` (line 39)
+  2. `approve_booking_request` (line 222)
+  3. `confirm_booking_to_crm` (line 257)
+
+**변경 사항**:
+```typescript
+// Before
+const { data: result, error } = await supabase.rpc("create_booking_request", { ... });
+
+// After
+const { data: result, error } = await (supabase as any).rpc("create_booking_request", { ... });
+```
+
+**업데이트된 파일**:
+- `/web/src/services/booking/booking-request.ts` — 3개 RPC 호출에 타입 assertion
+
+**커밋**: `0bafe22` - "Fix TypeScript RPC type inference errors in booking-request service"
+
+**컨텍스트**: HITL 풀자동화 예약 시스템 (Phase 2.1) — 예약 신청, 휴먼 승인, CRM 등록 파이프라인
+
 ##### 18.14.4 배포
 
 - ✅ TypeScript 빌드 성공 (0 errors)
 - ✅ Git commit: `97b1c69` "Fix serverMessageService API: add createOutboundMessage method"
 - ✅ Git commit: `51bbd91` "Fix TypeScript type inference: use channelAccountData with full_automation_enabled field"
+- ✅ Git commit: `0bafe22` "Fix TypeScript RPC type inference errors in booking-request service"
 - ✅ Git push 완료 → Vercel 자동 배포 트리거됨
 - 🔄 배포 진행 중 — CSV 지식베이스 업로드 및 LLM RAG 응답 테스트 대기 중
+
+##### 18.14.5 Slack Webhook URL 환경변수 등록 필요 ⚠️
+
+**중요**: Vercel 환경변수에 Slack 설정 등록 필요
+
+`.env.local`은 로컬 개발용이며, Vercel 프로덕션 빌드에는 적용되지 않습니다.
+
+**Vercel 환경변수 등록 절차**:
+1. https://vercel.com/dashboard 접속
+2. 프로젝트 선택
+3. Settings > Environment Variables
+4. 다음 변수 추가:
+   - `SLACK_BOT_TOKEN` = `xoxe.xoxp-1-Mi0yLT...` (전체 토큰)
+   - `SLACK_WEBHOOK_URL` = `https://hooks.slack.com/services/T0A82AHQKB7/B0ABY21K0M8/...`
+5. Environment: Production, Preview, Development 모두 체크
+6. Save
+
+**영향**:
+- 등록하지 않으면 에스컬레이션/예약 알림이 Slack으로 전송되지 않음
+- 로컬 개발 환경에서는 `.env.local` 사용하므로 정상 작동
 
 **근본 원인 재분석** (commit `296be14`):
 - 문제: 내림차순 정렬 시 AI 응답이 고객 원래 질문보다 최근이라 덮어씌움
